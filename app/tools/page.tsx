@@ -13,6 +13,8 @@ import {
   CheckCircle2,
   Clock,
   Code2,
+  Play,
+  Calendar,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -111,9 +113,10 @@ export default function ToolsPage() {
           const StatusIcon = statusIcon[tool.status] || CheckCircle2;
 
           return (
-            <div
+            <Link
               key={tool.id}
-              className="bg-surface-raised rounded-xl border border-border p-5 md:p-6 hover:border-brand-blue/20 transition-colors group"
+              href={`/tools/${tool.id}`}
+              className="bg-surface-raised rounded-xl border border-border p-5 md:p-6 hover:border-brand-blue/30 hover:shadow-sm transition-all group block"
             >
               {/* Top row: icon + name + blueprint badge + status */}
               <div className="flex items-start justify-between gap-3 mb-3">
@@ -160,17 +163,17 @@ export default function ToolsPage() {
                 {tool.techStack.map((tech) => (
                   <span
                     key={tech}
-                    className="px-2 py-0.5 rounded-md bg-white/5 text-[10px] text-text-muted font-medium"
+                    className="px-2 py-0.5 rounded-md bg-gray-50 border border-border text-[10px] text-text-muted font-medium"
                   >
                     {tech}
                   </span>
                 ))}
               </div>
 
-              {/* Metrics */}
-              {tool.metrics && (
-                <div className="flex items-center gap-4 pt-3 border-t border-border">
-                  {tool.metrics.map((m) => (
+              {/* Bottom row: metrics + schedule + action hint */}
+              <div className="flex items-center justify-between pt-3 border-t border-border">
+                <div className="flex items-center gap-4">
+                  {tool.metrics?.map((m) => (
                     <div key={m.label}>
                       <div className="text-[10px] text-text-muted uppercase tracking-wide">
                         {m.label}
@@ -179,8 +182,20 @@ export default function ToolsPage() {
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
+                <div className="flex items-center gap-2">
+                  {tool.schedule && (
+                    <span className="hidden sm:flex items-center gap-1 text-[11px] text-text-muted">
+                      <Calendar className="w-3 h-3" />
+                      {tool.schedule}
+                    </span>
+                  )}
+                  <div className="flex items-center gap-1 text-[12px] text-brand-blue font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                    Open
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+              </div>
+            </Link>
           );
         })}
       </div>
