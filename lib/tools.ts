@@ -561,7 +561,7 @@ export const tools: Tool[] = [
       "Parses Obsidian knowledge vaults to extract topics, generates JSON storyboards with Claude, creates portrait background images with DALL-E 3, and outputs production-ready Reel assets.",
     longDescription:
       "Content repurposing engine for Instagram Reels. Scans Obsidian markdown vaults to extract high-value topic clusters, generates JSON storyboards (hook, body, CTA) with Claude, creates 1080×1920 background images with DALL-E 3, composites text overlays with Pillow, and exports MP4-ready image sequences for Reels production.",
-    status: "development",
+    status: "beta",
     techStack: ["Obsidian Parser", "Claude API", "DALL-E 3", "Pillow"],
     category: "content",
     icon: "film",
@@ -643,7 +643,7 @@ export const tools: Tool[] = [
       "End-to-end programmatic SEO directory: CSV data cleaning, async web crawling with BrightData proxies, Claude Vision image curation, Supabase storage, and a Next.js frontend with ISR and Schema.org markup.",
     longDescription:
       "Programmatic SEO directory generator. Cleans raw business data CSVs with Pandas, crawls business websites asynchronously using aiohttp + BrightData proxies, curates images through Claude Vision (quality scoring + relevance filtering), stores everything in Supabase, and deploys a Next.js frontend with ISR pages, Schema.org structured data, and automatic sitemap generation for each city/category combination.",
-    status: "development",
+    status: "beta",
     techStack: [
       "Pandas",
       "aiohttp",

@@ -300,6 +300,94 @@ export default function ToolDetailPage() {
           ],
         },
       },
+      "social-proof-engine": {
+        steps: [
+          [2000, "Connecting to Twitter API, Reddit API, Google Reviews...", "6s..."],
+          [4500, "Scanning 4 platforms for brand mentions and sentiment...", "28s..."],
+          [7000, "Filtering positive testimonials (sentiment > 0.7)...", "52s..."],
+          [9000, "Generating embeddable social proof widgets...", "1m 18s..."],
+        ],
+        final: {
+          duration: "1m 48s",
+          summary: "Found 31 mentions, captured 12 testimonials, generated 3 proof widgets + 1 case study draft",
+          details: [
+            "Twitter/X: 14 mentions found (9 positive, 3 neutral, 2 negative)",
+            "Reddit: 8 mentions found (6 positive, 2 neutral)",
+            "Google Reviews: 6 new reviews (avg 4.6 stars)",
+            "G2: 3 new reviews (avg 4.8 stars)",
+            "Sentiment filter: 12 testimonials passed (score > 0.7)",
+            "Widget gen: 2 notification popups + 1 review carousel created",
+            "Claude case study: 1 draft generated from 4 clustered success signals",
+            "Supabase: All widgets and testimonials stored ✓",
+          ],
+        },
+      },
+      "data-enrichment-pipeline": {
+        steps: [
+          [2000, "Importing and deduplicating lead CSV (245 rows)...", "8s..."],
+          [4000, "Validating emails and enriching with Clearbit firmographics...", "32s..."],
+          [6500, "Running Claude ICP scoring on 198 enriched leads...", "58s..."],
+          [8500, "Syncing qualified leads to HubSpot CRM...", "1m 22s..."],
+        ],
+        final: {
+          duration: "1m 44s",
+          summary: "Processed 245 leads: 198 enriched, 189 valid emails, 142 synced to HubSpot (ICP >= 70)",
+          details: [
+            "CSV imported: 245 raw leads",
+            "Deduplication: 12 duplicates removed → 233 unique",
+            "Email validation: 189/233 valid (81.1%)",
+            "Clearbit enrichment: 198/233 matched (85.0%)",
+            "Claude ICP scoring: avg score 64.2, median 68",
+            "Leads above threshold (ICP >= 70): 142 qualified",
+            "HubSpot sync: 142 leads pushed to 'New Leads' pipeline ✓",
+            "Enrichment report saved to /exports/enrichment-2026-03-12.csv",
+          ],
+        },
+      },
+      "ig-reels-generator": {
+        steps: [
+          [2000, "Scanning Obsidian vault for tagged notes (#content-idea, #reel)...", "5s..."],
+          [4500, "Extracting topic clusters and generating Claude storyboards...", "34s..."],
+          [7000, "Creating DALL-E 3 background images (1080x1920)...", "1m 08s..."],
+          [9500, "Compositing text overlays with Pillow and exporting asset packs...", "1m 42s..."],
+        ],
+        final: {
+          duration: "2m 06s",
+          summary: "Scanned vault, extracted 5 topics, generated 5 Reel asset packs (15 frames total)",
+          details: [
+            "Vault scan: 234 notes found, 89 tagged with target tags",
+            "Topic extraction: 5 new high-value clusters identified",
+            "Claude storyboards: 5 JSON scripts generated (hook → body → CTA)",
+            "DALL-E 3: 15 background images rendered (3 per Reel, 1080x1920)",
+            "Pillow compositing: 15 text-overlay frames exported as PNG",
+            "Font: DM Sans Bold applied with brand color overlay",
+            "Output: 5 asset packs saved to /exports/reels-2026-03-12/",
+            "Ready for IG upload via Creator Studio ✓",
+          ],
+        },
+      },
+      "seo-directory": {
+        steps: [
+          [2000, "Cleaning business CSV with Pandas (412 rows)...", "10s..."],
+          [5000, "Crawling business websites via BrightData proxies (async batch)...", "1m 24s..."],
+          [8000, "Running Claude Vision image curation and quality scoring...", "2m 38s..."],
+          [11000, "Building Next.js directory pages with ISR + Schema.org...", "3m 52s..."],
+        ],
+        final: {
+          duration: "4m 28s",
+          summary: "Processed 340 listings across 12 cities, generated directory site with 352 pages",
+          details: [
+            "CSV cleaned: 340 valid listings from 412 raw rows (72 rejected)",
+            "Web crawl: 298/340 sites responded (87.6%) via BrightData proxy",
+            "Claude Vision: 892 images scored, 654 passed quality threshold (73.3%)",
+            "Supabase: 340 listings + 654 images stored",
+            "Next.js: Generated 12 city pages + 340 listing detail pages",
+            "Schema.org: LocalBusiness markup applied to all listings",
+            "Sitemap: 352 URLs generated and submitted",
+            "ISR: Revalidation set to 3600s for all pages ✓",
+          ],
+        },
+      },
     };
     return sims[t.id] || {
       steps: [
