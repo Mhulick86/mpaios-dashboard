@@ -38,7 +38,34 @@ import {
   Download,
   ExternalLink,
   Activity,
+  FileText,
+  Image,
+  Video,
+  Globe,
+  Copy,
+  Eye,
+  Package,
 } from "lucide-react";
+
+interface OutputArtifact {
+  id: string;
+  label: string;
+  type: "file" | "link" | "preview" | "code";
+  icon: "file" | "image" | "video" | "globe" | "code" | "package";
+  filename?: string;
+  size?: string;
+  url?: string;
+  previewContent?: string;
+}
+
+const outputIconMap: Record<string, React.ElementType> = {
+  file: FileText,
+  image: Image,
+  video: Video,
+  globe: Globe,
+  code: Code2,
+  package: Package,
+};
 
 const iconMap: Record<string, React.ElementType> = {
   rocket: Rocket,
@@ -192,11 +219,13 @@ export default function ToolDetailPage() {
   const router = useRouter();
   const [tool, setTool] = useState<Tool | null>(null);
   const [config, setConfig] = useState<Record<string, string | number | boolean>>({});
-  const [activeTab, setActiveTab] = useState<"config" | "logs" | "schedule">("config");
+  const [activeTab, setActiveTab] = useState<"config" | "logs" | "schedule" | "output">("config");
   const [isRunning, setIsRunning] = useState(false);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
   const [runLogs, setRunLogs] = useState<ToolRunLog[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [outputArtifacts, setOutputArtifacts] = useState<OutputArtifact[]>([]);
+  const [previewArtifact, setPreviewArtifact] = useState<OutputArtifact | null>(null);
 
   useEffect(() => {
     const found = tools.find((t) => t.id === params.id);
@@ -236,6 +265,62 @@ export default function ToolDetailPage() {
   const Icon = iconMap[tool.icon] || Cpu;
   const status = statusLabels[tool.status];
   const category = toolCategories[tool.category];
+
+  // Tool-specific output artifacts
+  const getOutputArtifacts = (toolId: string): OutputArtifact[] => {
+    const outputs: Record<string, OutputArtifact[]> = {
+      "vibe-marketing-funnel": [
+        { id: "lp-a", label: "Landing Page — Modern Minimal", type: "link", icon: "globe", url: "#", previewContent: "<!DOCTYPE html>\n<html>\n<head><title>LP Variant A</title></head>\n<body>\n  <header class=\"hero\">\n    <h1>Transform Your Mental Health Practice</h1>\n    <p>Join 2,400+ providers who streamlined intake</p>\n    <a href=\"#\" class=\"cta-btn\">Get Started Free</a>\n  </header>\n  <!-- 12 sections, 1,420 words -->\n</body>\n</html>" },
+        { id: "lp-b", label: "Landing Page — Healthcare Trust", type: "link", icon: "globe", url: "#", previewContent: "<!DOCTYPE html>\n<html>\n<head><title>LP Variant B</title></head>\n<body>\n  <header class=\"hero trust-layout\">\n    <h1>HIPAA-Compliant Patient Intake</h1>\n    <p>Trusted by 500+ behavioral health clinics</p>\n    <a href=\"#\" class=\"cta-btn\">Book a Demo</a>\n  </header>\n  <!-- 8 sections, 1,180 words -->\n</body>\n</html>" },
+        { id: "vid-1", label: "Remotion Video — 9:16 (Stories/Reels)", type: "file", icon: "video", filename: "funnel-video-9x16.mp4", size: "4.2 MB" },
+        { id: "vid-2", label: "Remotion Video — 1:1 (Feed)", type: "file", icon: "video", filename: "funnel-video-1x1.mp4", size: "3.8 MB" },
+        { id: "vid-3", label: "Remotion Video — 16:9 (YouTube)", type: "file", icon: "video", filename: "funnel-video-16x9.mp4", size: "5.1 MB" },
+        { id: "analysis", label: "Competitor Analysis Report", type: "file", icon: "file", filename: "competitor-analysis-2026-03-12.json", size: "48 KB" },
+      ],
+      "gtm-ad-bidding": [
+        { id: "ads-report", label: "Campaign Performance Report", type: "file", icon: "file", filename: "campaign-report-2026-03-12.csv", size: "12 KB" },
+        { id: "creative-1", label: "Ad Creative — Image #1 (Pain Point)", type: "file", icon: "image", filename: "ad-creative-pain-point-1.png", size: "340 KB" },
+        { id: "creative-2", label: "Ad Creative — Carousel Set", type: "file", icon: "image", filename: "ad-carousel-set.zip", size: "1.2 MB" },
+        { id: "pain-points", label: "Pain Points Extract (47 entries)", type: "file", icon: "file", filename: "pain-points-2026-03-12.json", size: "28 KB", previewContent: "[\n  {\n    \"source\": \"r/therapy\",\n    \"text\": \"intake forms take forever\",\n    \"sentiment\": -0.72,\n    \"frequency\": 14\n  },\n  {\n    \"source\": \"twitter\",\n    \"text\": \"why cant I book online\",\n    \"sentiment\": -0.65,\n    \"frequency\": 9\n  }\n  // ... 45 more entries\n]" },
+        { id: "fb-link", label: "Facebook Ads Manager → Campaign", type: "link", icon: "globe", url: "#" },
+      ],
+      "seo-content-machine": [
+        { id: "article-1", label: "Article: \"Best Anxiety Therapists in Dallas\"", type: "preview", icon: "file", filename: "anxiety-therapists-dallas.md", size: "8.4 KB", previewContent: "# Best Anxiety Therapists in Dallas (2026)\n\nFinding the right anxiety therapist in Dallas can feel\noverwhelming. This guide covers what to look for,\ninsurance options, and the top-rated providers...\n\n## What to Look for in an Anxiety Therapist\n...\n\n## Top 8 Anxiety Therapists in Dallas\n...\n\n*2,180 words | Reading time: 9 min*" },
+        { id: "article-2", label: "Article: \"Online Therapy vs In-Person\"", type: "preview", icon: "file", filename: "online-vs-inperson-therapy.md", size: "7.2 KB" },
+        { id: "hero-1", label: "Hero Image — Anxiety Therapists", type: "file", icon: "image", filename: "hero-anxiety-dallas-1200x630.png", size: "820 KB" },
+        { id: "hero-2", label: "Hero Image — Online vs In-Person", type: "file", icon: "image", filename: "hero-online-therapy-1200x630.png", size: "780 KB" },
+        { id: "kw-report", label: "Keyword Opportunities Report", type: "file", icon: "file", filename: "keyword-opportunities-2026-03-12.csv", size: "6 KB" },
+        { id: "wp-link", label: "WordPress Drafts → Review Queue", type: "link", icon: "globe", url: "#" },
+      ],
+      "social-proof-engine": [
+        { id: "widget-popup", label: "Widget — Notification Popup (embed code)", type: "code", icon: "code", previewContent: "<script src=\"https://cdn.proof.io/widget.js\"\n  data-widget-id=\"sp_28f4a\"\n  data-position=\"bottom-left\"\n  data-delay=\"3000\">\n</script>\n\n<!-- Shows: \"Sarah from Dallas just booked\n     an appointment — 2 minutes ago\" -->" },
+        { id: "widget-carousel", label: "Widget — Review Carousel (embed code)", type: "code", icon: "code", previewContent: "<div id=\"proof-carousel\" data-widget=\"sp_carousel_19c\">\n  <!-- Auto-populated with 12 testimonials -->\n  <!-- Avg rating: 4.7 stars -->\n</div>\n<script src=\"https://cdn.proof.io/carousel.js\"></script>" },
+        { id: "case-study", label: "Case Study Draft", type: "preview", icon: "file", filename: "case-study-draft-2026-03-12.md", size: "4.8 KB", previewContent: "# How [Brand] Increased Bookings 34% with\n# Streamlined Patient Intake\n\n## The Challenge\nPatients were abandoning the intake process...\n\n## The Solution\nImplemented digital forms with insurance verification...\n\n## Results\n- 34% increase in completed bookings\n- 68% reduction in intake time\n- 4.8 star average patient satisfaction\n\n*Draft — 1,240 words*" },
+        { id: "mentions-csv", label: "All Mentions Export", type: "file", icon: "file", filename: "mentions-2026-03-12.csv", size: "18 KB" },
+      ],
+      "data-enrichment-pipeline": [
+        { id: "enriched-csv", label: "Enriched Leads Export", type: "file", icon: "file", filename: "enriched-leads-2026-03-12.csv", size: "124 KB" },
+        { id: "scoring-report", label: "ICP Scoring Report", type: "file", icon: "file", filename: "icp-scores-2026-03-12.csv", size: "42 KB", previewContent: "lead_id,company,score,reasoning\nL001,Serenity Wellness,92,\"Mental health, 12 employees, TX, accepts insurance\"\nL002,MindBridge Therapy,88,\"Behavioral health, 8 employees, TX\"\nL003,Dallas Auto Parts,14,\"Automotive, not healthcare vertical\"\nL004,Recovery Path Clinic,85,\"Substance abuse, 22 employees, TX\"\n... 238 more rows" },
+        { id: "validation-report", label: "Email Validation Report", type: "file", icon: "file", filename: "email-validation-2026-03-12.csv", size: "16 KB" },
+        { id: "hubspot-link", label: "HubSpot → New Leads Pipeline", type: "link", icon: "globe", url: "#" },
+      ],
+      "ig-reels-generator": [
+        { id: "reel-pack-1", label: "Reel Pack #1 — \"5 Signs You Need Therapy\"", type: "file", icon: "package", filename: "reel-pack-1-signs-therapy.zip", size: "8.4 MB" },
+        { id: "reel-pack-2", label: "Reel Pack #2 — \"Therapy Myths Debunked\"", type: "file", icon: "package", filename: "reel-pack-2-myths.zip", size: "7.9 MB" },
+        { id: "reel-pack-3", label: "Reel Pack #3 — \"What Happens in Session\"", type: "file", icon: "package", filename: "reel-pack-3-session.zip", size: "9.1 MB" },
+        { id: "storyboard", label: "Storyboards JSON (all 5 reels)", type: "code", icon: "code", filename: "storyboards-2026-03-12.json", size: "12 KB", previewContent: "[\n  {\n    \"reel_id\": 1,\n    \"hook\": \"Are you ignoring these 5 warning signs?\",\n    \"body\": [\"Persistent sadness\", \"Sleep changes\", ...],\n    \"cta\": \"Save this for later ↓\",\n    \"slides\": 5,\n    \"bg_style\": \"Gradient Abstract\"\n  }\n  // ... 4 more reels\n]" },
+        { id: "frames-preview", label: "Frame Previews (15 PNGs)", type: "file", icon: "image", filename: "frame-previews.zip", size: "22 MB" },
+      ],
+      "seo-directory": [
+        { id: "directory-link", label: "Live Directory Site → Preview", type: "link", icon: "globe", url: "#" },
+        { id: "sitemap", label: "Sitemap (352 URLs)", type: "file", icon: "file", filename: "sitemap.xml", size: "34 KB" },
+        { id: "listings-export", label: "Cleaned Listings Export", type: "file", icon: "file", filename: "directory-listings-2026-03-12.csv", size: "86 KB" },
+        { id: "images-zip", label: "Curated Images (654 passed QA)", type: "file", icon: "image", filename: "directory-images.zip", size: "142 MB" },
+        { id: "schema-sample", label: "Schema.org Markup Sample", type: "code", icon: "code", previewContent: "{\n  \"@context\": \"https://schema.org\",\n  \"@type\": \"LocalBusiness\",\n  \"name\": \"Serenity Wellness Center\",\n  \"address\": {\n    \"@type\": \"PostalAddress\",\n    \"streetAddress\": \"4521 Oak Lawn Ave\",\n    \"addressLocality\": \"Dallas\",\n    \"addressRegion\": \"TX\"\n  },\n  \"aggregateRating\": {\n    \"ratingValue\": \"4.8\",\n    \"reviewCount\": \"127\"\n  }\n}" },
+      ],
+    };
+    return outputs[toolId] || [];
+  };
 
   // Tool-specific simulation messages
   const getRunSimulation = (t: Tool) => {
@@ -452,6 +537,8 @@ export default function ToolDetailPage() {
             : l
         )
       );
+      setOutputArtifacts(getOutputArtifacts(tool.id));
+      setActiveTab("output");
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 4000);
     }, lastStepDelay + 2000);
@@ -677,6 +764,7 @@ export default function ToolDetailPage() {
             { id: "config", label: "Configuration", icon: Settings2 },
             { id: "logs", label: "Run History", icon: Activity },
             { id: "schedule", label: "Schedule", icon: Calendar },
+            { id: "output", label: "Output", icon: Package },
           ] as const
         ).map((tab) => {
           const TabIcon = tab.icon;
@@ -937,6 +1025,146 @@ export default function ToolDetailPage() {
               <button className="px-4 py-2 rounded-lg bg-brand-blue text-white text-[12px] font-medium hover:bg-brand-blue-dark transition-colors">
                 Save Schedule
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "output" && (
+        <div className="bg-surface-raised rounded-xl border border-border p-5 md:p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-[16px] font-semibold">Output Artifacts</h2>
+            {outputArtifacts.length > 0 && (
+              <span className="text-[11px] text-text-muted bg-surface-overlay px-2 py-1 rounded-full">
+                {outputArtifacts.length} items
+              </span>
+            )}
+          </div>
+
+          {outputArtifacts.length === 0 ? (
+            <div className="text-center py-12">
+              <Package className="w-10 h-10 text-text-muted mx-auto mb-3 opacity-40" />
+              <p className="text-[13px] text-text-muted">No output yet.</p>
+              <p className="text-[11px] text-text-muted mt-1">
+                Run the tool to generate output artifacts.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {outputArtifacts.map((artifact) => {
+                const ArtifactIcon = outputIconMap[artifact.icon] || Package;
+                return (
+                  <div
+                    key={artifact.id}
+                    className="bg-surface-overlay rounded-lg border border-border p-4 hover:border-brand-blue/40 transition-colors group"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-brand-blue/10 flex items-center justify-center flex-shrink-0">
+                        <ArtifactIcon className="w-4 h-4 text-brand-blue" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium text-text-primary truncate">
+                          {artifact.label}
+                        </p>
+                        {artifact.filename && (
+                          <p className="text-[11px] text-text-muted mt-0.5 font-mono truncate">
+                            {artifact.filename}
+                          </p>
+                        )}
+                        {artifact.size && (
+                          <p className="text-[10px] text-text-muted mt-0.5">
+                            {artifact.size}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/60">
+                      {artifact.type === "file" && (
+                        <button className="flex items-center gap-1.5 text-[11px] text-brand-blue hover:text-brand-blue-dark font-medium transition-colors">
+                          <Download className="w-3.5 h-3.5" />
+                          Download
+                        </button>
+                      )}
+                      {artifact.type === "link" && artifact.url && (
+                        <button
+                          onClick={() => window.open(artifact.url, "_blank")}
+                          className="flex items-center gap-1.5 text-[11px] text-brand-blue hover:text-brand-blue-dark font-medium transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          Open
+                        </button>
+                      )}
+                      {artifact.type === "code" && artifact.previewContent && (
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(artifact.previewContent || "");
+                          }}
+                          className="flex items-center gap-1.5 text-[11px] text-brand-blue hover:text-brand-blue-dark font-medium transition-colors"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                          Copy
+                        </button>
+                      )}
+                      {artifact.previewContent && (
+                        <button
+                          onClick={() => setPreviewArtifact(artifact)}
+                          className="flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text-primary font-medium transition-colors ml-auto"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          Preview
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Preview Modal */}
+      {previewArtifact && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setPreviewArtifact(null)}
+        >
+          <div
+            className="bg-surface-raised rounded-xl border border-border w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const ModalIcon = outputIconMap[previewArtifact.icon] || Package;
+                  return <ModalIcon className="w-4 h-4 text-brand-blue" />;
+                })()}
+                <h3 className="text-[14px] font-semibold">{previewArtifact.label}</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                {previewArtifact.previewContent && (
+                  <button
+                    onClick={() =>
+                      navigator.clipboard.writeText(previewArtifact.previewContent || "")
+                    }
+                    className="flex items-center gap-1 text-[11px] text-text-muted hover:text-text-primary px-2 py-1 rounded-md hover:bg-surface-overlay transition-colors"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    Copy
+                  </button>
+                )}
+                <button
+                  onClick={() => setPreviewArtifact(null)}
+                  className="text-text-muted hover:text-text-primary p-1 rounded-md hover:bg-surface-overlay transition-colors"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 overflow-auto flex-1">
+              <pre className="text-[12px] leading-relaxed text-text-secondary font-mono whitespace-pre-wrap bg-surface-overlay rounded-lg p-4 border border-border/60">
+                {previewArtifact.previewContent}
+              </pre>
             </div>
           </div>
         </div>
