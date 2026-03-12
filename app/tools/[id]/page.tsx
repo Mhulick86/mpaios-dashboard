@@ -373,6 +373,7 @@ export default function ToolDetailPage() {
     setIsRunning(true);
     setActiveTab("logs");
 
+    // Remove the original failed entry and replace with a running retry
     const retryLog: ToolRunLog = {
       id: `retry-${Date.now()}`,
       timestamp: new Date().toISOString(),
@@ -380,7 +381,9 @@ export default function ToolDetailPage() {
       duration: "0s...",
       summary: `Retrying with Stealth + Proxy rotation...`,
     };
-    setRunLogs((prev) => [retryLog, ...prev]);
+    setRunLogs((prev) =>
+      [retryLog, ...prev.filter((l) => l.id !== failedLog.id)]
+    );
 
     setTimeout(() => {
       setRunLogs((prev) =>
