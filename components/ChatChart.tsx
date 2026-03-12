@@ -45,10 +45,33 @@ function formatValue(value: unknown): string {
   return num.toLocaleString();
 }
 
-export function ChatChart({ chart }: { chart: ChartData }) {
-  const { type, title, data, xKey = "label", series } = chart;
+/** Try to sort data chronologically if xKey values look like dates */
+function sortByDateIfNeeded(
+  data: Record<string, unknown>[],
+  xKey: string
+): Record<string, unknown>[] {
+  if (data.length < 2) return data;
 
-  if (!data || data.length === 0) return null;
+  // Check if the first value parses as a date
+  const sample = String(data[0][xKey] ?? "");
+  const parsed = Date.parse(sample);
+  if (isNaN(parsed)) return data; // not a date — keep original order
+
+  // All values parse as dates → sort ascending (oldest first)
+  return [...data].sort((a, b) => {
+    const da = Date.parse(String(a[xKey] ?? ""));
+    const db = Date.parse(String(b[xKey] ?? ""));
+    return da - db;
+  });
+}
+
+export function ChatChart({ chart }: { chart: ChartData }) {
+  const { type, title, data: rawData, xKey = "label", series } = chart;
+
+  if (!rawData || rawData.length === 0) return null;
+
+  // Sort chronologically when xKey values are dates
+  const data = sortByDateIfNeeded(rawData, xKey);
 
   const tooltipStyle = {
     backgroundColor: "#ffffff",
