@@ -5,7 +5,9 @@ import type {
   OrchestrationStep,
   AsanaProvisionResult,
   ActivityLogEntry,
+  InsightData,
 } from "./orchestrator";
+import type { IntegrationsConfig } from "./asana";
 
 /* ─── Helpers ─── */
 
@@ -167,15 +169,98 @@ export async function provisionAsana(
   return { projectGid, projectName, sections, tasks };
 }
 
+/* ─── Integration Data Fetching ─── */
+
+/** Agent IDs that use real integration data */
+const GA_AGENT_IDS = [13]; // Agent 13: Campaign Performance Analyst
+const GSC_AGENT_IDS = [10]; // Agent 10: SEO & Organic Growth Manager
+
+async function fetchIntegrationData(
+  agentId: number,
+  integrations: IntegrationsConfig | null,
+  insights: InsightData,
+  onLog: (entry: ActivityLogEntry) => void
+): Promise<InsightData> {
+  if (!integrations) return insights;
+
+  // Agent 13 → fetch GA data
+  if (
+    GA_AGENT_IDS.includes(agentId) &&
+    integrations.googleAnalytics.connected &&
+    integrations.googleAnalytics.accessToken &&
+    integrations.googleAnalytics.propertyId &&
+    !insights.gaOverview // don't re-fetch
+  ) {
+    onLog(makeLogEntry("data", "Pulling live Google Analytics data…", `Property: ${integrations.googleAnalytics.propertyName || integrations.googleAnalytics.propertyId}`));
+    try {
+      const res = await fetch("/api/google-analytics/overview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken: integrations.googleAnalytics.accessToken,
+          propertyId: integrations.googleAnalytics.propertyId,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        insights = { ...insights, gaOverview: data.markdown };
+        onLog(makeLogEntry("data", "GA4 data loaded — traffic, sessions, top pages, sources", `${data.markdown.length} chars of analytics context`));
+      } else {
+        const err = await res.json().catch(() => ({ error: "Unknown" }));
+        onLog(makeLogEntry("system", "GA4 fetch failed — continuing without analytics data", err.error));
+      }
+    } catch {
+      onLog(makeLogEntry("system", "GA4 fetch error — continuing without analytics data"));
+    }
+  }
+
+  // Agent 10 → fetch GSC data
+  if (
+    GSC_AGENT_IDS.includes(agentId) &&
+    integrations.googleSearchConsole.connected &&
+    integrations.googleSearchConsole.accessToken &&
+    integrations.googleSearchConsole.siteUrl &&
+    !insights.gscOverview // don't re-fetch
+  ) {
+    onLog(makeLogEntry("data", "Pulling live Search Console data…", `Site: ${integrations.googleSearchConsole.siteUrl}`));
+    try {
+      const res = await fetch("/api/google-search-console/overview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken: integrations.googleSearchConsole.accessToken,
+          siteUrl: integrations.googleSearchConsole.siteUrl,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        insights = { ...insights, gscOverview: data.markdown };
+        onLog(makeLogEntry("data", "GSC data loaded — queries, CTR, impressions, top pages", `${data.markdown.length} chars of search context`));
+      } else {
+        const err = await res.json().catch(() => ({ error: "Unknown" }));
+        onLog(makeLogEntry("system", "GSC fetch failed — continuing without search data", err.error));
+      }
+    } catch {
+      onLog(makeLogEntry("system", "GSC fetch error — continuing without search data"));
+    }
+  }
+
+  return insights;
+}
+
 /* ─── Simulation Execution ─── */
 
 export async function executeSimulation(
   plan: OrchestrationPlan,
   asanaResult: AsanaProvisionResult | null,
   pat: string | null,
+  integrations: IntegrationsConfig | null,
   onStepUpdate: (stepIndex: number, status: OrchestrationStep["status"]) => void,
-  onLog: (entry: ActivityLogEntry) => void
-): Promise<void> {
+  onLog: (entry: ActivityLogEntry) => void,
+  onInsightUpdate: (insights: InsightData) => void
+): Promise<InsightData> {
+  let insights: InsightData = { gaOverview: null, gscOverview: null };
+
   for (let i = 0; i < plan.steps.length; i++) {
     const step = plan.steps[i];
 
@@ -183,8 +268,41 @@ export async function executeSimulation(
     onStepUpdate(i, "active");
     onLog(makeLogEntry("agent", `${step.agentShortName} starting...`, step.action));
 
-    // Simulate work
+    // Fetch real integration data if this agent needs it
+    const prevInsights = { ...insights };
+    insights = await fetchIntegrationData(step.agentId, integrations, insights, onLog);
+    if (insights.gaOverview !== prevInsights.gaOverview || insights.gscOverview !== prevInsights.gscOverview) {
+      onInsightUpdate(insights);
+    }
+
+    // Simulate agent work
     await randomDelay(1200, 2500);
+
+    // Update Asana task notes with real data if available
+    if (pat && asanaResult) {
+      const asanaTask = asanaResult.tasks.find((t) => t.stepIndex === i);
+      if (asanaTask) {
+        let extraNotes = "";
+        if (GA_AGENT_IDS.includes(step.agentId) && insights.gaOverview) {
+          extraNotes = "\n\n--- GA4 Data Context ---\n" + insights.gaOverview.slice(0, 2000);
+        }
+        if (GSC_AGENT_IDS.includes(step.agentId) && insights.gscOverview) {
+          extraNotes = "\n\n--- GSC Data Context ---\n" + insights.gscOverview.slice(0, 2000);
+        }
+        if (extraNotes) {
+          try {
+            await asanaPost("/api/asana/tasks/update", {
+              pat,
+              taskGid: asanaTask.gid,
+              notes: `Agent: ${step.agentName}\nStep ${step.stepIndex + 1} of ${plan.steps.length}\nPipeline: ${plan.pipelineName}${extraNotes}`,
+            });
+            onLog(makeLogEntry("asana", `Attached live data to Asana task`, `${step.agentShortName} — real integration data`));
+          } catch {
+            // Non-critical
+          }
+        }
+      }
+    }
 
     // Human review checkpoint
     if (step.isHumanReview) {
@@ -219,4 +337,6 @@ export async function executeSimulation(
       await randomDelay(300, 500);
     }
   }
+
+  return insights;
 }

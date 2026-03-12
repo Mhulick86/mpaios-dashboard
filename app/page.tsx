@@ -7,6 +7,7 @@ import type {
   OrchestrationStep,
   AsanaProvisionResult,
   ActivityLogEntry,
+  InsightData,
 } from "@/lib/orchestrator";
 import {
   selectPipeline,
@@ -23,6 +24,7 @@ import { OrchestratorStatus } from "@/components/orchestrator/OrchestratorStatus
 import { KanbanBoard } from "@/components/orchestrator/KanbanBoard";
 import { ActivityLog } from "@/components/orchestrator/ActivityLog";
 import { AsanaBanner } from "@/components/orchestrator/AsanaBanner";
+import { DataInsightsPanel } from "@/components/orchestrator/DataInsightsPanel";
 
 import { Activity, RotateCcw, Cpu } from "lucide-react";
 
@@ -69,6 +71,7 @@ export default function DashboardPage() {
   );
   const [log, setLog] = useState<ActivityLogEntry[]>([]);
   const [prompt, setPrompt] = useState("");
+  const [insights, setInsights] = useState<InsightData>({ gaOverview: null, gscOverview: null });
 
   const addLog = useCallback(
     (entry: ActivityLogEntry) => setLog((prev) => [...prev, entry]),
@@ -84,6 +87,7 @@ export default function DashboardPage() {
     setAsanaResult(null);
     setLog([]);
     setPrompt("");
+    setInsights({ gaOverview: null, gscOverview: null });
   };
 
   /* ── Main orchestration flow ── */
@@ -168,10 +172,17 @@ export default function DashboardPage() {
         setPhase("executing");
         addLog(makeLogEntry("system", "Beginning agent execution sequence…"));
 
-        await executeSimulation(
+        // Determine which integrations have real data
+        const gaConnected = integrations.googleAnalytics.connected && !!integrations.googleAnalytics.accessToken;
+        const gscConnected = integrations.googleSearchConsole.connected && !!integrations.googleSearchConsole.accessToken;
+        if (gaConnected) addLog(makeLogEntry("data", "GA4 integration active — will pull live analytics data"));
+        if (gscConnected) addLog(makeLogEntry("data", "GSC integration active — will pull live search data"));
+
+        const finalInsights = await executeSimulation(
           newPlan,
           result,
           asanaConnected ? pat : null,
+          integrations,
           (stepIndex, status) => {
             setPlan((prev) => {
               if (!prev) return prev;
@@ -181,8 +192,10 @@ export default function DashboardPage() {
               return { ...prev, steps };
             });
           },
-          addLog
+          addLog,
+          (updatedInsights) => setInsights(updatedInsights)
         );
+        setInsights(finalInsights);
 
         // Phase 5: Completed
         setPhase("completed");
@@ -272,6 +285,13 @@ export default function DashboardPage() {
       {plan && (
         <div className="mb-5">
           <KanbanBoard steps={plan.steps} />
+        </div>
+      )}
+
+      {/* Live Integration Data */}
+      {(insights.gaOverview || insights.gscOverview) && (
+        <div className="mb-5">
+          <DataInsightsPanel insights={insights} />
         </div>
       )}
 

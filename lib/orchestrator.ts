@@ -43,7 +43,7 @@ export interface AsanaProvisionResult {
   tasks: { gid: string; name: string; sectionGid: string; stepIndex: number }[];
 }
 
-export type ActivityLogType = "system" | "asana" | "agent" | "human";
+export type ActivityLogType = "system" | "asana" | "agent" | "human" | "data";
 
 export interface ActivityLogEntry {
   id: string;
@@ -51,4 +51,10 @@ export interface ActivityLogEntry {
   type: ActivityLogType;
   message: string;
   detail?: string;
+}
+
+/** Data fetched from real integrations during agent execution */
+export interface InsightData {
+  gaOverview: string | null;
+  gscOverview: string | null;
 }

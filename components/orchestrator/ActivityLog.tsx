@@ -8,6 +8,7 @@ import {
   FolderKanban,
   UserCheck,
   Settings,
+  Database,
 } from "lucide-react";
 
 interface Props {
@@ -22,6 +23,8 @@ function typeIcon(type: ActivityLogEntry["type"]) {
       return <FolderKanban className="w-3.5 h-3.5 text-purple-400" />;
     case "human":
       return <UserCheck className="w-3.5 h-3.5 text-amber-400" />;
+    case "data":
+      return <Database className="w-3.5 h-3.5 text-emerald-400" />;
     default:
       return <Settings className="w-3.5 h-3.5 text-text-muted" />;
   }
@@ -35,6 +38,8 @@ function typeColor(type: ActivityLogEntry["type"]) {
       return "text-purple-400";
     case "human":
       return "text-amber-400";
+    case "data":
+      return "text-emerald-400";
     default:
       return "text-text-muted";
   }
