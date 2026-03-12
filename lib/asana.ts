@@ -34,6 +34,18 @@ export interface AsanaTask {
   assignee?: { gid: string; name: string } | null;
 }
 
+export interface AsanaSection {
+  gid: string;
+  name: string;
+}
+
+export interface AsanaTaskUpdate {
+  gid: string;
+  completed?: boolean;
+  name?: string;
+  notes?: string;
+}
+
 export interface AsanaConfig {
   pat: string;
   workspace: AsanaWorkspace | null;

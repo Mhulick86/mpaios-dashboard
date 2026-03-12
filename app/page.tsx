@@ -1,29 +1,213 @@
-import { agents, divisions } from "@/lib/agents";
-import { dashboardKPIs, systemAlerts, serviceMetrics } from "@/lib/metrics";
-import { pipelines } from "@/lib/pipelines";
-import { KPICard } from "@/components/KPICard";
-import { AlertItem } from "@/components/AlertItem";
-import { SwarmStatus } from "@/components/SwarmStatus";
-import { PerformanceChart } from "@/components/charts/PerformanceChart";
-import { ChannelChart } from "@/components/charts/ChannelChart";
-import { PipelineCard } from "@/components/PipelineCard";
+"use client";
+
+import { useState, useCallback, useEffect } from "react";
+import type {
+  OrchestrationPhase,
+  OrchestrationPlan,
+  OrchestrationStep,
+  AsanaProvisionResult,
+  ActivityLogEntry,
+} from "@/lib/orchestrator";
 import {
-  Activity,
-  ArrowRight,
-  Bell,
-  Target,
-  Globe,
-  BarChart3 as BarChartIcon,
-  Mail,
-  Megaphone,
-  Zap as ZapIcon,
-  TrendingUp,
-} from "lucide-react";
-import Link from "next/link";
+  selectPipeline,
+  buildPlan,
+  provisionAsana,
+  executeSimulation,
+} from "@/lib/orchestratorEngine";
+import type { IntegrationsConfig } from "@/lib/asana";
+import { INTEGRATIONS_STORAGE_KEY, defaultIntegrations } from "@/lib/asana";
+import { agents } from "@/lib/agents";
+
+import { RequestInputBar } from "@/components/orchestrator/RequestInputBar";
+import { OrchestratorStatus } from "@/components/orchestrator/OrchestratorStatus";
+import { KanbanBoard } from "@/components/orchestrator/KanbanBoard";
+import { ActivityLog } from "@/components/orchestrator/ActivityLog";
+import { AsanaBanner } from "@/components/orchestrator/AsanaBanner";
+
+import { Activity, RotateCcw, Cpu } from "lucide-react";
+
+const TEAM_GID = "1210642764336819";
+
+function makeLogEntry(
+  type: ActivityLogEntry["type"],
+  message: string,
+  detail?: string
+): ActivityLogEntry {
+  return {
+    id: crypto.randomUUID(),
+    timestamp: Date.now(),
+    type,
+    message,
+    detail,
+  };
+}
 
 export default function DashboardPage() {
+  /* ── Asana config ── */
+  const [integrations, setIntegrations] = useState<IntegrationsConfig>(
+    defaultIntegrations()
+  );
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(INTEGRATIONS_STORAGE_KEY);
+      if (raw) setIntegrations(JSON.parse(raw));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const asanaConnected = integrations.asana.connected && !!integrations.asana.pat;
+  const pat = integrations.asana.pat;
+  const workspaceGid = integrations.asana.workspace?.gid ?? "";
+
+  /* ── Orchestration state ── */
+  const [phase, setPhase] = useState<OrchestrationPhase>("idle");
+  const [plan, setPlan] = useState<OrchestrationPlan | null>(null);
+  const [asanaResult, setAsanaResult] = useState<AsanaProvisionResult | null>(
+    null
+  );
+  const [log, setLog] = useState<ActivityLogEntry[]>([]);
+  const [prompt, setPrompt] = useState("");
+
+  const addLog = useCallback(
+    (entry: ActivityLogEntry) => setLog((prev) => [...prev, entry]),
+    []
+  );
+
   const activeAgents = agents.filter((a) => a.status === "active").length;
-  const unreadAlerts = systemAlerts.filter((a) => !a.read).length;
+
+  /* ── Reset ── */
+  const reset = () => {
+    setPhase("idle");
+    setPlan(null);
+    setAsanaResult(null);
+    setLog([]);
+    setPrompt("");
+  };
+
+  /* ── Main orchestration flow ── */
+  const handleSubmit = useCallback(
+    async (userPrompt: string) => {
+      setPrompt(userPrompt);
+      setLog([]);
+      setAsanaResult(null);
+
+      try {
+        // Phase 1: Analyzing
+        setPhase("analyzing");
+        addLog(
+          makeLogEntry(
+            "system",
+            "Agent 15 (Workflow Orchestrator) analyzing request…",
+            userPrompt.slice(0, 80)
+          )
+        );
+        await new Promise((r) => setTimeout(r, 1500));
+
+        // Phase 2: Planning
+        setPhase("planning");
+        const { pipeline, reasoning } = selectPipeline(userPrompt);
+        const newPlan = buildPlan(pipeline, reasoning);
+        setPlan(newPlan);
+        addLog(
+          makeLogEntry(
+            "system",
+            `Selected pipeline: ${pipeline.name}`,
+            reasoning.slice(0, 100)
+          )
+        );
+        addLog(
+          makeLogEntry(
+            "system",
+            `Built ${newPlan.steps.length}-step execution plan`
+          )
+        );
+        await new Promise((r) => setTimeout(r, 1200));
+
+        // Phase 3: Provisioning (Asana or skip)
+        let result: AsanaProvisionResult | null = null;
+        if (asanaConnected && pat && workspaceGid) {
+          setPhase("provisioning");
+          addLog(makeLogEntry("asana", "Provisioning Asana project board…"));
+          try {
+            result = await provisionAsana(
+              pat,
+              workspaceGid,
+              TEAM_GID,
+              newPlan,
+              addLog
+            );
+            setAsanaResult(result);
+            addLog(
+              makeLogEntry(
+                "asana",
+                `Asana board ready: ${result.projectName}`,
+                `${result.sections.length} columns, ${result.tasks.length} tasks`
+              )
+            );
+          } catch (err) {
+            addLog(
+              makeLogEntry(
+                "system",
+                "Asana provisioning failed — continuing in simulation mode",
+                err instanceof Error ? err.message : undefined
+              )
+            );
+          }
+        } else {
+          addLog(
+            makeLogEntry(
+              "system",
+              "Asana not connected — running in simulation mode"
+            )
+          );
+        }
+
+        // Phase 4: Executing
+        setPhase("executing");
+        addLog(makeLogEntry("system", "Beginning agent execution sequence…"));
+
+        await executeSimulation(
+          newPlan,
+          result,
+          asanaConnected ? pat : null,
+          (stepIndex, status) => {
+            setPlan((prev) => {
+              if (!prev) return prev;
+              const steps = prev.steps.map((s) =>
+                s.stepIndex === stepIndex ? { ...s, status } : s
+              );
+              return { ...prev, steps };
+            });
+          },
+          addLog
+        );
+
+        // Phase 5: Completed
+        setPhase("completed");
+        addLog(
+          makeLogEntry(
+            "system",
+            "Orchestration complete — all agents finished",
+            `Pipeline: ${newPlan.pipelineName}`
+          )
+        );
+      } catch (err) {
+        setPhase("error");
+        addLog(
+          makeLogEntry(
+            "system",
+            "Orchestration error",
+            err instanceof Error ? err.message : "Unknown error"
+          )
+        );
+      }
+    },
+    [asanaConnected, pat, workspaceGid, addLog]
+  );
+
+  const isRunning = phase !== "idle" && phase !== "completed" && phase !== "error";
 
   return (
     <div>
@@ -31,25 +215,23 @@ export default function DashboardPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 md:mb-8 gap-3">
         <div>
           <h1 className="text-[20px] md:text-[24px] font-semibold">
-            CMO Command Center
+            Orchestrator Command Center
           </h1>
           <p className="text-[12px] md:text-[14px] text-text-secondary mt-1">
-            Real-time marketing intelligence &middot; {activeAgents} agents active &middot; All systems operational
+            Agent-driven workflow automation &middot; {activeAgents} agents
+            active &middot; Powered by Agent 15
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Link
-            href="/alerts"
-            className="relative flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-raised border border-border text-[12px] font-medium hover:border-brand-blue/30 transition-colors"
-          >
-            <Bell className="w-4 h-4" />
-            Alerts
-            {unreadAlerts > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-brand-blue text-white text-[10px] font-semibold flex items-center justify-center">
-                {unreadAlerts}
-              </span>
-            )}
-          </Link>
+          {phase !== "idle" && (
+            <button
+              onClick={reset}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-raised border border-border text-[12px] font-medium hover:border-brand-blue/30 transition-colors"
+            >
+              <RotateCcw className="w-4 h-4" />
+              New Request
+            </button>
+          )}
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-brand-green/10 text-brand-green text-[12px] font-medium">
             <Activity className="w-4 h-4" />
             <span className="hidden sm:inline">System Online</span>
@@ -57,184 +239,140 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI Grid - max 8 per spec */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
-        {dashboardKPIs.map((kpi) => (
-          <KPICard key={kpi.label} kpi={kpi} />
-        ))}
-      </div>
-
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 md:mb-8">
-        <PerformanceChart
-          dataKey="revenue"
-          title="Revenue Trend (8 Weeks)"
-          color="#2CACE8"
+      {/* Asana Banner */}
+      <div className="mb-5">
+        <AsanaBanner
+          connected={asanaConnected}
+          projectGid={asanaResult?.projectGid}
+          projectName={asanaResult?.projectName}
         />
-        <ChannelChart metric="roas" title="ROAS by Channel" />
       </div>
 
-      {/* Swarm + Alerts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6 md:mb-8">
-        {/* Agent Swarm - wider */}
-        <div className="lg:col-span-3">
-          <SwarmStatus />
-        </div>
+      {/* Request Input */}
+      <div className="mb-6">
+        <RequestInputBar
+          onSubmit={handleSubmit}
+          disabled={isRunning}
+          phase={phase}
+        />
+      </div>
 
-        {/* Recent Alerts */}
-        <div className="lg:col-span-2">
-          <div className="bg-surface-raised rounded-xl border border-border p-4 md:p-5 h-full">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[13px] md:text-[14px] font-semibold">
-                Recent Alerts
+      {/* Orchestration Status */}
+      {phase !== "idle" && (
+        <div className="mb-5">
+          <OrchestratorStatus
+            phase={phase}
+            reasoning={plan?.reasoning}
+            pipelineName={plan?.pipelineName}
+          />
+        </div>
+      )}
+
+      {/* Kanban Board */}
+      {plan && (
+        <div className="mb-5">
+          <KanbanBoard steps={plan.steps} />
+        </div>
+      )}
+
+      {/* Activity Log */}
+      {log.length > 0 && (
+        <div className="mb-6">
+          <ActivityLog entries={log} />
+        </div>
+      )}
+
+      {/* Completed Summary */}
+      {phase === "completed" && plan && (
+        <div className="bg-brand-green/10 rounded-xl border border-brand-green/20 p-5 md:p-6 mb-6">
+          <div className="flex items-start gap-3">
+            <Cpu className="w-5 h-5 text-brand-green mt-0.5 shrink-0" />
+            <div>
+              <h3 className="text-[14px] md:text-[15px] font-semibold text-brand-green mb-1">
+                Orchestration Complete
               </h3>
-              <Link
-                href="/alerts"
-                className="text-[11px] text-brand-blue hover:underline flex items-center gap-1"
-              >
-                View all <ArrowRight className="w-3 h-3" />
-              </Link>
-            </div>
-            <div className="space-y-1">
-              {systemAlerts.slice(0, 5).map((alert) => (
-                <AlertItem key={alert.id} alert={alert} compact />
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom Row: Performance + Active Pipelines */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 md:mb-8">
-        <PerformanceChart
-          dataKey="conversions"
-          title="Conversion Trend"
-          color="#08AE67"
-        />
-        <div>
-          <h3 className="text-[13px] md:text-[14px] font-semibold mb-3">
-            Active Pipelines
-          </h3>
-          <div className="space-y-3">
-            {pipelines
-              .filter((p) => p.status === "running")
-              .slice(0, 2)
-              .map((pipeline) => (
-                <PipelineCard key={pipeline.id} pipeline={pipeline} />
-              ))}
-            {pipelines.filter((p) => p.status === "running").length === 0 && (
-              <div className="bg-surface-raised rounded-xl border border-border p-6 text-center">
-                <p className="text-[13px] text-text-muted">
-                  No pipelines currently running
+              <p className="text-[12px] md:text-[13px] text-text-secondary leading-relaxed mb-2">
+                Pipeline <strong>{plan.pipelineName}</strong> finished
+                successfully with {plan.steps.length} agent steps.
+                {asanaResult && (
+                  <>
+                    {" "}
+                    All tasks synced to Asana project{" "}
+                    <strong>{asanaResult.projectName}</strong>.
+                  </>
+                )}
+              </p>
+              {prompt && (
+                <p className="text-[11px] text-text-muted">
+                  Original request: &ldquo;{prompt.slice(0, 120)}
+                  {prompt.length > 120 ? "…" : ""}&rdquo;
                 </p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Services Intelligence */}
-      <div className="mb-6 md:mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[16px] md:text-[18px] font-semibold">
-            Services Intelligence
+      {/* Idle state - show quick-start suggestions */}
+      {phase === "idle" && (
+        <div className="mt-8">
+          <h2 className="text-[14px] md:text-[16px] font-semibold mb-4 text-text-secondary">
+            Quick Start
           </h2>
-          <Link
-            href="/campaigns"
-            className="text-[11px] text-brand-blue hover:underline flex items-center gap-1"
-          >
-            View all campaigns <ArrowRight className="w-3 h-3" />
-          </Link>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
-          {serviceMetrics.map((svc) => {
-            const iconMap: Record<string, React.ElementType> = {
-              target: Target,
-              globe: Globe,
-              "bar-chart": BarChartIcon,
-              mail: Mail,
-              megaphone: Megaphone,
-              zap: ZapIcon,
-            };
-            const Icon = iconMap[svc.icon] || Target;
-            return (
-              <Link
-                key={svc.service}
-                href="/campaigns"
-                className="bg-surface-raised rounded-xl border border-border p-4 md:p-5 hover:border-brand-blue/20 transition-colors group"
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {[
+              {
+                label: "Launch Campaign",
+                desc: "Full multi-channel campaign from research to deployment",
+                prompt: "Launch a full campaign for a new DTC skincare brand",
+              },
+              {
+                label: "Onboard Client",
+                desc: "End-to-end client discovery and Asana project setup",
+                prompt:
+                  "Onboard a new B2B SaaS client with competitive analysis",
+              },
+              {
+                label: "Optimize Performance",
+                desc: "Weekly optimization cycle across all active campaigns",
+                prompt:
+                  "Run a performance optimization cycle on all active campaigns",
+              },
+              {
+                label: "Content Engine",
+                desc: "Produce authority content with SEO and social distribution",
+                prompt:
+                  "Create an authority content piece on AI marketing trends",
+              },
+              {
+                label: "AI Visibility Audit",
+                desc: "Audit brand presence across ChatGPT, Claude, Perplexity",
+                prompt:
+                  "Run an LLMO audit for our brand across AI search platforms",
+              },
+              {
+                label: "Email Sequences",
+                desc: "Build automated nurture workflows with behavioral triggers",
+                prompt:
+                  "Build an email nurture sequence for our free trial signups",
+              },
+            ].map((item) => (
+              <button
+                key={item.label}
+                onClick={() => handleSubmit(item.prompt)}
+                className="text-left bg-surface-raised rounded-xl border border-border p-4 hover:border-brand-blue/30 transition-colors group"
               >
-                <div className="flex items-center gap-3 mb-3">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ backgroundColor: `${svc.color}15` }}
-                  >
-                    <Icon className="w-4 h-4" style={{ color: svc.color }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-[13px] font-semibold truncate group-hover:text-brand-blue transition-colors">
-                      {svc.service}
-                    </h3>
-                    <span className="text-[11px] text-text-muted">
-                      {svc.activeCampaigns} active campaigns
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-end justify-between">
-                  <div>
-                    <div className="text-[10px] text-text-muted uppercase tracking-wide">
-                      {svc.topKPI}
-                    </div>
-                    <div className="text-[18px] font-semibold">{svc.topKPIValue}</div>
-                  </div>
-                  <div className="flex items-center gap-1 text-brand-green text-[12px] font-medium">
-                    <TrendingUp className="w-3.5 h-3.5" />
-                    {svc.trendValue}
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Division Performance Summary */}
-      <div className="mb-8">
-        <h2 className="text-[16px] md:text-[18px] font-semibold mb-4">
-          Division Overview
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {divisions.map((div) => {
-            const divAgents = agents.filter((a) => a.divisionId === div.id);
-            const activeCount = divAgents.filter(
-              (a) => a.status === "active"
-            ).length;
-            return (
-              <Link
-                key={div.id}
-                href="/agents"
-                className="bg-surface-raised rounded-xl border border-border p-5 hover:border-brand-blue/30 transition-colors group"
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div
-                    className="w-3 h-3 rounded-full shrink-0"
-                    style={{ backgroundColor: div.color }}
-                  />
-                  <h3 className="text-[13px] md:text-[14px] font-semibold group-hover:text-brand-blue transition-colors">
-                    {div.name}
-                  </h3>
-                </div>
-                <p className="text-[11px] md:text-[12px] text-text-secondary leading-relaxed mb-3">
-                  {div.scope}
+                <h3 className="text-[13px] font-semibold group-hover:text-brand-blue transition-colors mb-1">
+                  {item.label}
+                </h3>
+                <p className="text-[11px] text-text-muted leading-relaxed">
+                  {item.desc}
                 </p>
-                <div className="flex items-center gap-4 text-[11px] text-text-muted">
-                  <span>{div.agentCount} agents</span>
-                  <span>{activeCount} active</span>
-                </div>
-              </Link>
-            );
-          })}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
