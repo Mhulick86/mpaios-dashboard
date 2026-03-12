@@ -237,11 +237,94 @@ export default function ToolDetailPage() {
   const status = statusLabels[tool.status];
   const category = toolCategories[tool.category];
 
+  // Tool-specific simulation messages
+  const getRunSimulation = (t: Tool) => {
+    const sims: Record<string, { steps: [number, string, string][]; final: { duration: string; summary: string; details: string[] } }> = {
+      "vibe-marketing-funnel": {
+        steps: [
+          [2000, "Launching stealth Playwright browser with anti-detect fingerprint...", "8s..."],
+          [4000, "Scraping competitor pages via residential proxy rotation...", "22s..."],
+          [6000, "Running Claude Vision analysis on page layouts + CTAs...", "48s..."],
+          [8000, "Generating landing page variants with React + shadcn/ui...", "1m 12s..."],
+        ],
+        final: {
+          duration: "1m 42s",
+          summary: "Analyzed 3 competitor pages, generated 2 LP variants + 3 video assets",
+          details: [
+            "Stealth mode: Anti-detect fingerprint applied (Chrome 122, macOS)",
+            "Proxy: Residential IP rotation enabled — 3 unique IPs used",
+            "Scraped 3 competitor pages (0 Cloudflare blocks) ✓",
+            "Claude Vision analysis — 92% CTA confidence score",
+            "Generated LP variant A (Modern Minimal) — 1,340 words",
+            "Generated LP variant B (Healthcare Trust) — 1,180 words",
+            "Rendered 3 Remotion videos (15s each, 1080x1920)",
+          ],
+        },
+      },
+      "gtm-ad-bidding": {
+        steps: [
+          [2000, "Mining Reddit threads and Twitter conversations via Perplexity API...", "14s..."],
+          [4000, "Extracting pain points and generating ad creatives...", "32s..."],
+          [7000, "Deploying ads to Facebook and evaluating live campaign performance...", "1m 05s..."],
+        ],
+        final: {
+          duration: "2m 18s",
+          summary: "Mined 34 pain points, created 4 ads, paused 1 underperformer, scaled 2 winners",
+          details: [
+            "Perplexity API: Scraped 18 Reddit threads, 24 Twitter conversations",
+            "Extracted 34 unique pain points (de-duped from 61 raw)",
+            "Generated 4 ad creatives (2 image, 2 carousel)",
+            "Deployed to Facebook Ads account ✓",
+            "Auto-paused: 1 ad (CPA $57.80 > $45 threshold)",
+            "Auto-scaled: 2 ads (+20% budget, avg ROAS 5.2x)",
+          ],
+        },
+      },
+      "seo-content-machine": {
+        steps: [
+          [2000, "Querying Ahrefs API for keyword opportunities (KD<20, Vol>500)...", "10s..."],
+          [4500, "Scraping top 10 SERP results with Playwright...", "38s..."],
+          [7000, "Running Claude content gap analysis and generating articles...", "1m 24s..."],
+          [9000, "Creating DALL-E hero images and publishing to WordPress...", "2m 02s..."],
+        ],
+        final: {
+          duration: "2m 38s",
+          summary: "Found 8 keyword opportunities, published 2 articles to WordPress",
+          details: [
+            "Ahrefs API: 8 opportunities found (KD<20, Vol>500)",
+            "SERP scraped for top 2 keywords (20 pages total)",
+            "Claude gap analysis identified 5 content gaps",
+            "Generated 2 articles (avg 2,200 words each)",
+            "DALL-E 3: Created 2 hero images (1200x630)",
+            "Published 2 drafts to WordPress (pending review) ✓",
+          ],
+        },
+      },
+    };
+    return sims[t.id] || {
+      steps: [
+        [2000, "Processing inputs and connecting to APIs...", "12s..."],
+        [4000, "Running main pipeline tasks...", "28s..."],
+      ],
+      final: {
+        duration: "1m 42s",
+        summary: "Pipeline completed successfully. All tasks processed.",
+        details: [
+          "Configuration validated ✓",
+          "API connections established ✓",
+          "Main pipeline executed ✓",
+          "Results stored and synced ✓",
+        ],
+      },
+    };
+  };
+
   const handleRun = () => {
     setIsRunning(true);
     setActiveTab("logs");
 
-    // Simulate a new running log entry
+    const sim = getRunSimulation(tool);
+
     const newLog: ToolRunLog = {
       id: `run-${Date.now()}`,
       timestamp: new Date().toISOString(),
@@ -251,28 +334,21 @@ export default function ToolDetailPage() {
     };
     setRunLogs((prev) => [newLog, ...prev]);
 
-    // Simulate progress
-    setTimeout(() => {
-      setRunLogs((prev) =>
-        prev.map((l) =>
-          l.id === newLog.id
-            ? { ...l, summary: "Processing inputs and connecting to APIs...", duration: "12s..." }
-            : l
-        )
-      );
-    }, 2000);
+    // Simulate tool-specific progress steps
+    sim.steps.forEach(([delay, msg, dur]) => {
+      setTimeout(() => {
+        setRunLogs((prev) =>
+          prev.map((l) =>
+            l.id === newLog.id
+              ? { ...l, summary: msg, duration: dur }
+              : l
+          )
+        );
+      }, delay);
+    });
 
-    setTimeout(() => {
-      setRunLogs((prev) =>
-        prev.map((l) =>
-          l.id === newLog.id
-            ? { ...l, summary: "Running main pipeline tasks...", duration: "28s..." }
-            : l
-        )
-      );
-    }, 4000);
-
-    // Complete after simulation
+    // Complete after last step + buffer
+    const lastStepDelay = sim.steps[sim.steps.length - 1]?.[0] ?? 4000;
     setTimeout(() => {
       setIsRunning(false);
       setRunLogs((prev) =>
@@ -281,14 +357,78 @@ export default function ToolDetailPage() {
             ? {
                 ...l,
                 status: "success" as const,
-                duration: "1m 42s",
-                summary: "Pipeline completed successfully. All tasks processed.",
+                duration: sim.final.duration,
+                summary: sim.final.summary,
+                details: sim.final.details,
+              }
+            : l
+        )
+      );
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 4000);
+    }, lastStepDelay + 2000);
+  };
+
+  const handleRetry = (failedLog: ToolRunLog) => {
+    setIsRunning(true);
+    setActiveTab("logs");
+
+    const retryLog: ToolRunLog = {
+      id: `retry-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      status: "running",
+      duration: "0s...",
+      summary: `Retrying with Stealth + Proxy rotation...`,
+    };
+    setRunLogs((prev) => [retryLog, ...prev]);
+
+    setTimeout(() => {
+      setRunLogs((prev) =>
+        prev.map((l) =>
+          l.id === retryLog.id
+            ? { ...l, summary: "Stealth fingerprint applied — rotating to new residential proxy...", duration: "6s..." }
+            : l
+        )
+      );
+    }, 2000);
+
+    setTimeout(() => {
+      setRunLogs((prev) =>
+        prev.map((l) =>
+          l.id === retryLog.id
+            ? { ...l, summary: "Cloudflare challenge detected → solving with stealth bypass...", duration: "14s..." }
+            : l
+        )
+      );
+    }, 4000);
+
+    setTimeout(() => {
+      setRunLogs((prev) =>
+        prev.map((l) =>
+          l.id === retryLog.id
+            ? { ...l, summary: "Cloudflare passed ✓ — scraping page content...", duration: "22s..." }
+            : l
+        )
+      );
+    }, 6000);
+
+    setTimeout(() => {
+      setIsRunning(false);
+      setRunLogs((prev) =>
+        prev.map((l) =>
+          l.id === retryLog.id
+            ? {
+                ...l,
+                status: "success" as const,
+                duration: "1m 38s",
+                summary: "Retry succeeded — Cloudflare bypassed with stealth mode + proxy rotation",
                 details: [
-                  "Configuration validated ✓",
-                  "API connections established ✓",
-                  "Main pipeline executed ✓",
-                  "Results stored and synced ✓",
-                  "Notifications sent ✓",
+                  "Stealth mode: Anti-detect fingerprint applied (Chrome 122, macOS)",
+                  "Proxy: Rotated to residential IP (new region)",
+                  "Cloudflare challenge detected → auto-solved in 2.1s",
+                  "Page fully loaded and scraped ✓",
+                  "Claude Vision analysis complete — 89% CTA confidence",
+                  "Generated 1 LP variant + 1 video asset",
                 ],
               }
             : l
@@ -296,7 +436,7 @@ export default function ToolDetailPage() {
       );
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 4000);
-    }, 6000);
+    }, 8000);
   };
 
   const handleStop = () => {
@@ -568,6 +708,18 @@ export default function ToolDetailPage() {
                         </div>
                       </div>
                       <div className="shrink-0 flex items-center gap-2">
+                        {log.status === "error" && !isRunning && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRetry(log);
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-medium hover:bg-amber-100 transition-colors"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            Retry with Stealth
+                          </button>
+                        )}
                         {log.details && (
                           <>
                             {isExpanded ? (
@@ -591,7 +743,11 @@ export default function ToolDetailPage() {
                           {log.details.map((detail, i) => (
                             <div
                               key={i}
-                              className="flex items-start gap-2 text-[12px] text-text-secondary"
+                              className={`flex items-start gap-2 text-[12px] ${
+                                detail.startsWith("⚠")
+                                  ? "text-amber-700 bg-amber-50 -mx-2 px-2 py-1 rounded-md border border-amber-200"
+                                  : "text-text-secondary"
+                              }`}
                             >
                               <span className="text-text-muted shrink-0 font-mono text-[10px] mt-0.5">
                                 {String(i + 1).padStart(2, "0")}
