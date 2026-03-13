@@ -3,7 +3,7 @@ import "./globals.css";
 import { Sidebar } from "@/components/Sidebar";
 
 export const metadata: Metadata = {
-  title: "MPAIOS | Marketing Powered AI Operating System",
+  title: "Marketing Powered | AI Operating System",
   description: "24 Specialized AI Agents. 6 Operational Divisions. Full-Stack Agency Automation.",
 };
 

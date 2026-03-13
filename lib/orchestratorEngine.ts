@@ -122,7 +122,7 @@ export async function provisionAsana(
   onLog: (entry: ActivityLogEntry) => void
 ): Promise<AsanaProvisionResult> {
   const ts = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  const projectName = `MPAIOS: ${plan.pipelineName} — ${ts}`;
+  const projectName = `MP: ${plan.pipelineName} — ${ts}`;
 
   // 1. Create project
   const projRes = await asanaPost("/api/asana/projects/create", {

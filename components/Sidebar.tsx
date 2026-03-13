@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
+import { BrandLogoMark, BrandWordmark } from "./BrandLogo";
 import {
   LayoutDashboard,
   Bot,
@@ -10,7 +11,6 @@ import {
   Users,
   Settings,
   MessageSquare,
-  Zap,
   Plug,
   Clock,
   Brain,
@@ -79,17 +79,8 @@ export function Sidebar() {
       {/* Logo */}
       <div className="p-6 pb-4">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-brand-blue rounded-lg flex items-center justify-center">
-            <Zap className="w-5 h-5 text-white" strokeWidth={2.5} />
-          </div>
-          <div className="leading-none">
-            <span className="text-white text-[15px] font-semibold tracking-tight block">
-              marketing
-            </span>
-            <span className="text-brand-blue text-[15px] font-semibold tracking-tight">
-              powered
-            </span>
-          </div>
+          <BrandLogoMark size={32} />
+          <BrandWordmark />
         </Link>
         <div className="mt-3 px-0.5">
           <span className="text-[10px] font-medium tracking-[0.15em] uppercase text-text-muted">
@@ -208,11 +199,9 @@ export function Sidebar() {
       {/* Mobile top bar */}
       <div className="fixed top-0 left-0 right-0 z-40 md:hidden bg-surface-dark flex items-center justify-between px-4 py-3 border-b border-border-dark">
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-brand-blue rounded-lg flex items-center justify-center">
-            <Zap className="w-4 h-4 text-white" strokeWidth={2.5} />
-          </div>
+          <BrandLogoMark size={28} />
           <span className="text-white text-[14px] font-semibold tracking-tight">
-            MPAIOS
+            marketing<span className="text-brand-blue">powered</span>
           </span>
         </Link>
         <button

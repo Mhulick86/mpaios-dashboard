@@ -781,7 +781,7 @@ export default function ChatPage() {
               <Zap className="w-4 h-4 text-brand-blue" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-[13px] md:text-[14px] font-semibold truncate">MPAIOS Orchestrator</h1>
+              <h1 className="text-[13px] md:text-[14px] font-semibold truncate">Marketing Powered Orchestrator</h1>
               <p className="text-[10px] md:text-[11px] text-text-muted truncate">
                 {activeConv ? activeConv.title : "Routes tasks to 18 agents"}
               </p>
@@ -809,7 +809,7 @@ export default function ChatPage() {
             <div className="flex justify-center">
               <div className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-full bg-brand-blue/10 text-[11px] md:text-[12px] font-medium text-brand-blue text-center">
                 <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                <span>MPAIOS Orchestrator online. 18 agents standing by.</span>
+                <span>Marketing Powered Orchestrator online. 24 agents standing by.</span>
               </div>
             </div>
           )}
