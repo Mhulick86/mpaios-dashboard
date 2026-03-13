@@ -59,6 +59,11 @@ Analyzed 5 key competitors across paid channels, organic presence, and positioni
 → Opportunity: Launch YouTube Shorts campaign before competitors enter the channel
 → Creative: Test UGC-style testimonial ads to match market trend
 
+### Tools Used
+🔧 **Competitor Ad Monitor** — Cross-platform ad surveillance across Meta, Google, TikTok, LinkedIn
+🔧 **Browser Automation** — Automated screenshot capture of competitor landing pages
+🔧 **Gemini Vision API** — Visual analysis of competitor creative patterns
+
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
 
@@ -90,6 +95,11 @@ Generated: ${today()}
 → 3 ad concepts per channel (9 total)
 → 2 landing page variants for A/B testing
 → 1 lead magnet / quiz funnel
+
+### Tools Used
+🔧 **UTM Campaign Tracker** — Generated tagged URLs for unified attribution across all channels
+🔧 **Budget Pacing Optimizer** — Modeled budget scenarios and cross-channel allocation
+🔧 **Campaign Planning Templates** — Structured multi-channel brief generation
 
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
@@ -127,6 +137,11 @@ Analyzed keyword gaps, competitor content, and industry trends.
 → Include original research/data points
 → Build internal linking structure between pillar + cluster content
 
+### Tools Used
+🔧 **GSC Performance Monitor** — Surfaced ranking decline alerts and keyword gap data
+🔧 **AI Search Visibility (LLMO)** — Identified content gaps where competitors are cited in AI answers
+🔧 **AHREFS API / Semrush API** — Keyword difficulty scoring and competitive content analysis
+
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
 
@@ -160,6 +175,11 @@ Generated: ${today()}
 • Plagiarism scan: ✅ 100% original
 • Brand voice alignment: ✅ Matches style guide
 • Grammar/spelling: ✅ Zero issues detected
+
+### Tools Used
+🔧 **Blog Brand Voice Writer** — Matched client brand voice profile across all long-form copy
+🔧 **Email Nurture Automator** — Generated multi-step email sequences with A/B subject variants
+🔧 **Readability Analysis** — Flesch-Kincaid and grade-level optimization
 
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
@@ -200,6 +220,11 @@ Based on historical creative benchmarks:
 → Expected CTR range: ${ctr()}% - ${(parseFloat(ctr()) + 1.2).toFixed(2)}%
 → Recommended: Start with Concept A (social proof), scale winners after 72hrs
 
+### Tools Used
+🔧 **Social Content Amplifier** — Adapted long-form assets into platform-optimized social creatives
+🔧 **IG Reels Generator** — Generated trending audio/format suggestions for short-form video
+🔧 **Gemini API** — AI-powered image generation and visual concept exploration
+
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
 
@@ -234,6 +259,11 @@ Generated: ${today()}
 → Sticky CTA bar on mobile (appears after 30% scroll)
 → Micro-animations on form focus (reduces abandonment)
 → Trust badges positioned above-fold
+
+### Tools Used
+🔧 **CRO A/B Test Engine** — Generated test hypotheses from heatmap and scroll depth analysis
+🔧 **Frontend Frameworks** — Responsive build with GTM event tracking integration
+🔧 **Browser Preview** — Cross-device rendering validation
 
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
@@ -274,6 +304,11 @@ Generated: ${today()}
 ### Estimated Performance (First 7 Days)
 → Impressions: ${imp()} | CTR: ${ctr()}% | CPA: ${cpa()} | ROAS: ${roas()}x
 
+### Tools Used
+🔧 **GTM Ad Bidding Engine** — Real-time bid optimization across campaign and ad set level
+🔧 **Competitor Ad Monitor** — Cross-referenced competitor creatives to differentiate positioning
+🔧 **Meta Marketing API** — Campaign creation, audience sync, and conversion tracking
+
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
 
@@ -300,6 +335,11 @@ Generated: ${today()}
 ✅ Google Ads tag: Active on all conversion pages
 ✅ Enhanced conversions: Configured with hashed email
 ✅ Offline conversion import: Template ready
+
+### Tools Used
+🔧 **GTM Ad Bidding Engine** — Automated bid strategy selection and budget allocation
+🔧 **Budget Pacing Optimizer** — Daily spend monitoring with auto-adjustment alerts
+🔧 **Google Ads API** — Programmatic campaign creation and keyword management
 
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
@@ -366,6 +406,12 @@ ${gscBlock}
 → 3 broken link reclamation opportunities
 → 2 unlinked brand mentions to convert
 
+### Tools Used
+🔧 **GSC Performance Monitor** — Automated ranking change detection and keyword movement alerts
+🔧 **WordPress Auto-Tagger** — Auto-categorized and internally linked 12 optimized pages
+🔧 **SEO Content Machine** — Generated SEO briefs with entity and NLP scoring
+🔧 **AHREFS API / Screaming Frog** — Technical audit and backlink opportunity discovery
+
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`;
   },
@@ -395,6 +441,11 @@ Generated: ${today()}
 → LinkedIn: +${pct()}% impressions vs last month
 → Instagram: +${pct()}% reach via Reels push
 → Twitter/X: Target ${imp()} impressions on threads
+
+### Tools Used
+🔧 **Social Content Amplifier** — Transformed authority content into platform-optimized social posts
+🔧 **Instagram Trend Engine** — Monitored trending audio and hashtags for Reels strategy
+🔧 **Content Calendars** — Automated scheduling across LinkedIn, Instagram, Twitter/X
 
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
@@ -426,6 +477,11 @@ Generated: ${today()}
 | Competitor B | 71% | 18% | 11% |
 
 → No crisis indicators detected. Next report: 7 days.
+
+### Tools Used
+🔧 **Brand Mention Radar** — Real-time brand mention tracking across web, social, and review sites
+🔧 **Sentiment & Feedback Analyzer** — NLP-powered sentiment scoring from multi-source review data
+🔧 **Google NLP API** — Entity and sentiment extraction from unstructured mentions
 
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
@@ -472,6 +528,11 @@ ${gaBlock}
 2. Refresh Meta creative for broad interest audience
 3. Scale LinkedIn campaign +20% (below CPA target)
 
+### Tools Used
+🔧 **GA4 Weekly AI Report** — Pulled GA4 data via API, generated AI-powered trend analysis
+🔧 **UTM Campaign Tracker** — Unified attribution across all campaign URLs
+🔧 **Budget Pacing Optimizer** — Flagged overspend on Display, recommended reallocation
+
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`;
   },
@@ -507,6 +568,11 @@ Generated: ${today()}
 ✅ CTA button contrast increased (accessibility AA compliance)
 ✅ Form error messages made inline (vs top-of-form)
 ✅ Mobile tap targets increased to 48px minimum
+
+### Tools Used
+🔧 **CRO A/B Test Engine** — Analyzed landing page data and generated prioritized test hypotheses
+🔧 **Analytics Platforms** — Heatmap and scroll depth data aggregation
+🔧 **Statistical Analysis** — Significance calculators for A/B test recommendations
 
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
@@ -594,6 +660,11 @@ Generated: ${today()}
 → Projected month-end spend: On track within 3% of budget
 → Projected ROAS: ${roas()}x (above ${(parseFloat(roas()) - 0.3).toFixed(1)}x target)
 
+### Tools Used
+🔧 **Budget Pacing Optimizer** — Cross-platform spend monitoring with auto-adjustment recommendations
+🔧 **Ad Platform APIs** — Real-time spend data pull from Meta, Google, LinkedIn
+🔧 **Forecasting Models** — Month-end spend and ROAS projections
+
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
 
@@ -640,6 +711,11 @@ Generated: ${today()}
 2. Short-term: Launch competitor displacement campaign on branded terms
 3. Long-term: Build authority content hub for organic pipeline
 
+### Tools Used
+🔧 **AI Lead Qualifier** — ICP scoring framework for prospect qualification
+🔧 **Testimonial Collector** — Automated review and testimonial collection workflows
+🔧 **Asana API** — Project structure creation with pipeline templates
+
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
 
@@ -664,6 +740,11 @@ Generated: ${today()}
 ✅ Episode outline: 5 discussion points
 ✅ Guest prep questions drafted
 ✅ Social media clip timestamps identified (3 clips)
+
+### Tools Used
+🔧 **YouTube Trend Finder** — Analyzed trending video formats and generated content briefs
+🔧 **IG Reels Generator** — Matched trending audio to script concepts for short-form video
+🔧 **Video AI Tools** — Storyboard generation and B-roll direction automation
 
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
@@ -694,6 +775,11 @@ Tested brand visibility across ChatGPT, Claude, Perplexity, and Google AI Overvi
 → Add structured comparison tables (LLMs prefer tabular data)
 → Build FAQ hubs with 50+ industry questions
 → Publish original research/statistics (AI models cite data sources)
+
+### Tools Used
+🔧 **AI Search Visibility (LLMO)** — Queried ChatGPT, Claude, Perplexity for brand citation frequency
+🔧 **Schema Markup Tools** — Implemented FAQ and HowTo structured data enhancements
+🔧 **Citation Trackers** — Monitored AI platform citation patterns over time
 
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
@@ -748,6 +834,11 @@ Generated: ${today()}
 → 2 unlinked brand mention outreach emails sent
 → 1 new backlink acquired (DA 45)
 
+### Tools Used
+🔧 **Brand Mention Radar** — Detected unlinked brand mentions and media coverage opportunities
+🔧 **Testimonial Collector** — Gathered and formatted client testimonials for PR assets
+🔧 **Email Outreach Tools** — Automated guest post and podcast pitch sequences
+
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
 
@@ -780,6 +871,11 @@ Generated: ${today()}
 → Open rate: 35-45% (welcome series)
 → Click rate: 8-12%
 → Unsubscribe rate: <0.5%
+
+### Tools Used
+🔧 **Email Nurture Automator** — Built multi-step sequences with behavioral triggers and A/B variants
+🔧 **Email Reply Classifier** — Configured inbound reply classification and routing rules
+🔧 **CRM Connectors** — Synced lead data for personalized automation workflows
 
 ---
 Pipeline: ${c.pipelineName} | Step ${c.stepIndex + 1}/${c.totalSteps}`,
