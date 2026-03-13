@@ -68,10 +68,18 @@ export interface GSCConfig {
   connectedAt: string | null;
 }
 
+export interface GDriveConfig {
+  accessToken: string;
+  folderId: string;
+  connected: boolean;
+  connectedAt: string | null;
+}
+
 export interface IntegrationsConfig {
   asana: AsanaConfig;
   googleAnalytics: GAConfig;
   googleSearchConsole: GSCConfig;
+  googleDrive: GDriveConfig;
 }
 
 // Keep old type as alias for backwards compat
@@ -95,6 +103,12 @@ export function defaultIntegrations(): IntegrationsConfig {
     googleSearchConsole: {
       accessToken: "",
       siteUrl: "",
+      connected: false,
+      connectedAt: null,
+    },
+    googleDrive: {
+      accessToken: "",
+      folderId: "",
       connected: false,
       connectedAt: null,
     },

@@ -13,6 +13,7 @@ import {
   MessageSquare as SlackIcon,
   Users,
   Search,
+  HardDrive,
 } from "lucide-react";
 
 import {
@@ -72,6 +73,14 @@ export default function IntegrationsPage() {
   const [gscError, setGscError] = useState<string | null>(null);
   const [gscSites, setGscSites] = useState<GSCSite[]>([]);
 
+  // Google Drive state
+  const [driveToken, setDriveToken] = useState("");
+  const [driveFolderId, setDriveFolderId] = useState("");
+  const [showDriveToken, setShowDriveToken] = useState(false);
+  const [driveTesting, setDriveTesting] = useState(false);
+  const [driveError, setDriveError] = useState<string | null>(null);
+  const [driveUser, setDriveUser] = useState<{ displayName: string; emailAddress: string } | null>(null);
+
   // Load config from localStorage
   useEffect(() => {
     try {
@@ -85,6 +94,8 @@ export default function IntegrationsPage() {
         if (merged.googleAnalytics?.propertyId) setGaPropertyId(merged.googleAnalytics.propertyId);
         if (merged.googleSearchConsole?.accessToken) setGscToken(merged.googleSearchConsole.accessToken);
         if (merged.googleSearchConsole?.siteUrl) setGscSiteUrl(merged.googleSearchConsole.siteUrl);
+        if (merged.googleDrive?.accessToken) setDriveToken(merged.googleDrive.accessToken);
+        if (merged.googleDrive?.folderId) setDriveFolderId(merged.googleDrive.folderId);
       }
     } catch {
       // ignore
@@ -103,6 +114,7 @@ export default function IntegrationsPage() {
     config.asana?.connected && config.asana?.workspace,
     config.googleAnalytics?.connected,
     config.googleSearchConsole?.connected,
+    config.googleDrive?.connected,
   ].filter(Boolean).length;
 
   /* ─── Asana Handlers ─── */
@@ -263,9 +275,50 @@ export default function IntegrationsPage() {
     setGscSites([]);
   }
 
+  /* ─── Google Drive Handlers ─── */
+  async function handleDriveTest() {
+    if (!driveToken.trim()) return;
+    setDriveTesting(true);
+    setDriveError(null);
+    setDriveUser(null);
+    try {
+      const res = await fetch("/api/google-drive/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken: driveToken.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Connection failed");
+      setDriveUser(data.user);
+      saveConfig({
+        ...config,
+        googleDrive: {
+          accessToken: driveToken.trim(),
+          folderId: driveFolderId.trim(),
+          connected: true,
+          connectedAt: new Date().toISOString(),
+        },
+      });
+    } catch (err: unknown) {
+      setDriveError(err instanceof Error ? err.message : "Failed to connect");
+    } finally {
+      setDriveTesting(false);
+    }
+  }
+
+  function handleDriveDisconnect() {
+    const updated = { ...config, googleDrive: defaultIntegrations().googleDrive };
+    saveConfig(updated);
+    setDriveToken("");
+    setDriveFolderId("");
+    setDriveError(null);
+    setDriveUser(null);
+  }
+
   const asanaConnected = config.asana?.connected && config.asana?.workspace;
   const gaConnected = config.googleAnalytics?.connected;
   const gscConnected = config.googleSearchConsole?.connected;
+  const driveConnected = config.googleDrive?.connected;
 
   return (
     <div className="max-w-4xl">
@@ -572,6 +625,85 @@ export default function IntegrationsPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ─── Google Drive Card ─── */}
+      <div className="bg-surface-raised rounded-xl border border-border p-4 md:p-6 mb-4">
+        <div className="flex items-start justify-between mb-4 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shrink-0 ${driveConnected ? "bg-brand-green/10" : "bg-gray-100"}`}>
+              <HardDrive className={`w-6 h-6 ${driveConnected ? "text-brand-green" : "text-gray-500"}`} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-[16px] font-semibold">Google Drive</h3>
+                {driveConnected && (
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-brand-green/10 text-brand-green">Connected</span>
+                )}
+              </div>
+              <p className="text-[12px] text-text-secondary mt-0.5">File storage & sharing — pipeline outputs, reports, deliverables</p>
+            </div>
+          </div>
+          <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="text-[11px] text-brand-blue hover:text-brand-blue-dark font-medium flex items-center gap-1 shrink-0">
+            Get Token <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+
+        {driveConnected ? (
+          <div className="space-y-3">
+            <div className="bg-brand-green/5 border border-brand-green/20 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[13px] font-medium text-brand-green">
+                    Connected{driveUser ? ` as ${driveUser.displayName}` : ""}
+                  </p>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    {driveUser?.emailAddress ? `${driveUser.emailAddress} — ` : ""}
+                    {config.googleDrive.folderId ? `Folder: ${config.googleDrive.folderId}` : "Root folder"}
+                    {config.googleDrive.connectedAt ? ` — Connected ${new Date(config.googleDrive.connectedAt).toLocaleDateString()}` : ""}
+                  </p>
+                </div>
+                <button onClick={handleDriveDisconnect} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-50 transition-colors text-[12px] font-medium text-red-500">
+                  <Unplug className="w-3.5 h-3.5" /> Disconnect
+                </button>
+              </div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-[11px] text-text-muted">
+                <span className="font-medium text-text-secondary">How it works:</span> Pipeline runs create a project folder in your Drive and upload each agent&apos;s output as a shareable document. Use sharing to collaborate with your team.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[12px] font-medium text-text-secondary mb-1.5">OAuth Access Token</label>
+              <div className="relative">
+                <input type={showDriveToken ? "text" : "password"} value={driveToken} onChange={(e) => setDriveToken(e.target.value)} placeholder="Enter your Google OAuth access token" className="w-full px-3 py-2.5 pr-10 border border-border rounded-lg text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue bg-white" />
+                <button type="button" onClick={() => setShowDriveToken(!showDriveToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors">
+                  {showDriveToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[12px] font-medium text-text-secondary mb-1.5">Root Folder ID (optional — leave blank for Drive root)</label>
+              <div className="flex gap-2">
+                <input type="text" value={driveFolderId} onChange={(e) => setDriveFolderId(e.target.value)} placeholder="e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2wtIs" className="flex-1 px-3 py-2.5 border border-border rounded-lg text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue bg-white" />
+                <button onClick={handleDriveTest} disabled={!driveToken.trim() || driveTesting} className="px-4 py-2.5 rounded-lg bg-brand-blue text-white text-[13px] font-medium hover:bg-brand-blue-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shrink-0">
+                  {driveTesting ? <><Loader2 className="w-4 h-4 animate-spin" /> Testing...</> : "Test Connection"}
+                </button>
+              </div>
+              <p className="text-[11px] text-text-muted mt-1.5">
+                Use the <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="text-brand-blue hover:underline">OAuth Playground</a> with scope <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">drive.file</code> to get a token. The folder ID is in the Drive URL after <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">folders/</code>.
+              </p>
+            </div>
+            {driveError && (
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
+                <AlertCircle className="w-4 h-4 shrink-0" /> {driveError}
               </div>
             )}
           </div>

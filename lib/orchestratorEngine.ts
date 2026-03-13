@@ -274,6 +274,72 @@ async function moveToStage(
   }
 }
 
+/* ─── Google Drive Provisioning ─── */
+
+export interface DriveProvisionResult {
+  folderId: string;
+  folderName: string;
+  webViewLink: string;
+}
+
+async function drivePost(endpoint: string, body: Record<string, unknown>) {
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Unknown error" }));
+    throw new Error(err.error || `Drive API error ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function provisionGoogleDrive(
+  accessToken: string,
+  parentFolderId: string | undefined,
+  plan: OrchestrationPlan,
+  onLog: (entry: ActivityLogEntry) => void
+): Promise<DriveProvisionResult> {
+  const ts = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const folderName = `MP: ${plan.pipelineName} — ${ts}`;
+
+  const res = await drivePost("/api/google-drive/folder", {
+    accessToken,
+    folderName,
+    parentFolderId: parentFolderId || undefined,
+  });
+
+  onLog(makeLogEntry("system", `📁 Created Drive folder: ${folderName}`, res.folder?.webViewLink || ""));
+
+  return {
+    folderId: res.folder.id,
+    folderName,
+    webViewLink: res.folder.webViewLink || "",
+  };
+}
+
+async function uploadToDrive(
+  accessToken: string,
+  folderId: string,
+  fileName: string,
+  content: string,
+  onLog: (entry: ActivityLogEntry) => void
+): Promise<void> {
+  try {
+    await drivePost("/api/google-drive/upload", {
+      accessToken,
+      fileName,
+      content,
+      folderId,
+      mimeType: "text/markdown",
+    });
+    onLog(makeLogEntry("system", `📄 Uploaded to Drive: ${fileName}`));
+  } catch {
+    onLog(makeLogEntry("system", `Drive upload failed for ${fileName} — continuing`));
+  }
+}
+
 /* ─── Simulation Execution ─── */
 
 export async function executeSimulation(
@@ -283,7 +349,8 @@ export async function executeSimulation(
   integrations: IntegrationsConfig | null,
   onStepUpdate: (stepIndex: number, status: OrchestrationStep["status"]) => void,
   onLog: (entry: ActivityLogEntry) => void,
-  onInsightUpdate: (insights: InsightData) => void
+  onInsightUpdate: (insights: InsightData) => void,
+  driveConfig?: { accessToken: string; folderId: string } | null
 ): Promise<InsightData> {
   let insights: InsightData = { gaOverview: null, gscOverview: null };
 
@@ -335,6 +402,12 @@ export async function executeSimulation(
       } catch {
         // Non-critical
       }
+    }
+
+    // Upload agent output to Google Drive
+    if (driveConfig?.accessToken && driveConfig?.folderId) {
+      const fileName = `${String(i + 1).padStart(2, "0")}-${step.agentShortName.replace(/[^a-zA-Z0-9]/g, "_")}.md`;
+      await uploadToDrive(driveConfig.accessToken, driveConfig.folderId, fileName, agentOutput, onLog);
     }
 
     // ── Human review checkpoint ──

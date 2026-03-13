@@ -205,8 +205,23 @@ export default function SettingsPage() {
     setEndpoints((prev) => prev.filter((e) => e.id !== id));
   }
 
-  const allModels = keys.flatMap((k) => k.models).filter(Boolean);
+  const cloudModels = keys.flatMap((k) => k.models).filter(Boolean);
+  const localModels = endpoints.filter((ep) => ep.model).map((ep) => ep.model);
+  const allModels = [...cloudModels, ...localModels];
   const configuredCount = keys.filter((k) => k.value).length;
+
+  function addLMStudioPreset() {
+    setEndpoints((prev) => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        name: "LM Studio",
+        url: "http://localhost:1234/v1",
+        apiKey: "",
+        model: "lm-studio-local",
+      },
+    ]);
+  }
 
   const tabs = [
     { id: "keys" as const, label: "API Keys", icon: Key },
@@ -440,11 +455,24 @@ export default function SettingsPage() {
                 }
                 className="w-full sm:w-auto px-3 py-2 border border-border rounded-lg text-[12px] md:text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue bg-white sm:min-w-[220px]"
               >
-                {allModels.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
+                {cloudModels.length > 0 && (
+                  <optgroup label="Cloud Models">
+                    {cloudModels.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {localModels.length > 0 && (
+                  <optgroup label="⚡ Local Models">
+                    {endpoints.filter((ep) => ep.model).map((ep) => (
+                      <option key={ep.id} value={ep.model}>
+                        {ep.model} ({ep.name || "Custom"})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </div>
           ))}
@@ -529,13 +557,22 @@ export default function SettingsPage() {
             </div>
           ))}
 
-          <button
-            onClick={addEndpoint}
-            className="w-full border-2 border-dashed border-gray-200 rounded-xl py-4 flex items-center justify-center gap-2 hover:border-brand-blue/40 hover:bg-brand-blue/5 transition-all text-[13px] font-medium text-text-muted"
-          >
-            <Plus className="w-4 h-4" />
-            Add Custom Endpoint
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={addEndpoint}
+              className="flex-1 border-2 border-dashed border-gray-200 rounded-xl py-4 flex items-center justify-center gap-2 hover:border-brand-blue/40 hover:bg-brand-blue/5 transition-all text-[13px] font-medium text-text-muted"
+            >
+              <Plus className="w-4 h-4" />
+              Add Custom Endpoint
+            </button>
+            <button
+              onClick={addLMStudioPreset}
+              className="border-2 border-dashed border-purple-200 rounded-xl py-4 px-6 flex items-center justify-center gap-2 hover:border-purple-400 hover:bg-purple-50 transition-all text-[13px] font-medium text-purple-600"
+            >
+              <Server className="w-4 h-4" />
+              LM Studio Preset
+            </button>
+          </div>
         </div>
       )}
     </div>

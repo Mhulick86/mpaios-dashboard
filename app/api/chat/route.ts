@@ -266,6 +266,9 @@ export async function POST(req: Request) {
     gscAccessToken,
     gscSiteUrl,
     knowledgeContext,
+    customEndpoint,
+    driveAccessToken,
+    driveFolderId,
   } = body as {
     messages: Array<{ role: string; content: string }>;
     anthropicKey?: string;
@@ -279,6 +282,9 @@ export async function POST(req: Request) {
     gscAccessToken?: string;
     gscSiteUrl?: string;
     knowledgeContext?: string;
+    customEndpoint?: { url: string; apiKey: string; model: string };
+    driveAccessToken?: string;
+    driveFolderId?: string;
   };
 
   // Convert to the format generateText expects
@@ -290,7 +296,14 @@ export async function POST(req: Request) {
   // Determine which provider + key to use
   let modelInstance;
 
-  if (provider === "anthropic" || provider === "Anthropic") {
+  if (provider === "custom" && customEndpoint) {
+    // Custom OpenAI-compatible endpoint (LM Studio, Ollama, vLLM, etc.)
+    const customOpenAI = createOpenAI({
+      baseURL: customEndpoint.url,
+      apiKey: customEndpoint.apiKey || "lm-studio",
+    });
+    modelInstance = customOpenAI(customEndpoint.model || model || "local-model");
+  } else if (provider === "anthropic" || provider === "Anthropic") {
     const key = anthropicKey;
     if (!key) {
       return new Response(
@@ -343,6 +356,10 @@ export async function POST(req: Request) {
     if (gscAccessToken && gscSiteUrl) {
       const gscContext = await fetchGSCOverview(gscAccessToken, gscSiteUrl);
       systemPrompt += gscContext;
+    }
+
+    if (driveAccessToken && driveFolderId) {
+      systemPrompt += `\n\n## Google Drive Context\nGoogle Drive is connected. Files and folders created by the orchestrator will be uploaded to the configured Drive folder (ID: ${driveFolderId}). Agent outputs can be saved as .md files in organized project folders within Drive.`;
     }
 
     const result = await generateText({

@@ -101,13 +101,34 @@ function getApiKeys() {
     const models = assignments ? JSON.parse(assignments) : {};
     const orchestratorModel = models.orchestrator || "claude-sonnet-4-20250514";
 
+    // Check if orchestrator model matches a custom endpoint
     let provider = "anthropic";
-    if (
-      orchestratorModel.startsWith("gpt") ||
-      orchestratorModel.startsWith("o1") ||
-      orchestratorModel.startsWith("o3")
-    ) {
-      provider = "openai";
+    let customEndpoint: { url: string; apiKey: string; model: string } | undefined;
+
+    try {
+      const endpointsRaw = localStorage.getItem("mpaios_custom_endpoints");
+      if (endpointsRaw) {
+        const endpoints = JSON.parse(endpointsRaw) as Array<{
+          id: string; name: string; url: string; apiKey: string; model: string;
+        }>;
+        const match = endpoints.find((ep) => ep.model === orchestratorModel);
+        if (match && match.url && match.model) {
+          provider = "custom";
+          customEndpoint = { url: match.url, apiKey: match.apiKey, model: match.model };
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    if (provider !== "custom") {
+      if (
+        orchestratorModel.startsWith("gpt") ||
+        orchestratorModel.startsWith("o1") ||
+        orchestratorModel.startsWith("o3")
+      ) {
+        provider = "openai";
+      }
     }
 
     let asanaPat = "";
@@ -116,6 +137,8 @@ function getApiKeys() {
     let gaPropertyId = "";
     let gscAccessToken = "";
     let gscSiteUrl = "";
+    let driveAccessToken = "";
+    let driveFolderId = "";
     try {
       const integrations = localStorage.getItem("mpaios_integrations");
       if (integrations) {
@@ -132,6 +155,10 @@ function getApiKeys() {
           gscAccessToken = parsed.googleSearchConsole.accessToken;
           gscSiteUrl = parsed.googleSearchConsole.siteUrl;
         }
+        if (parsed.googleDrive?.connected && parsed.googleDrive?.accessToken) {
+          driveAccessToken = parsed.googleDrive.accessToken;
+          driveFolderId = parsed.googleDrive.folderId || "";
+        }
       }
     } catch {
       // ignore
@@ -142,12 +169,15 @@ function getApiKeys() {
       openaiKey: keys.openai || "",
       provider,
       model: orchestratorModel,
+      customEndpoint,
       asanaPat,
       asanaWorkspace,
       gaAccessToken,
       gaPropertyId,
       gscAccessToken,
       gscSiteUrl,
+      driveAccessToken,
+      driveFolderId,
     };
   } catch {
     return {
@@ -155,12 +185,15 @@ function getApiKeys() {
       openaiKey: "",
       provider: "anthropic",
       model: "claude-sonnet-4-20250514",
+      customEndpoint: undefined,
       asanaPat: "",
       asanaWorkspace: "",
       gaAccessToken: "",
       gaPropertyId: "",
       gscAccessToken: "",
       gscSiteUrl: "",
+      driveAccessToken: "",
+      driveFolderId: "",
     };
   }
 }
@@ -690,9 +723,15 @@ export default function ChatPage() {
   const hasKeys = (() => {
     try {
       const stored = localStorage.getItem("mpaios_api_keys");
-      if (!stored) return false;
-      const keys = JSON.parse(stored);
-      return !!(keys.anthropic || keys.openai);
+      const keys = stored ? JSON.parse(stored) : {};
+      if (keys.anthropic || keys.openai) return true;
+      // Also check if custom endpoints are configured
+      const endpointsRaw = localStorage.getItem("mpaios_custom_endpoints");
+      if (endpointsRaw) {
+        const endpoints = JSON.parse(endpointsRaw);
+        if (Array.isArray(endpoints) && endpoints.some((ep: { url?: string; model?: string }) => ep.url && ep.model)) return true;
+      }
+      return false;
     } catch {
       return false;
     }

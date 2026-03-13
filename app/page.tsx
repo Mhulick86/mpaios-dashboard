@@ -14,7 +14,9 @@ import {
   buildPlan,
   provisionAsana,
   executeSimulation,
+  provisionGoogleDrive,
 } from "@/lib/orchestratorEngine";
+import type { DriveProvisionResult } from "@/lib/orchestratorEngine";
 import type { IntegrationsConfig } from "@/lib/asana";
 import { INTEGRATIONS_STORAGE_KEY, defaultIntegrations } from "@/lib/asana";
 import { agents } from "@/lib/agents";
@@ -168,6 +170,25 @@ export default function DashboardPage() {
           );
         }
 
+        // Phase 3b: Google Drive provisioning
+        let driveConfig: { accessToken: string; folderId: string } | null = null;
+        const driveConnected = integrations.googleDrive.connected && !!integrations.googleDrive.accessToken;
+        if (driveConnected) {
+          try {
+            addLog(makeLogEntry("system", "Provisioning Google Drive folder…"));
+            const driveResult: DriveProvisionResult = await provisionGoogleDrive(
+              integrations.googleDrive.accessToken,
+              integrations.googleDrive.folderId || undefined,
+              newPlan,
+              addLog
+            );
+            driveConfig = { accessToken: integrations.googleDrive.accessToken, folderId: driveResult.folderId };
+            addLog(makeLogEntry("system", `Drive folder ready: ${driveResult.folderName}`, driveResult.webViewLink || undefined));
+          } catch (err) {
+            addLog(makeLogEntry("system", "Drive provisioning failed — continuing without file uploads", err instanceof Error ? err.message : undefined));
+          }
+        }
+
         // Phase 4: Executing
         setPhase("executing");
         addLog(makeLogEntry("system", "Beginning agent execution sequence…"));
@@ -177,6 +198,7 @@ export default function DashboardPage() {
         const gscConnected = integrations.googleSearchConsole.connected && !!integrations.googleSearchConsole.accessToken;
         if (gaConnected) addLog(makeLogEntry("data", "GA4 integration active — will pull live analytics data"));
         if (gscConnected) addLog(makeLogEntry("data", "GSC integration active — will pull live search data"));
+        if (driveConfig) addLog(makeLogEntry("data", "Google Drive active — agent outputs will be uploaded as .md files"));
 
         const finalInsights = await executeSimulation(
           newPlan,
@@ -193,7 +215,8 @@ export default function DashboardPage() {
             });
           },
           addLog,
-          (updatedInsights) => setInsights(updatedInsights)
+          (updatedInsights) => setInsights(updatedInsights),
+          driveConfig
         );
         setInsights(finalInsights);
 
