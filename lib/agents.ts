@@ -82,7 +82,7 @@ export const agents: Agent[] = [
       "Competitor spend estimation",
       "Weekly competitive briefings",
     ],
-    tooling: ["Browser automation", "Gemini Vision API", "Meta Ads Library API", "Screenshot capture"],
+    tooling: ["Browser automation", "Gemini Vision API", "Meta Ads Library API", "Screenshot capture", "Competitor Ad Monitor", "Vibe Marketing Funnel"],
     status: "idle",
   },
   {
@@ -101,7 +101,7 @@ export const agents: Agent[] = [
       "Funnel design (TOFU/MOFU/BOFU)",
       "A/B testing strategy",
     ],
-    tooling: ["Web browsing", "Brand analysis framework", "Campaign planning templates"],
+    tooling: ["Web browsing", "Brand analysis framework", "Campaign planning templates", "UTM Campaign Tracker", "Budget Pacing Optimizer"],
     status: "idle",
   },
   {
@@ -120,7 +120,7 @@ export const agents: Agent[] = [
       "Content-to-conversion funnel design",
       "Content performance analysis",
     ],
-    tooling: ["AHREFS API", "Semrush API", "Google Search Console", "BuzzSumo"],
+    tooling: ["AHREFS API", "Semrush API", "Google Search Console", "BuzzSumo", "GSC Performance Monitor", "AI Search Visibility (LLMO)"],
     status: "idle",
   },
   {
@@ -139,7 +139,7 @@ export const agents: Agent[] = [
       "Landing page copy",
       "LinkedIn thought leadership",
     ],
-    tooling: ["Research tools", "Style guide enforcement", "Readability analysis", "Plagiarism checking"],
+    tooling: ["Research tools", "Style guide enforcement", "Readability analysis", "Plagiarism checking", "Blog Brand Voice Writer", "Email Nurture Automator"],
     status: "idle",
   },
   {
@@ -158,7 +158,7 @@ export const agents: Agent[] = [
       "Creative testing matrix design",
       "Performance-informed iteration",
     ],
-    tooling: ["Gemini API", "Image generation APIs", "Browser tools", "Vision analysis"],
+    tooling: ["Gemini API", "Image generation APIs", "Browser tools", "Vision analysis", "IG Reels Generator", "Social Content Amplifier"],
     status: "idle",
   },
   {
@@ -177,7 +177,7 @@ export const agents: Agent[] = [
       "Mobile-first responsive design",
       "CRO with heatmap-informed layouts",
     ],
-    tooling: ["Frontend frameworks", "Design systems", "Browser preview", "Responsive testing"],
+    tooling: ["Frontend frameworks", "Design systems", "Browser preview", "Responsive testing", "CRO A/B Test Engine"],
     status: "idle",
   },
   {
@@ -196,7 +196,7 @@ export const agents: Agent[] = [
       "Retargeting funnel setup",
       "Dynamic creative testing",
     ],
-    tooling: ["Meta Marketing API", "Meta Ads Manager", "Campaign templates"],
+    tooling: ["Meta Marketing API", "Meta Ads Manager", "Campaign templates", "GTM Ad Bidding Engine", "Competitor Ad Monitor"],
     status: "idle",
   },
   {
@@ -215,7 +215,7 @@ export const agents: Agent[] = [
       "Negative keyword optimization",
       "Bid strategy optimization",
     ],
-    tooling: ["Google Ads API", "Google Keyword Planner", "Google Ads Editor"],
+    tooling: ["Google Ads API", "Google Keyword Planner", "Google Ads Editor", "GTM Ad Bidding Engine", "Budget Pacing Optimizer"],
     status: "idle",
   },
   {
@@ -253,7 +253,7 @@ export const agents: Agent[] = [
       "Local SEO optimization",
       "Schema markup implementation",
     ],
-    tooling: ["AHREFS API", "Semrush API", "Google Search Console", "Screaming Frog", "PageSpeed Insights"],
+    tooling: ["AHREFS API", "Semrush API", "Google Search Console", "Screaming Frog", "PageSpeed Insights", "SEO Content Machine", "GSC Performance Monitor", "WordPress Auto-Tagger"],
     status: "idle",
   },
   {
@@ -272,7 +272,7 @@ export const agents: Agent[] = [
       "Content repurposing pipeline",
       "Social media analytics",
     ],
-    tooling: ["Social scheduling APIs", "Analytics dashboards", "Content calendars", "Trend tools"],
+    tooling: ["Social scheduling APIs", "Analytics dashboards", "Content calendars", "Trend tools", "Social Content Amplifier", "Instagram Trend Engine"],
     status: "idle",
   },
   {
@@ -291,7 +291,7 @@ export const agents: Agent[] = [
       "Competitor sentiment benchmarking",
       "Review response drafting",
     ],
-    tooling: ["Social listening APIs", "Google NLP API", "Review platform APIs", "Web scraping"],
+    tooling: ["Social listening APIs", "Google NLP API", "Review platform APIs", "Web scraping", "Brand Mention Radar", "Sentiment & Feedback Analyzer"],
     status: "idle",
   },
   {
@@ -310,7 +310,7 @@ export const agents: Agent[] = [
       "Attribution modeling",
       "Creative performance analysis",
     ],
-    tooling: ["Ad platform APIs", "Google Analytics 4", "Data aggregation pipelines"],
+    tooling: ["Ad platform APIs", "Google Analytics 4", "Data aggregation pipelines", "GA4 Weekly AI Report", "UTM Campaign Tracker", "Budget Pacing Optimizer"],
     status: "idle",
   },
   {
@@ -329,7 +329,7 @@ export const agents: Agent[] = [
       "Form optimization",
       "Multi-variant testing strategy",
     ],
-    tooling: ["Analytics platforms", "A/B testing tools", "Heatmap data", "Statistical analysis"],
+    tooling: ["Analytics platforms", "A/B testing tools", "Heatmap data", "Statistical analysis", "CRO A/B Test Engine"],
     status: "idle",
   },
   {
@@ -386,7 +386,7 @@ export const agents: Agent[] = [
       "Cost anomaly detection",
       "Forecasting & scenario modeling",
     ],
-    tooling: ["Ad platform APIs", "Financial tracking", "Forecasting models"],
+    tooling: ["Ad platform APIs", "Financial tracking", "Forecasting models", "Budget Pacing Optimizer"],
     status: "idle",
   },
   {
@@ -424,7 +424,7 @@ export const agents: Agent[] = [
       "Kickoff meeting prep",
       "Client account setup automation",
     ],
-    tooling: ["Asana API", "Web research", "CRM integration", "Document generation"],
+    tooling: ["Asana API", "Web research", "CRM integration", "Document generation", "AI Lead Qualifier", "Testimonial Collector"],
     status: "idle",
   },
   {
@@ -443,7 +443,7 @@ export const agents: Agent[] = [
       "Podcast show notes & transcripts",
       "Webinar content planning",
     ],
-    tooling: ["Script templates", "Video AI tools", "Multimedia planning", "Social platform APIs"],
+    tooling: ["Script templates", "Video AI tools", "Multimedia planning", "Social platform APIs", "YouTube Trend Finder", "IG Reels Generator"],
     status: "idle",
   },
   {
@@ -462,7 +462,7 @@ export const agents: Agent[] = [
       "Structured data implementation",
       "AI platform advertising strategy",
     ],
-    tooling: ["AI search APIs", "Schema markup tools", "Content structure analyzers", "Citation trackers"],
+    tooling: ["AI search APIs", "Schema markup tools", "Content structure analyzers", "Citation trackers", "AI Search Visibility (LLMO)"],
     status: "idle",
   },
   {
@@ -500,7 +500,7 @@ export const agents: Agent[] = [
       "Community forum engagement",
       "Backlink opportunity identification",
     ],
-    tooling: ["PR databases", "Email outreach tools", "Media monitoring", "Backlink analyzers"],
+    tooling: ["PR databases", "Email outreach tools", "Media monitoring", "Backlink analyzers", "Brand Mention Radar", "Testimonial Collector"],
     status: "idle",
   },
   {
@@ -519,7 +519,7 @@ export const agents: Agent[] = [
       "A/B testing email campaigns",
       "Lifecycle marketing automation",
     ],
-    tooling: ["Email platform APIs", "CRM connectors", "Automation builders", "Analytics tracking"],
+    tooling: ["Email platform APIs", "CRM connectors", "Automation builders", "Analytics tracking", "Email Nurture Automator", "Email Reply Classifier"],
     status: "idle",
   },
 ];
