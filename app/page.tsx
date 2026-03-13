@@ -147,7 +147,7 @@ export default function DashboardPage() {
               makeLogEntry(
                 "asana",
                 `Asana board ready: ${result.projectName}`,
-                `${result.sections.length} columns, ${result.tasks.length} tasks`
+                `4 stage columns, ${result.tasks.length} tasks — assembly-line board`
               )
             );
           } catch (err) {

@@ -4,10 +4,13 @@ import type {
   OrchestrationPlan,
   OrchestrationStep,
   AsanaProvisionResult,
+  AsanaStage,
   ActivityLogEntry,
   InsightData,
 } from "./orchestrator";
+import { ASANA_STAGES } from "./orchestrator";
 import type { IntegrationsConfig } from "./asana";
+import { generateAgentOutput } from "./agentOutputs";
 
 /* ─── Helpers ─── */
 
@@ -94,7 +97,7 @@ export function buildPlan(pipeline: Pipeline, reasoning: string): OrchestrationP
   };
 }
 
-/* ─── Asana Provisioning ─── */
+/* ─── Asana API helper ─── */
 
 async function asanaPost(endpoint: string, body: Record<string, unknown>) {
   const res = await fetch(endpoint, {
@@ -108,6 +111,8 @@ async function asanaPost(endpoint: string, body: Record<string, unknown>) {
   }
   return res.json();
 }
+
+/* ─── Asana Provisioning (Assembly-Line Board) ─── */
 
 export async function provisionAsana(
   pat: string,
@@ -125,53 +130,52 @@ export async function provisionAsana(
     workspaceGid,
     teamGid,
     name: projectName,
-    notes: `Orchestrated workflow for: ${plan.pipelineName}\nPipeline ID: ${plan.pipelineId}`,
+    notes: `Orchestrated workflow for: ${plan.pipelineName}\nPipeline ID: ${plan.pipelineId}\n\nTasks move through columns like an assembly line:\nQueued → In Progress → Review → Complete`,
     color: "light-blue",
   });
   const projectGid = projRes.project.gid;
   onLog(makeLogEntry("asana", `Created Asana project: ${projectName}`, `GID: ${projectGid}`));
 
-  // 2. Create sections (one per step/agent)
-  const sections: AsanaProvisionResult["sections"] = [];
-  for (const step of plan.steps) {
+  // 2. Create stage columns (assembly-line)
+  const stages = {} as Record<AsanaStage, { gid: string; label: string }>;
+  for (const stage of ASANA_STAGES) {
     const secRes = await asanaPost("/api/asana/sections/create", {
       pat,
       projectGid,
-      name: `${step.stepIndex + 1}. ${step.agentShortName}`,
+      name: stage.label,
     });
-    sections.push({ gid: secRes.section.gid, name: step.agentShortName, agentId: step.agentId });
-    onLog(makeLogEntry("asana", `Created column: ${step.agentShortName}`, `Section for step ${step.stepIndex + 1}`));
+    stages[stage.key] = { gid: secRes.section.gid, label: stage.label };
+    onLog(makeLogEntry("asana", `Created column: ${stage.label}`));
   }
 
-  // 3. Create tasks + move to sections
+  // 3. Create tasks — all start in "Queued"
   const tasks: AsanaProvisionResult["tasks"] = [];
   for (let i = 0; i < plan.steps.length; i++) {
     const step = plan.steps[i];
     const taskRes = await asanaPost("/api/asana/tasks/create", {
       pat,
-      name: step.action,
-      notes: `Agent: ${step.agentName}\nStep ${step.stepIndex + 1} of ${plan.steps.length}\nPipeline: ${plan.pipelineName}`,
+      name: `${i + 1}. ${step.agentShortName}: ${step.action}`,
+      notes: `Agent: ${step.agentName}\nStep ${step.stepIndex + 1} of ${plan.steps.length}\nPipeline: ${plan.pipelineName}\n\nStatus: Queued — waiting for execution`,
       projectGid,
     });
     const taskGid = taskRes.task.gid;
 
-    // Move task into its section
+    // Move task into Queued column
     await asanaPost("/api/asana/tasks/move", {
       pat,
       taskGid,
-      sectionGid: sections[i].gid,
+      sectionGid: stages.queued.gid,
     });
 
-    tasks.push({ gid: taskGid, name: step.action, sectionGid: sections[i].gid, stepIndex: i });
-    onLog(makeLogEntry("asana", `Created task: ${step.action.slice(0, 60)}...`, `Assigned to ${step.agentShortName} column`));
+    tasks.push({ gid: taskGid, name: step.action, stepIndex: i, agentId: step.agentId });
+    onLog(makeLogEntry("asana", `Queued task: ${step.agentShortName}`, step.action.slice(0, 80)));
   }
 
-  return { projectGid, projectName, sections, tasks };
+  return { projectGid, projectName, stages, tasks };
 }
 
 /* ─── Integration Data Fetching ─── */
 
-/** Agent IDs that use real integration data */
 const GA_AGENT_IDS = [13]; // Agent 13: Campaign Performance Analyst
 const GSC_AGENT_IDS = [10]; // Agent 10: SEO & Organic Growth Manager
 
@@ -189,7 +193,7 @@ async function fetchIntegrationData(
     integrations.googleAnalytics.connected &&
     integrations.googleAnalytics.accessToken &&
     integrations.googleAnalytics.propertyId &&
-    !insights.gaOverview // don't re-fetch
+    !insights.gaOverview
   ) {
     onLog(makeLogEntry("data", "Pulling live Google Analytics data…", `Property: ${integrations.googleAnalytics.propertyName || integrations.googleAnalytics.propertyId}`));
     try {
@@ -220,7 +224,7 @@ async function fetchIntegrationData(
     integrations.googleSearchConsole.connected &&
     integrations.googleSearchConsole.accessToken &&
     integrations.googleSearchConsole.siteUrl &&
-    !insights.gscOverview // don't re-fetch
+    !insights.gscOverview
   ) {
     onLog(makeLogEntry("data", "Pulling live Search Console data…", `Site: ${integrations.googleSearchConsole.siteUrl}`));
     try {
@@ -248,6 +252,28 @@ async function fetchIntegrationData(
   return insights;
 }
 
+/* ─── Move task to a stage column ─── */
+
+async function moveToStage(
+  pat: string,
+  asanaResult: AsanaProvisionResult,
+  taskGid: string,
+  stage: AsanaStage,
+  onLog: (entry: ActivityLogEntry) => void,
+  taskLabel: string
+): Promise<void> {
+  try {
+    await asanaPost("/api/asana/tasks/move", {
+      pat,
+      taskGid,
+      sectionGid: asanaResult.stages[stage].gid,
+    });
+    onLog(makeLogEntry("asana", `Moved to ${asanaResult.stages[stage].label}`, taskLabel));
+  } catch {
+    // Non-critical
+  }
+}
+
 /* ─── Simulation Execution ─── */
 
 export async function executeSimulation(
@@ -263,10 +289,17 @@ export async function executeSimulation(
 
   for (let i = 0; i < plan.steps.length; i++) {
     const step = plan.steps[i];
+    const asanaTask = asanaResult?.tasks.find((t) => t.stepIndex === i);
+    const taskLabel = `${step.agentShortName}: ${step.action.slice(0, 60)}`;
 
-    // Start step
+    // ── Start step ──
     onStepUpdate(i, "active");
     onLog(makeLogEntry("agent", `${step.agentShortName} starting...`, step.action));
+
+    // Move task: Queued → In Progress
+    if (pat && asanaResult && asanaTask) {
+      await moveToStage(pat, asanaResult, asanaTask.gid, "in_progress", onLog, taskLabel);
+    }
 
     // Fetch real integration data if this agent needs it
     const prevInsights = { ...insights };
@@ -278,57 +311,61 @@ export async function executeSimulation(
     // Simulate agent work
     await randomDelay(1200, 2500);
 
-    // Update Asana task notes with real data if available
-    if (pat && asanaResult) {
-      const asanaTask = asanaResult.tasks.find((t) => t.stepIndex === i);
-      if (asanaTask) {
-        let extraNotes = "";
-        if (GA_AGENT_IDS.includes(step.agentId) && insights.gaOverview) {
-          extraNotes = "\n\n--- GA4 Data Context ---\n" + insights.gaOverview.slice(0, 2000);
-        }
-        if (GSC_AGENT_IDS.includes(step.agentId) && insights.gscOverview) {
-          extraNotes = "\n\n--- GSC Data Context ---\n" + insights.gscOverview.slice(0, 2000);
-        }
-        if (extraNotes) {
-          try {
-            await asanaPost("/api/asana/tasks/update", {
-              pat,
-              taskGid: asanaTask.gid,
-              notes: `Agent: ${step.agentName}\nStep ${step.stepIndex + 1} of ${plan.steps.length}\nPipeline: ${plan.pipelineName}${extraNotes}`,
-            });
-            onLog(makeLogEntry("asana", `Attached live data to Asana task`, `${step.agentShortName} — real integration data`));
-          } catch {
-            // Non-critical
-          }
-        }
+    // ── Generate agent output ──
+    const agentOutput = generateAgentOutput({
+      agentId: step.agentId,
+      agentName: step.agentName,
+      agentShortName: step.agentShortName,
+      action: step.action,
+      stepIndex: step.stepIndex,
+      totalSteps: plan.steps.length,
+      pipelineName: plan.pipelineName,
+      insights,
+    });
+
+    // Write output into Asana task notes
+    if (pat && asanaResult && asanaTask) {
+      try {
+        await asanaPost("/api/asana/tasks/update", {
+          pat,
+          taskGid: asanaTask.gid,
+          notes: agentOutput,
+        });
+        onLog(makeLogEntry("asana", `Output written to task`, `${step.agentShortName} — ${agentOutput.length} chars`));
+      } catch {
+        // Non-critical
       }
     }
 
-    // Human review checkpoint
+    // ── Human review checkpoint ──
     if (step.isHumanReview) {
       onStepUpdate(i, "human_review");
       onLog(makeLogEntry("human", `Human review checkpoint`, `${step.agentShortName} — auto-approving for demo`));
+
+      // Move task: In Progress → Review
+      if (pat && asanaResult && asanaTask) {
+        await moveToStage(pat, asanaResult, asanaTask.gid, "review", onLog, taskLabel);
+      }
+
       await randomDelay(800, 1200);
     }
 
-    // Complete step
+    // ── Complete step ──
     onStepUpdate(i, "complete");
     onLog(makeLogEntry("agent", `${step.agentShortName} completed`, step.action));
 
-    // Mark complete in Asana if connected
-    if (pat && asanaResult) {
-      const asanaTask = asanaResult.tasks.find((t) => t.stepIndex === i);
-      if (asanaTask) {
-        try {
-          await asanaPost("/api/asana/tasks/update", {
-            pat,
-            taskGid: asanaTask.gid,
-            completed: true,
-          });
-          onLog(makeLogEntry("asana", `Marked complete in Asana`, asanaTask.name.slice(0, 60)));
-        } catch {
-          // Non-critical — don't break simulation
-        }
+    // Move task → Complete column + mark complete
+    if (pat && asanaResult && asanaTask) {
+      await moveToStage(pat, asanaResult, asanaTask.gid, "complete", onLog, taskLabel);
+      try {
+        await asanaPost("/api/asana/tasks/update", {
+          pat,
+          taskGid: asanaTask.gid,
+          completed: true,
+        });
+        onLog(makeLogEntry("asana", `Marked complete in Asana`, taskLabel));
+      } catch {
+        // Non-critical
       }
     }
 

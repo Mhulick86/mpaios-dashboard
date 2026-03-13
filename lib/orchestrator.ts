@@ -36,11 +36,22 @@ export interface OrchestrationPlan {
   steps: OrchestrationStep[];
 }
 
+/** Assembly-line stage columns in the Asana board */
+export type AsanaStage = "queued" | "in_progress" | "review" | "complete";
+
+export const ASANA_STAGES: { key: AsanaStage; label: string }[] = [
+  { key: "queued", label: "Queued" },
+  { key: "in_progress", label: "In Progress" },
+  { key: "review", label: "Review" },
+  { key: "complete", label: "Complete" },
+];
+
 export interface AsanaProvisionResult {
   projectGid: string;
   projectName: string;
-  sections: { gid: string; name: string; agentId: number }[];
-  tasks: { gid: string; name: string; sectionGid: string; stepIndex: number }[];
+  /** Stage columns keyed by AsanaStage */
+  stages: Record<AsanaStage, { gid: string; label: string }>;
+  tasks: { gid: string; name: string; stepIndex: number; agentId: number }[];
 }
 
 export type ActivityLogType = "system" | "asana" | "agent" | "human" | "data";
