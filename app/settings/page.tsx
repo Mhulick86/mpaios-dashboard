@@ -227,12 +227,14 @@ export default function SettingsPage() {
 
   const [fetchingModels, setFetchingModels] = useState<Record<string, boolean>>({});
   const [availableModels, setAvailableModels] = useState<Record<string, string[]>>({});
+  const [endpointErrors, setEndpointErrors] = useState<Record<string, string>>({});
 
   async function fetchModelsForEndpoint(epId: string) {
     const ep = endpoints.find((e) => e.id === epId);
     if (!ep?.url) return;
 
     setFetchingModels((prev) => ({ ...prev, [epId]: true }));
+    setEndpointErrors((prev) => ({ ...prev, [epId]: "" }));
     try {
       // Use server-side proxy to avoid CORS issues with localhost model servers
       const resp = await fetch("/api/local-models", {
@@ -244,14 +246,14 @@ export default function SettingsPage() {
       const data = await resp.json();
 
       if (!resp.ok || data.error) {
-        alert(`Failed to fetch models: ${data.error || `Server returned ${resp.status}`}`);
+        setEndpointErrors((prev) => ({ ...prev, [epId]: data.error || `Server returned ${resp.status}` }));
         return;
       }
 
       const modelIds: string[] = (data.models || []).map((m: { id: string }) => m.id);
 
       if (modelIds.length === 0) {
-        alert("No models found. Make sure the server is running and a model is loaded.");
+        setEndpointErrors((prev) => ({ ...prev, [epId]: "No models found. Make sure the server is running and a model is loaded." }));
         return;
       }
 
@@ -260,7 +262,8 @@ export default function SettingsPage() {
         updateEndpoint(epId, "model", modelIds[0]);
       }
     } catch (err) {
-      alert(`Connection failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setEndpointErrors((prev) => ({ ...prev, [epId]: `Connection failed: ${msg}. Local models only work when running locally.` }));
     } finally {
       setFetchingModels((prev) => ({ ...prev, [epId]: false }));
     }
@@ -628,6 +631,9 @@ export default function SettingsPage() {
                       {fetchingModels[ep.id] ? "Loading..." : "Fetch"}
                     </button>
                   </div>
+                  {endpointErrors[ep.id] && (
+                    <p className="text-[11px] text-red-500 mt-1">{endpointErrors[ep.id]}</p>
+                  )}
                 </div>
               </div>
             </div>
