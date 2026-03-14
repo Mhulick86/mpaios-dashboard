@@ -1,10 +1,40 @@
-node_modules/
-.next/
+# Client data (never commit)
+clients/*/data/
+clients/*/credentials/
+clients/*/exports/
+
+# API keys and secrets
 .env
 .env.local
-.env*.local
+*.key
+*.pem
+
+# Memory cache files
+memory/*.cache
+memory/*.tmp
+
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
 out/
-dist/
-*.tsbuildinfo
+
+# OS files
 .DS_Store
-.vercel
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
