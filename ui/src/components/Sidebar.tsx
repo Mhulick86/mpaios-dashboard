@@ -19,6 +19,7 @@ import {
   BarChart3,
   Bell,
   Megaphone,
+  Rocket,
 } from "lucide-react";
 import { getAllConversations, type Conversation } from "@/lib/chatStorage";
 
@@ -32,6 +33,7 @@ const navItems = [
   { href: "/pipelines", label: "Pipelines", icon: GitBranch },
   { href: "/knowledge", label: "Knowledge Base", icon: Brain },
   { href: "/clients", label: "Clients", icon: Users },
+  { href: "/pitch", label: "Try It Out", icon: Rocket },
 ];
 
 function timeAgo(timestamp: number): string {
