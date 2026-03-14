@@ -349,7 +349,7 @@ export async function POST(req: Request) {
       model: modelInstance,
       system: systemPrompt,
       messages: convertedMessages,
-      maxTokens: 16384,
+      maxOutputTokens: 16384,
     });
 
     return new Response(result.text, {
