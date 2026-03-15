@@ -236,7 +236,7 @@ export default function MailKanbanPage() {
           driveAccessToken: config.googleDrive.accessToken,
           folderId: config.googleDrive.folderId,
           geminiApiKey: config.gemini.apiKey,
-          asanaPat: config.asana.pat,
+          asanaPat: config.asana.accessToken || config.asana.pat,
           asanaProjectGid: config.mailAutomation.asanaProjectGid,
           processedFileIds: processedIds,
         }),

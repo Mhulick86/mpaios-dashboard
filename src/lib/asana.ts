@@ -36,6 +36,10 @@ export interface AsanaTask {
 
 export interface AsanaConfig {
   pat: string;
+  accessToken: string;
+  refreshToken: string;
+  userName: string;
+  userEmail: string;
   workspace: AsanaWorkspace | null;
   connected: boolean;
   connectedAt: string | null;
@@ -43,6 +47,7 @@ export interface AsanaConfig {
 
 export interface GAConfig {
   accessToken: string;
+  refreshToken: string;
   propertyId: string;
   propertyName: string;
   connected: boolean;
@@ -51,6 +56,7 @@ export interface GAConfig {
 
 export interface GSCConfig {
   accessToken: string;
+  refreshToken: string;
   siteUrl: string;
   connected: boolean;
   connectedAt: string | null;
@@ -58,6 +64,7 @@ export interface GSCConfig {
 
 export interface GoogleDriveConfig {
   accessToken: string;
+  refreshToken: string;
   folderId: string;
   folderName: string;
   connected: boolean;
@@ -95,12 +102,17 @@ export function defaultIntegrations(): IntegrationsConfig {
   return {
     asana: {
       pat: "",
+      accessToken: "",
+      refreshToken: "",
+      userName: "",
+      userEmail: "",
       workspace: null,
       connected: false,
       connectedAt: null,
     },
     googleAnalytics: {
       accessToken: "",
+      refreshToken: "",
       propertyId: "",
       propertyName: "",
       connected: false,
@@ -108,12 +120,14 @@ export function defaultIntegrations(): IntegrationsConfig {
     },
     googleSearchConsole: {
       accessToken: "",
+      refreshToken: "",
       siteUrl: "",
       connected: false,
       connectedAt: null,
     },
     googleDrive: {
       accessToken: "",
+      refreshToken: "",
       folderId: "",
       folderName: "",
       connected: false,
@@ -133,6 +147,13 @@ export function defaultIntegrations(): IntegrationsConfig {
       processedFileIds: [],
     },
   };
+}
+
+/* ---------- Token helper ---------- */
+
+/** Get the effective bearer token — prefers OAuth access token, falls back to PAT */
+export function getAsanaToken(config: AsanaConfig): string {
+  return config.accessToken || config.pat;
 }
 
 /* ---------- Fetch helper ---------- */
