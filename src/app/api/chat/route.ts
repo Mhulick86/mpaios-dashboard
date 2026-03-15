@@ -371,8 +371,18 @@ export async function POST(req: Request) {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   } catch (error: unknown) {
-    const msg =
+    let msg =
       error instanceof Error ? error.message : "Unknown error from AI model";
+    // Add context about which provider/model failed
+    if (msg.length < 50) {
+      msg = `${provider}/${model}: ${msg}`;
+    }
+    // Surface common issues with clearer messaging
+    if (msg.includes("401") || msg.includes("API key")) {
+      msg = `Invalid or missing API key for ${provider}. Check your key in Settings → API Keys.`;
+    } else if (msg.includes("404") || msg.includes("not found")) {
+      msg = `Model "${model}" is not available. Go to Settings → Model Assignment to select a valid model.`;
+    }
     return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

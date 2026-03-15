@@ -67,7 +67,7 @@ const defaultKeys: ApiKeyConfig[] = [
     value: "",
     description: "Powers Gemini agents for multimodal analysis and search grounding",
     docsUrl: "https://aistudio.google.com/apikey",
-    models: ["gemini-2.0-flash", "gemini-2.0-pro", "gemini-1.5-pro"],
+    models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
     required: false,
   },
   {
