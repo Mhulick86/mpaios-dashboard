@@ -56,10 +56,36 @@ export interface GSCConfig {
   connectedAt: string | null;
 }
 
+export interface GoogleDriveConfig {
+  accessToken: string;
+  folderId: string;
+  folderName: string;
+  connected: boolean;
+  connectedAt: string | null;
+}
+
+export interface GeminiConfig {
+  apiKey: string;
+  connected: boolean;
+  connectedAt: string | null;
+}
+
+export interface MailAutomationConfig {
+  enabled: boolean;
+  asanaProjectGid: string;
+  asanaProjectName: string;
+  pollIntervalMinutes: number;
+  lastPollAt: string | null;
+  processedFileIds: string[];
+}
+
 export interface IntegrationsConfig {
   asana: AsanaConfig;
   googleAnalytics: GAConfig;
   googleSearchConsole: GSCConfig;
+  googleDrive: GoogleDriveConfig;
+  gemini: GeminiConfig;
+  mailAutomation: MailAutomationConfig;
 }
 
 // Keep old type as alias for backwards compat
@@ -85,6 +111,26 @@ export function defaultIntegrations(): IntegrationsConfig {
       siteUrl: "",
       connected: false,
       connectedAt: null,
+    },
+    googleDrive: {
+      accessToken: "",
+      folderId: "",
+      folderName: "",
+      connected: false,
+      connectedAt: null,
+    },
+    gemini: {
+      apiKey: "",
+      connected: false,
+      connectedAt: null,
+    },
+    mailAutomation: {
+      enabled: false,
+      asanaProjectGid: "",
+      asanaProjectName: "",
+      pollIntervalMinutes: 5,
+      lastPollAt: null,
+      processedFileIds: [],
     },
   };
 }

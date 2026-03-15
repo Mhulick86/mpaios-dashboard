@@ -13,14 +13,19 @@ import {
   MessageSquare as SlackIcon,
   Users,
   Search,
+  FolderOpen,
+  Sparkles,
+  Mail,
 } from "lucide-react";
 
 import {
   INTEGRATIONS_STORAGE_KEY,
   type IntegrationsConfig,
   type AsanaWorkspace,
+  type AsanaProject,
   defaultIntegrations,
 } from "@/lib/asana";
+import type { DriveFolder } from "@/lib/googleDrive";
 
 interface AsanaTestResult {
   user: { gid: string; name: string; email: string };
@@ -72,6 +77,24 @@ export default function IntegrationsPage() {
   const [gscError, setGscError] = useState<string | null>(null);
   const [gscSites, setGscSites] = useState<GSCSite[]>([]);
 
+  // Google Drive state
+  const [driveToken, setDriveToken] = useState("");
+  const [showDriveToken, setShowDriveToken] = useState(false);
+  const [driveTesting, setDriveTesting] = useState(false);
+  const [driveError, setDriveError] = useState<string | null>(null);
+  const [driveFolders, setDriveFolders] = useState<DriveFolder[]>([]);
+  const [loadingFolders, setLoadingFolders] = useState(false);
+
+  // Gemini state
+  const [geminiKey, setGeminiKey] = useState("");
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [geminiTesting, setGeminiTesting] = useState(false);
+  const [geminiError, setGeminiError] = useState<string | null>(null);
+
+  // Mail Automation state
+  const [asanaProjects, setAsanaProjects] = useState<AsanaProject[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+
   // Load config from localStorage
   useEffect(() => {
     try {
@@ -85,6 +108,8 @@ export default function IntegrationsPage() {
         if (merged.googleAnalytics?.propertyId) setGaPropertyId(merged.googleAnalytics.propertyId);
         if (merged.googleSearchConsole?.accessToken) setGscToken(merged.googleSearchConsole.accessToken);
         if (merged.googleSearchConsole?.siteUrl) setGscSiteUrl(merged.googleSearchConsole.siteUrl);
+        if (merged.googleDrive?.accessToken) setDriveToken(merged.googleDrive.accessToken);
+        if (merged.gemini?.apiKey) setGeminiKey(merged.gemini.apiKey);
       }
     } catch {
       // ignore
@@ -103,6 +128,8 @@ export default function IntegrationsPage() {
     config.asana?.connected && config.asana?.workspace,
     config.googleAnalytics?.connected,
     config.googleSearchConsole?.connected,
+    config.googleDrive?.connected,
+    config.gemini?.connected,
   ].filter(Boolean).length;
 
   /* ─── Asana Handlers ─── */
@@ -263,9 +290,144 @@ export default function IntegrationsPage() {
     setGscSites([]);
   }
 
+  /* ─── Google Drive Handlers ─── */
+  async function handleDriveTest() {
+    if (!driveToken.trim()) return;
+    setDriveTesting(true);
+    setDriveError(null);
+    try {
+      const res = await fetch("/api/google-drive/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken: driveToken.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Connection failed");
+
+      // Load folders for selection
+      setLoadingFolders(true);
+      const foldersRes = await fetch("/api/google-drive/folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken: driveToken.trim() }),
+      });
+      const foldersData = await foldersRes.json();
+      if (foldersRes.ok) {
+        setDriveFolders(foldersData.folders || []);
+      }
+      setLoadingFolders(false);
+    } catch (err: unknown) {
+      setDriveError(err instanceof Error ? err.message : "Failed to connect");
+    } finally {
+      setDriveTesting(false);
+    }
+  }
+
+  function handleDriveSelectFolder(folder: DriveFolder) {
+    saveConfig({
+      ...config,
+      googleDrive: {
+        accessToken: driveToken.trim(),
+        folderId: folder.id,
+        folderName: folder.name,
+        connected: true,
+        connectedAt: new Date().toISOString(),
+      },
+    });
+    setDriveFolders([]);
+  }
+
+  function handleDriveDisconnect() {
+    const updated = { ...config, googleDrive: defaultIntegrations().googleDrive };
+    saveConfig(updated);
+    setDriveToken("");
+    setDriveError(null);
+    setDriveFolders([]);
+  }
+
+  /* ─── Gemini Handlers ─── */
+  async function handleGeminiTest() {
+    if (!geminiKey.trim()) return;
+    setGeminiTesting(true);
+    setGeminiError(null);
+    try {
+      const res = await fetch("/api/gemini/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: geminiKey.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Connection failed");
+
+      saveConfig({
+        ...config,
+        gemini: {
+          apiKey: geminiKey.trim(),
+          connected: true,
+          connectedAt: new Date().toISOString(),
+        },
+      });
+    } catch (err: unknown) {
+      setGeminiError(err instanceof Error ? err.message : "Failed to connect");
+    } finally {
+      setGeminiTesting(false);
+    }
+  }
+
+  function handleGeminiDisconnect() {
+    const updated = { ...config, gemini: defaultIntegrations().gemini };
+    saveConfig(updated);
+    setGeminiKey("");
+    setGeminiError(null);
+  }
+
+  /* ─── Mail Automation Handlers ─── */
+  async function loadAsanaProjects() {
+    if (!config.asana?.pat || !config.asana?.workspace?.gid) return;
+    setLoadingProjects(true);
+    try {
+      const res = await fetch("/api/asana/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pat: config.asana.pat,
+          workspaceGid: config.asana.workspace.gid,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) setAsanaProjects(data.projects || []);
+    } catch { /* ignore */ }
+    setLoadingProjects(false);
+  }
+
+  function handleSelectProject(project: AsanaProject) {
+    saveConfig({
+      ...config,
+      mailAutomation: {
+        ...config.mailAutomation,
+        enabled: true,
+        asanaProjectGid: project.gid,
+        asanaProjectName: project.name,
+      },
+    });
+    setAsanaProjects([]);
+  }
+
+  function handleDisableAutomation() {
+    saveConfig({
+      ...config,
+      mailAutomation: {
+        ...defaultIntegrations().mailAutomation,
+      },
+    });
+  }
+
   const asanaConnected = config.asana?.connected && config.asana?.workspace;
   const gaConnected = config.googleAnalytics?.connected;
   const gscConnected = config.googleSearchConsole?.connected;
+  const driveConnected = config.googleDrive?.connected;
+  const geminiConnected = config.gemini?.connected;
+  const automationReady = driveConnected && geminiConnected && asanaConnected && config.mailAutomation?.asanaProjectGid;
 
   return (
     <div className="max-w-4xl">
@@ -574,6 +736,269 @@ export default function IntegrationsPage() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* ─── Google Drive Card ─── */}
+      <div className="bg-surface-raised rounded-xl border border-border p-4 md:p-6 mb-4">
+        <div className="flex items-start justify-between mb-4 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shrink-0 ${driveConnected ? "bg-brand-green/10" : "bg-gray-100"}`}>
+              <FolderOpen className={`w-6 h-6 ${driveConnected ? "text-brand-green" : "text-gray-500"}`} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-[16px] font-semibold">Google Drive</h3>
+                {driveConnected && (
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-brand-green/10 text-brand-green">Connected</span>
+                )}
+              </div>
+              <p className="text-[12px] text-text-secondary mt-0.5">Watch a folder for scanned mail documents</p>
+            </div>
+          </div>
+          <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="text-[11px] text-brand-blue hover:text-brand-blue-dark font-medium flex items-center gap-1 shrink-0">
+            Get Token <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+
+        {driveConnected ? (
+          <div className="space-y-3">
+            <div className="bg-brand-green/5 border border-brand-green/20 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[13px] font-medium text-brand-green">
+                    Watching folder: {config.googleDrive.folderName}
+                  </p>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    Connected {config.googleDrive.connectedAt ? new Date(config.googleDrive.connectedAt).toLocaleDateString() : ""}
+                  </p>
+                </div>
+                <button onClick={handleDriveDisconnect} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-50 transition-colors text-[12px] font-medium text-red-500">
+                  <Unplug className="w-3.5 h-3.5" /> Disconnect
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[12px] font-medium text-text-secondary mb-1.5">OAuth Access Token</label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input type={showDriveToken ? "text" : "password"} value={driveToken} onChange={(e) => setDriveToken(e.target.value)} placeholder="Enter your Google OAuth access token" className="w-full px-3 py-2.5 pr-10 border border-border rounded-lg text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue bg-white" />
+                  <button type="button" onClick={() => setShowDriveToken(!showDriveToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors">
+                    {showDriveToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <button onClick={handleDriveTest} disabled={!driveToken.trim() || driveTesting} className="px-4 py-2.5 rounded-lg bg-brand-blue text-white text-[13px] font-medium hover:bg-brand-blue-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shrink-0">
+                  {driveTesting ? <><Loader2 className="w-4 h-4 animate-spin" /> Testing...</> : "Test Connection"}
+                </button>
+              </div>
+              <p className="text-[11px] text-text-muted mt-1.5">
+                Use the <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="text-brand-blue hover:underline">OAuth Playground</a> with scope <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">drive.readonly</code>
+              </p>
+            </div>
+            {driveError && (
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
+                <AlertCircle className="w-4 h-4 shrink-0" /> {driveError}
+              </div>
+            )}
+            {loadingFolders && (
+              <div className="flex items-center gap-2 text-[12px] text-text-muted">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading folders...
+              </div>
+            )}
+            {driveFolders.length > 0 && (
+              <div>
+                <p className="text-[12px] font-medium text-text-secondary mb-2">
+                  <CheckCircle2 className="w-4 h-4 text-brand-green inline mr-1" />
+                  Token verified. Select the folder to watch for scanned mail:
+                </p>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {driveFolders.map((folder) => (
+                    <button key={folder.id} onClick={() => handleDriveSelectFolder(folder)} className="w-full text-left px-4 py-3 rounded-lg border border-border hover:border-brand-blue/40 hover:bg-brand-blue/5 transition-all text-[13px] font-medium flex items-center gap-2">
+                      <FolderOpen className="w-4 h-4 text-text-muted shrink-0" />
+                      {folder.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ─── Gemini AI Card ─── */}
+      <div className="bg-surface-raised rounded-xl border border-border p-4 md:p-6 mb-4">
+        <div className="flex items-start justify-between mb-4 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shrink-0 ${geminiConnected ? "bg-brand-green/10" : "bg-gray-100"}`}>
+              <Sparkles className={`w-6 h-6 ${geminiConnected ? "text-brand-green" : "text-gray-500"}`} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-[16px] font-semibold">Gemini AI</h3>
+                {geminiConnected && (
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-brand-green/10 text-brand-green">Connected</span>
+                )}
+              </div>
+              <p className="text-[12px] text-text-secondary mt-0.5">Gemini 2.5 Pro — document analysis for mail scanning</p>
+            </div>
+          </div>
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-[11px] text-brand-blue hover:text-brand-blue-dark font-medium flex items-center gap-1 shrink-0">
+            Get API Key <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+
+        {geminiConnected ? (
+          <div className="space-y-3">
+            <div className="bg-brand-green/5 border border-brand-green/20 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[13px] font-medium text-brand-green">Gemini 2.5 Pro connected</p>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    Connected {config.gemini.connectedAt ? new Date(config.gemini.connectedAt).toLocaleDateString() : ""}
+                  </p>
+                </div>
+                <button onClick={handleGeminiDisconnect} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-50 transition-colors text-[12px] font-medium text-red-500">
+                  <Unplug className="w-3.5 h-3.5" /> Disconnect
+                </button>
+              </div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-[11px] text-text-muted">
+                <span className="font-medium text-text-secondary">How it works:</span> Gemini analyzes scanned documents to extract sender, category, urgency, and action items. Supports PDFs, images, and text files.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[12px] font-medium text-text-secondary mb-1.5">API Key</label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input type={showGeminiKey ? "text" : "password"} value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} placeholder="Enter your Gemini API key" className="w-full px-3 py-2.5 pr-10 border border-border rounded-lg text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue bg-white" />
+                  <button type="button" onClick={() => setShowGeminiKey(!showGeminiKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors">
+                    {showGeminiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <button onClick={handleGeminiTest} disabled={!geminiKey.trim() || geminiTesting} className="px-4 py-2.5 rounded-lg bg-brand-blue text-white text-[13px] font-medium hover:bg-brand-blue-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shrink-0">
+                  {geminiTesting ? <><Loader2 className="w-4 h-4 animate-spin" /> Testing...</> : "Test Connection"}
+                </button>
+              </div>
+              <p className="text-[11px] text-text-muted mt-1.5">
+                Get a free API key from <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-brand-blue hover:underline">Google AI Studio</a>
+              </p>
+            </div>
+            {geminiError && (
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
+                <AlertCircle className="w-4 h-4 shrink-0" /> {geminiError}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ─── Mail Automation Card ─── */}
+      <div className="bg-surface-raised rounded-xl border border-amber-200 p-4 md:p-6 mb-4">
+        <div className="flex items-start justify-between mb-4 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shrink-0 ${automationReady ? "bg-amber-100" : "bg-gray-100"}`}>
+              <Mail className={`w-6 h-6 ${automationReady ? "text-amber-600" : "text-gray-500"}`} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-[16px] font-semibold">Mail Automation</h3>
+                {automationReady && (
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-brand-green/10 text-brand-green">Active</span>
+                )}
+              </div>
+              <p className="text-[12px] text-text-secondary mt-0.5">
+                Drive folder → Gemini analysis → Asana tasks (Kanban board)
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {automationReady ? (
+          <div className="space-y-3">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[13px] font-medium text-amber-700">
+                    Sending tasks to: {config.mailAutomation.asanaProjectName}
+                  </p>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    Watching: {config.googleDrive.folderName} → Gemini 2.5 Pro → Asana
+                  </p>
+                </div>
+                <button onClick={handleDisableAutomation} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-50 transition-colors text-[12px] font-medium text-red-500">
+                  <Unplug className="w-3.5 h-3.5" /> Disable
+                </button>
+              </div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-[11px] text-text-muted">
+                <span className="font-medium text-text-secondary">Pipeline:</span> New files in your Drive folder are analyzed by Gemini, categorized by type (invoice, legal, medical, etc.), assigned an urgency level, and created as Asana tasks. View them on the <a href="/mail" className="text-brand-blue hover:underline font-medium">Mail Kanban board</a>.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="bg-amber-50/50 rounded-lg p-4">
+              <p className="text-[13px] font-medium text-text-secondary mb-3">
+                Select an Asana project to receive mail tasks:
+              </p>
+
+              {!asanaConnected && (
+                <p className="text-[12px] text-text-muted">
+                  Connect Asana above first, then select a project here.
+                </p>
+              )}
+
+              {!driveConnected && (
+                <p className="text-[12px] text-text-muted">
+                  Connect Google Drive above and select a folder to watch.
+                </p>
+              )}
+
+              {!geminiConnected && (
+                <p className="text-[12px] text-text-muted">
+                  Connect Gemini AI above for document analysis.
+                </p>
+              )}
+
+              {asanaConnected && driveConnected && geminiConnected && (
+                <>
+                  {asanaProjects.length === 0 ? (
+                    <button
+                      onClick={loadAsanaProjects}
+                      disabled={loadingProjects}
+                      className="px-4 py-2.5 rounded-lg bg-brand-blue text-white text-[13px] font-medium hover:bg-brand-blue-dark transition-colors disabled:opacity-40 flex items-center gap-2"
+                    >
+                      {loadingProjects ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> Loading...</>
+                      ) : (
+                        "Load Asana Projects"
+                      )}
+                    </button>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {asanaProjects.map((project) => (
+                        <button
+                          key={project.gid}
+                          onClick={() => handleSelectProject(project)}
+                          className="w-full text-left px-4 py-3 rounded-lg border border-border hover:border-brand-blue/40 hover:bg-brand-blue/5 transition-all text-[13px] font-medium"
+                        >
+                          {project.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
