@@ -56,7 +56,7 @@ const defaultKeys: ApiKeyConfig[] = [
     value: "",
     description: "Powers Claude agents for orchestration, content, and reasoning",
     docsUrl: "https://console.anthropic.com/settings/keys",
-    models: ["claude-sonnet-4-20250514", "claude-3.5-haiku", "claude-3-opus"],
+    models: ["claude-sonnet-4-20250514", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"],
     required: true,
   },
   {
@@ -144,7 +144,7 @@ export default function SettingsPage() {
     ads: "gpt-4o",
     seo: "gpt-4o-mini",
     analytics: "gpt-4o",
-    operations: "claude-3.5-haiku",
+    operations: "claude-3-5-haiku-20241022",
   });
 
   // Load from localStorage

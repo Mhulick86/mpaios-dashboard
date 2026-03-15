@@ -108,6 +108,8 @@ function getApiKeys() {
       orchestratorModel.startsWith("o3")
     ) {
       provider = "openai";
+    } else if (orchestratorModel.startsWith("gemini")) {
+      provider = "google";
     }
 
     let asanaPat = "";
@@ -140,6 +142,7 @@ function getApiKeys() {
     return {
       anthropicKey: keys.anthropic || "",
       openaiKey: keys.openai || "",
+      googleKey: keys.google || "",
       provider,
       model: orchestratorModel,
       asanaPat,
@@ -153,6 +156,7 @@ function getApiKeys() {
     return {
       anthropicKey: "",
       openaiKey: "",
+      googleKey: "",
       provider: "anthropic",
       model: "claude-sonnet-4-20250514",
       asanaPat: "",

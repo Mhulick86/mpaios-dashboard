@@ -1,6 +1,7 @@
 import { generateText, streamText } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { asanaFetch, AsanaProject, AsanaTask } from "@/lib/asana";
 import { fetchGAOverview } from "@/lib/googleAnalytics";
 import { fetchGSCOverview } from "@/lib/googleSearchConsole";
@@ -257,6 +258,7 @@ export async function POST(req: Request) {
     messages,
     anthropicKey,
     openaiKey,
+    googleKey,
     provider = "anthropic",
     model = "claude-sonnet-4-20250514",
     asanaPat,
@@ -270,6 +272,7 @@ export async function POST(req: Request) {
     messages: Array<{ role: string; content: string }>;
     anthropicKey?: string;
     openaiKey?: string;
+    googleKey?: string;
     provider?: string;
     model?: string;
     asanaPat?: string;
@@ -306,6 +309,19 @@ export async function POST(req: Request) {
       baseURL: "https://api.anthropic.com/v1",
     });
     modelInstance = anthropic(model || "claude-sonnet-4-20250514");
+  } else if (provider === "google" || provider === "Google") {
+    const key = googleKey;
+    if (!key) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "Google AI API key not configured. Go to Settings → API Keys to add it.",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    const google = createGoogleGenerativeAI({ apiKey: key });
+    modelInstance = google(model || "gemini-2.0-flash");
   } else {
     const key = openaiKey;
     if (!key) {
