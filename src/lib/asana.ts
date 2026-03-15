@@ -36,6 +36,10 @@ export interface AsanaTask {
 
 export interface AsanaConfig {
   pat: string;
+  accessToken: string;
+  refreshToken: string;
+  userName: string;
+  userEmail: string;
   workspace: AsanaWorkspace | null;
   connected: boolean;
   connectedAt: string | null;
@@ -43,6 +47,7 @@ export interface AsanaConfig {
 
 export interface GAConfig {
   accessToken: string;
+  refreshToken: string;
   propertyId: string;
   propertyName: string;
   connected: boolean;
@@ -51,15 +56,43 @@ export interface GAConfig {
 
 export interface GSCConfig {
   accessToken: string;
+  refreshToken: string;
   siteUrl: string;
   connected: boolean;
   connectedAt: string | null;
+}
+
+export interface GoogleDriveConfig {
+  accessToken: string;
+  refreshToken: string;
+  folderId: string;
+  folderName: string;
+  connected: boolean;
+  connectedAt: string | null;
+}
+
+export interface GeminiConfig {
+  apiKey: string;
+  connected: boolean;
+  connectedAt: string | null;
+}
+
+export interface MailAutomationConfig {
+  enabled: boolean;
+  asanaProjectGid: string;
+  asanaProjectName: string;
+  pollIntervalMinutes: number;
+  lastPollAt: string | null;
+  processedFileIds: string[];
 }
 
 export interface IntegrationsConfig {
   asana: AsanaConfig;
   googleAnalytics: GAConfig;
   googleSearchConsole: GSCConfig;
+  googleDrive: GoogleDriveConfig;
+  gemini: GeminiConfig;
+  mailAutomation: MailAutomationConfig;
 }
 
 // Keep old type as alias for backwards compat
@@ -69,12 +102,17 @@ export function defaultIntegrations(): IntegrationsConfig {
   return {
     asana: {
       pat: "",
+      accessToken: "",
+      refreshToken: "",
+      userName: "",
+      userEmail: "",
       workspace: null,
       connected: false,
       connectedAt: null,
     },
     googleAnalytics: {
       accessToken: "",
+      refreshToken: "",
       propertyId: "",
       propertyName: "",
       connected: false,
@@ -82,11 +120,40 @@ export function defaultIntegrations(): IntegrationsConfig {
     },
     googleSearchConsole: {
       accessToken: "",
+      refreshToken: "",
       siteUrl: "",
       connected: false,
       connectedAt: null,
     },
+    googleDrive: {
+      accessToken: "",
+      refreshToken: "",
+      folderId: "",
+      folderName: "",
+      connected: false,
+      connectedAt: null,
+    },
+    gemini: {
+      apiKey: "",
+      connected: false,
+      connectedAt: null,
+    },
+    mailAutomation: {
+      enabled: false,
+      asanaProjectGid: "",
+      asanaProjectName: "",
+      pollIntervalMinutes: 5,
+      lastPollAt: null,
+      processedFileIds: [],
+    },
   };
+}
+
+/* ---------- Token helper ---------- */
+
+/** Get the effective bearer token — prefers OAuth access token, falls back to PAT */
+export function getAsanaToken(config: AsanaConfig): string {
+  return config.accessToken || config.pat;
 }
 
 /* ---------- Fetch helper ---------- */
