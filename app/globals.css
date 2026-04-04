@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/* Just Sans Variable - self-hosted brand font */
+@font-face {
+  font-family: "Just Sans Variable";
+  src: url("/fonts/JustSansVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme {
   --color-brand-blue: #2CACE8;
   --color-brand-blue-light: #e8f6fd;
@@ -26,7 +35,7 @@
   --color-div-5: #EF4444;
   --color-div-6: #6B7280;
 
-  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Just Sans Variable", "DM Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
 @layer base {

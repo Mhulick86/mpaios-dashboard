@@ -1,11 +1,67 @@
 import { generateText, streamText } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { asanaFetch, AsanaProject, AsanaTask } from "@/lib/asana";
 import { fetchGAOverview } from "@/lib/googleAnalytics";
 import { fetchGSCOverview } from "@/lib/googleSearchConsole";
 
 export const maxDuration = 120;
+
+async function getSupabase() {
+  const cookieStore = await cookies();
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll(); },
+        setAll(cookiesToSet) {
+          try { cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); } catch {}
+        },
+      },
+    }
+  );
+}
+
+// Search memory for relevant context (server-side)
+async function buildMemoryRAGContext(query: string, userId: string): Promise<string> {
+  const supabase = await getSupabase();
+
+  // Text-based fallback search (vector search requires embedding generation)
+  const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 5);
+  if (!words.length) return "";
+
+  const { data: memories } = await supabase
+    .from("memory")
+    .select("category, content, confidence")
+    .eq("user_id", userId)
+    .order("confidence", { ascending: false })
+    .limit(10);
+
+  if (!memories?.length) return "";
+
+  // Score memories by keyword relevance
+  const scored = memories
+    .map(m => {
+      const lower = m.content.toLowerCase();
+      const hits = words.filter(w => lower.includes(w)).length;
+      return { ...m, score: hits / words.length };
+    })
+    .filter(m => m.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
+  if (!scored.length) return "";
+
+  let ctx = "\n\n## Knowledge Base (Agent 18 Memory)\n";
+  for (const m of scored) {
+    ctx += `- **[${m.category}]** (${(m.confidence * 100).toFixed(0)}% confidence): ${m.content.slice(0, 300)}\n`;
+  }
+  ctx += "\nUse these memories to provide more informed, contextual responses.\n";
+  return ctx;
+}
 
 const SYSTEM_PROMPT = `You are the central orchestrator of the Marketing Powered AI Operating System . You coordinate 24 specialized AI agents across 6 operational divisions to deliver full-service digital marketing operations for Marketing Powered LLC clients.
 
@@ -269,6 +325,7 @@ export async function POST(req: Request) {
     customEndpoint,
     driveAccessToken,
     driveFolderId,
+    selectedTool,
   } = body as {
     messages: Array<{ role: string; content: string }>;
     anthropicKey?: string;
@@ -285,7 +342,10 @@ export async function POST(req: Request) {
     customEndpoint?: { url: string; apiKey: string; model: string };
     driveAccessToken?: string;
     driveFolderId?: string;
+    selectedTool?: string;
   };
+
+  console.log(`[chat] provider=${provider} model=${model} customEndpoint=${customEndpoint ? JSON.stringify(customEndpoint) : "none"}`);
 
   // Convert to the format generateText expects
   const convertedMessages = messages.map((m) => ({
@@ -298,8 +358,14 @@ export async function POST(req: Request) {
 
   if (provider === "custom" && customEndpoint) {
     // Custom OpenAI-compatible endpoint (LM Studio, Ollama, vLLM, etc.)
+    // Ensure baseURL ends with /v1 — createOpenAI appends /chat/completions to it
+    let baseURL = customEndpoint.url.replace(/\/+$/, "");
+    if (!baseURL.endsWith("/v1")) {
+      baseURL = `${baseURL}/v1`;
+    }
+    console.log(`[chat] Using custom baseURL: ${baseURL}`);
     const customOpenAI = createOpenAI({
-      baseURL: customEndpoint.url,
+      baseURL,
       apiKey: customEndpoint.apiKey || "lm-studio",
     });
     modelInstance = customOpenAI(customEndpoint.model || model || "local-model");
@@ -335,10 +401,28 @@ export async function POST(req: Request) {
   }
 
   try {
+    const startTime = Date.now();
+    const supabase = await getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+
     // Build system prompt with optional Asana context
     let systemPrompt = SYSTEM_PROMPT;
 
-    // Inject knowledge base context (from client-side localStorage)
+    // Inject selected tool context
+    if (selectedTool) {
+      systemPrompt += `\n\n--- ACTIVE TOOL ---\nThe user has selected a specific tool to focus on: "${selectedTool}". Focus your response on this tool's capabilities and domain. Respond as the specialized agent for this tool rather than the full orchestrator. Keep responses focused and actionable for this specific tool's purpose.\n--- END TOOL CONTEXT ---\n`;
+    }
+
+    // Inject persistent memory (RAG from Supabase)
+    if (user) {
+      const lastUserMsg = messages.filter(m => m.role === "user").pop();
+      if (lastUserMsg) {
+        const memoryContext = await buildMemoryRAGContext(lastUserMsg.content, user.id);
+        if (memoryContext) systemPrompt += memoryContext;
+      }
+    }
+
+    // Inject knowledge base context (from client-side localStorage - legacy fallback)
     if (knowledgeContext) {
       systemPrompt += knowledgeContext;
     }
@@ -362,11 +446,91 @@ export async function POST(req: Request) {
       systemPrompt += `\n\n## Google Drive Context\nGoogle Drive is connected. Files and folders created by the orchestrator will be uploaded to the configured Drive folder (ID: ${driveFolderId}). Agent outputs can be saved as .md files in organized project folders within Drive.`;
     }
 
+    // For custom/local endpoints, use streamText for better compatibility
+    // LM Studio, Ollama, vLLM handle streaming more reliably than non-streaming
+    if (provider === "custom" && customEndpoint) {
+      const result = streamText({
+        model: modelInstance,
+        system: systemPrompt,
+        messages: convertedMessages,
+      });
+
+      // Pipe textStream as raw plain text (the client reads raw chunks, not AI SDK protocol)
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const chunk of result.textStream) {
+              controller.enqueue(encoder.encode(chunk));
+            }
+            controller.close();
+          } catch (err) {
+            controller.error(err);
+          }
+        },
+      });
+
+      return new Response(stream, {
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+
+    // Cloud providers: use generateText (more reliable for Anthropic/OpenAI)
     const result = await generateText({
       model: modelInstance,
       system: systemPrompt,
       messages: convertedMessages,
     });
+
+    const latencyMs = Date.now() - startTime;
+
+    // ── Observability: Track token usage + audit log (fire-and-forget) ──
+    if (user) {
+      const tokensInput = result.usage?.promptTokens || Math.ceil(systemPrompt.length / 4);
+      const tokensOutput = result.usage?.completionTokens || Math.ceil(result.text.length / 4);
+
+      // Token usage tracking
+      supabase.from("token_usage").insert({
+        user_id: user.id,
+        model: model || "unknown",
+        provider: provider || "unknown",
+        tokens_input: tokensInput,
+        tokens_output: tokensOutput,
+        cost: (tokensInput * 0.000003) + (tokensOutput * 0.000015),
+        endpoint: "chat",
+      }).then(() => {});
+
+      // Audit log
+      supabase.from("audit_log").insert({
+        user_id: user.id,
+        event_type: "chat.completion",
+        resource_type: "message",
+        details: { model, provider, messageCount: messages.length },
+        tokens_used: tokensInput + tokensOutput,
+        cost: (tokensInput * 0.000003) + (tokensOutput * 0.000015),
+        model: model || "unknown",
+        latency_ms: latencyMs,
+      }).then(() => {});
+
+      // Extract and store learning markers from response
+      const learningPattern = /\[LEARNING:(\w+):(\w+)\]\s*(.+?)\s*\[\/LEARNING\]/gs;
+      let match;
+      while ((match = learningPattern.exec(result.text)) !== null) {
+        const category = match[1];
+        const confidence = match[2] === "high" ? 0.9 : match[2] === "medium" ? 0.7 : 0.5;
+        const parts = match[3].split("|").map(s => s.trim());
+        const content = parts.length > 1 ? `${parts[0]}: ${parts[1]}` : parts[0];
+
+        supabase.from("memory").insert({
+          user_id: user.id,
+          category,
+          content,
+          confidence,
+          source_agent: 18,
+          metadata: { tags: parts[2]?.split(",").map(t => t.trim()) || [] },
+        }).then(() => {});
+      }
+    }
 
     return new Response(result.text, {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
@@ -374,6 +538,21 @@ export async function POST(req: Request) {
   } catch (error: unknown) {
     const msg =
       error instanceof Error ? error.message : "Unknown error from AI model";
+    console.error("Chat API error:", error);
+
+    // Log errors to audit
+    try {
+      const supabase = await getSupabase();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        supabase.from("audit_log").insert({
+          user_id: user.id,
+          event_type: "chat.error",
+          details: { error: msg, model, provider },
+        }).then(() => {});
+      }
+    } catch {}
+
     return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { BrandLogoMark, BrandWordmark } from "./BrandLogo";
+import { useAuth } from "@/lib/supabase/auth-context";
 import {
   LayoutDashboard,
   Bot,
@@ -20,8 +21,18 @@ import {
   Bell,
   Megaphone,
   Wrench,
+  Activity,
+  Workflow,
+  LogOut,
+  User,
 } from "lucide-react";
-import { getAllConversations, type Conversation } from "@/lib/chatStorage";
+import { getConversations } from "@/lib/conversations";
+
+interface RecentChat {
+  id: string;
+  title: string;
+  updated_at: string;
+}
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -31,9 +42,13 @@ const navItems = [
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/alerts", label: "Alerts", icon: Bell },
   { href: "/pipelines", label: "Pipelines", icon: GitBranch },
+  { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/knowledge", label: "Knowledge Base", icon: Brain },
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/tools", label: "Tools", icon: Wrench },
+  { href: "/observability", label: "Observability", icon: Activity },
+  { href: "/integrations", label: "Integrations", icon: Plug },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 function timeAgo(timestamp: number): string {
@@ -49,12 +64,16 @@ function timeAgo(timestamp: number): string {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [recentChats, setRecentChats] = useState<Conversation[]>([]);
+  const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { user, signOut } = useAuth();
 
   useEffect(() => {
-    const convos = getAllConversations();
-    setRecentChats(convos.slice(0, 5));
+    getConversations({ limit: 5 })
+      .then((convos) =>
+        setRecentChats(convos.map((c) => ({ id: c.id, title: c.title, updated_at: c.updated_at })))
+      )
+      .catch(() => setRecentChats([]));
   }, [pathname]);
 
   // Close mobile menu on nav
@@ -135,7 +154,7 @@ export function Sidebar() {
                 <MessageSquare className="w-3.5 h-3.5 shrink-0 text-gray-500 group-hover:text-gray-300" />
                 <span className="truncate flex-1">{conv.title}</span>
                 <span className="text-[10px] text-gray-600 shrink-0">
-                  {timeAgo(conv.updatedAt)}
+                  {timeAgo(new Date(conv.updated_at).getTime())}
                 </span>
               </Link>
             ))}
@@ -144,53 +163,29 @@ export function Sidebar() {
       )}
       </div>
 
-      {/* System Status — pinned to bottom */}
-      <div className="p-4 mx-3 mb-3 rounded-lg bg-surface-dark-raised border border-border-dark shrink-0">
-        <div className="flex items-center gap-2 mb-2.5">
-          <div className="w-2 h-2 rounded-full bg-brand-green animate-pulse" />
-          <span className="text-[11px] font-medium text-gray-400">System Online</span>
+      {/* User Profile & Sign Out */}
+      {user && (
+        <div className="p-3 border-t border-border-dark">
+          <div className="flex items-center gap-3 px-3 py-2">
+            <div className="w-8 h-8 rounded-full bg-brand-blue/20 flex items-center justify-center shrink-0">
+              <User className="w-4 h-4 text-brand-blue" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] font-medium text-white truncate">
+                {user.user_metadata?.full_name || user.email?.split("@")[0]}
+              </p>
+              <p className="text-[10px] text-text-muted truncate">{user.email}</p>
+            </div>
+            <button
+              onClick={() => signOut()}
+              className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
+              title="Sign out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <div className="flex justify-between text-[11px]">
-            <span className="text-gray-500">Agents</span>
-            <span className="text-gray-300">24 registered</span>
-          </div>
-          <div className="flex justify-between text-[11px]">
-            <span className="text-gray-500">Active</span>
-            <span className="text-brand-green">2 running</span>
-          </div>
-          <div className="flex justify-between text-[11px]">
-            <span className="text-gray-500">Mode</span>
-            <span className="text-gray-300">Hybrid</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom links */}
-      <div className="px-3 pb-4 space-y-0.5 shrink-0">
-        <Link
-          href="/integrations"
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors ${
-            pathname.startsWith("/integrations")
-              ? "bg-brand-blue/15 text-brand-blue"
-              : "text-gray-400 hover:text-white hover:bg-white/5"
-          }`}
-        >
-          <Plug className="w-[18px] h-[18px]" />
-          Integrations
-        </Link>
-        <Link
-          href="/settings"
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors ${
-            pathname.startsWith("/settings")
-              ? "bg-brand-blue/15 text-brand-blue"
-              : "text-gray-400 hover:text-white hover:bg-white/5"
-          }`}
-        >
-          <Settings className="w-[18px] h-[18px]" />
-          Settings
-        </Link>
-      </div>
+      )}
     </>
   );
 
