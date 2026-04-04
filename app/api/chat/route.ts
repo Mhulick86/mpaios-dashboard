@@ -486,8 +486,9 @@ export async function POST(req: Request) {
 
     // ── Observability: Track token usage + audit log (fire-and-forget) ──
     if (user) {
-      const tokensInput = result.usage?.promptTokens || Math.ceil(systemPrompt.length / 4);
-      const tokensOutput = result.usage?.completionTokens || Math.ceil(result.text.length / 4);
+      const usage = result.usage as Record<string, number> | undefined;
+      const tokensInput = usage?.promptTokens ?? usage?.inputTokens ?? Math.ceil(systemPrompt.length / 4);
+      const tokensOutput = usage?.completionTokens ?? usage?.outputTokens ?? Math.ceil(result.text.length / 4);
 
       // Token usage tracking
       supabase.from("token_usage").insert({
