@@ -24,21 +24,30 @@ const DIVISION_COLORS: Record<number, string> = {
   4: "#8B5CF6", // Organic & Authority
   5: "#EF4444", // Analytics & Optimization
   6: "#6B7280", // Operations & Infrastructure
+  7: "#0EA5E9", // Client Success & Revenue
+  8: "#F97316", // Data Engineering & Intelligence
+  9: "#14B8A6", // Local & Community Growth
 };
 
 function getDivision(agentId: number): number {
-  if (agentId <= 2) return 1;
-  if (agentId <= 6) return 2;
-  if (agentId <= 9) return 3;
-  if (agentId <= 12) return 4;
-  if (agentId <= 14) return 5;
+  if (agentId <= 2 || agentId === 19) return 1;
+  if ((agentId >= 3 && agentId <= 6) || agentId === 20) return 2;
+  if (agentId >= 7 && agentId <= 9) return 3;
+  if (agentId >= 10 && agentId <= 12 || agentId === 21 || agentId === 23) return 4;
+  if (agentId === 13 || agentId === 14 || agentId === 22) return 5;
+  if (agentId === 15 || agentId === 16 || agentId === 17 || agentId === 18 || agentId === 24) return 6;
+  if (agentId >= 25 && agentId <= 27) return 7;
+  if (agentId >= 28 && agentId <= 30) return 8;
+  if (agentId >= 31 && agentId <= 33) return 9;
   return 6;
 }
 
-function getStatusIcon(action: AgentActivity["action"]) {
+function getStatusIcon(action: AgentActivity["action"] | string) {
   switch (action) {
     case "activated":
       return <Zap className="w-3 h-3" />;
+    case "executing":
+      return <Loader2 className="w-3 h-3 animate-spin" />;
     case "thinking":
       return <Brain className="w-3 h-3" />;
     case "responding":
@@ -47,13 +56,17 @@ function getStatusIcon(action: AgentActivity["action"]) {
       return <ArrowRight className="w-3 h-3" />;
     case "complete":
       return <CheckCircle2 className="w-3 h-3" />;
+    default:
+      return <Zap className="w-3 h-3" />;
   }
 }
 
-function getStatusLabel(action: AgentActivity["action"]) {
+function getStatusLabel(action: AgentActivity["action"] | string) {
   switch (action) {
     case "activated":
       return "Activated";
+    case "executing":
+      return "Executing";
     case "thinking":
       return "Analyzing";
     case "responding":
@@ -62,6 +75,8 @@ function getStatusLabel(action: AgentActivity["action"]) {
       return "Handoff";
     case "complete":
       return "Complete";
+    default:
+      return "Active";
   }
 }
 

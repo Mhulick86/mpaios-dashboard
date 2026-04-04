@@ -611,20 +611,35 @@ export default function ChatPage() {
     16: "Client Reporting & Insights Compiler",
     17: "Budget & Financial Operations Manager",
     18: "System Intelligence & Memory Agent",
+    19: "Client Onboarding & Discovery Specialist",
+    20: "Video & Multimedia Producer",
+    21: "LLMO & AI Visibility Specialist",
+    22: "Brand Compliance & QA Reviewer",
+    23: "Community & PR Manager",
+    24: "Email & Marketing Automation Manager",
+    25: "Client Success & Retention Manager",
+    26: "Proposal & Revenue Strategist",
+    27: "Revenue Intelligence Analyst",
+    28: "Data Pipeline & Enrichment Engineer",
+    29: "Predictive Modeling Specialist",
+    30: "Market Research & Trends Analyst",
+    31: "Local SEO & GEO Grid Analyst",
+    32: "Google Business Profile & Citations Manager",
+    33: "Hyperlocal Community & Awareness Strategist",
   };
 
   const ACTION_STYLES: Record<string, { bg: string; text: string; bar: string; icon: string; pct: number; label: string }> = {
-    activated: { bg: "bg-emerald-50 border-emerald-200", text: "text-emerald-700", bar: "bg-emerald-500", icon: "⚡", pct: 15, label: "Initializing" },
-    thinking:  { bg: "bg-amber-50 border-amber-200", text: "text-amber-700", bar: "bg-amber-500", icon: "🧠", pct: 45, label: "Processing" },
-    responding:{ bg: "bg-blue-50 border-blue-200", text: "text-blue-700", bar: "bg-blue-500", icon: "💬", pct: 75, label: "Generating" },
-    handoff:   { bg: "bg-purple-50 border-purple-200", text: "text-purple-700", bar: "bg-purple-500", icon: "🔄", pct: 90, label: "Handing off" },
+    activated: { bg: "bg-emerald-50 border-emerald-200", text: "text-emerald-700", bar: "bg-emerald-500", icon: "⚡", pct: 100, label: "Activated" },
+    executing: { bg: "bg-blue-50 border-blue-200", text: "text-blue-700", bar: "bg-blue-500", icon: "⚙️", pct: 100, label: "Executing" },
+    thinking:  { bg: "bg-amber-50 border-amber-200", text: "text-amber-700", bar: "bg-amber-500", icon: "🧠", pct: 100, label: "Processing" },
+    responding:{ bg: "bg-blue-50 border-blue-200", text: "text-blue-700", bar: "bg-blue-500", icon: "💬", pct: 100, label: "Responding" },
+    handoff:   { bg: "bg-purple-50 border-purple-200", text: "text-purple-700", bar: "bg-purple-500", icon: "🔄", pct: 100, label: "Handoff" },
     complete:  { bg: "bg-gray-50 border-gray-200", text: "text-gray-600", bar: "bg-green-500", icon: "✅", pct: 100, label: "Complete" },
   };
 
   function renderAgentMarkerInline(agentId: number, action: string, message: string) {
     const name = AGENT_DISPLAY_NAMES[agentId] || `Agent ${agentId}`;
     const style = ACTION_STYLES[action] || ACTION_STYLES.activated;
-    const isComplete = action === "complete";
     return (
       <div className={`my-2 rounded-lg border overflow-hidden ${style.bg} text-[11px] md:text-[12px]`}>
         <div className="flex items-center gap-2 px-3 py-2">
@@ -634,20 +649,15 @@ export default function ChatPage() {
               <span className={`font-semibold ${style.text} truncate`}>
                 Agent {String(agentId).padStart(2, "0")} — {name}
               </span>
-              <span className={`text-[10px] font-medium ${style.text} shrink-0`}>
-                {style.pct}%
+              <span className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${style.text} shrink-0`} style={{ backgroundColor: "rgba(0,0,0,0.05)" }}>
+                {style.label}
               </span>
             </div>
-            {message && <p className="text-gray-600 mt-0.5 truncate">{message}</p>}
+            {message && <p className="text-gray-600 mt-0.5">{message}</p>}
           </div>
         </div>
-        {/* Progress bar */}
-        <div className="h-1.5 w-full bg-black/5">
-          <div
-            className={`h-full ${style.bar} ${!isComplete ? "transition-all duration-700 ease-out" : ""}`}
-            style={{ width: `${style.pct}%` }}
-          />
-        </div>
+        {/* Accent bar */}
+        <div className={`h-1 w-full ${style.bar}`} />
       </div>
     );
   }
@@ -662,7 +672,7 @@ export default function ChatPage() {
       .trim();
 
     // Split content by agent markers and render them inline
-    const agentMarkerRegex = /\[AGENT:(\d{1,2}):(activated|thinking|responding|handoff|complete)\]\s*([^\[]*?)\s*\[\/AGENT\]/g;
+    const agentMarkerRegex = /\[AGENT:(\d{1,2}):(activated|executing|thinking|responding|handoff|complete)\]\s*([^\[]*?)\s*\[\/AGENT\]/g;
     const handoffRegex = /\[HANDOFF:(\d{1,2})>(\d{1,2})\]\s*([^\[]*?)\s*\[\/HANDOFF\]/g;
 
     // Collect all markers with their positions
