@@ -178,11 +178,14 @@ export default function LoginPage() {
 
       {/* ── Right: Brand showcase (hidden on mobile) ── */}
       <div className="hidden lg:flex flex-1 flex-col justify-center p-12 xl:p-16 relative overflow-hidden">
-        {/* Subtle grid background */}
-        <div className="absolute inset-0 opacity-[0.03]" style={{
-          backgroundImage: "linear-gradient(#2CACE8 1px, transparent 1px), linear-gradient(90deg, #2CACE8 1px, transparent 1px)",
-          backgroundSize: "40px 40px",
-        }} />
+        {/* Giant watermark logo */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <svg width="700" height="700" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="opacity-[0.04]">
+            <path d="M38 8L12 32L26 32L16 56L52 28L36 28L46 8H38Z" fill="#2CACE8" stroke="#2CACE8" strokeWidth="2" strokeLinejoin="round" />
+            <path d="M34 14L14 34L26 34L18 52L48 30L34 30L42 14H34Z" fill="#fff" stroke="#fff" strokeWidth="1" strokeLinejoin="round" />
+            <path d="M26 34L18 52L48 30" fill="none" stroke="#2CACE8" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
 
         {/* Floating glow */}
         <div className="absolute top-1/4 right-1/4 w-[400px] h-[400px] bg-brand-blue/5 rounded-full blur-[120px]" />
