@@ -163,16 +163,15 @@ export default function DashboardPage() {
 
       try {
         setPhase("analyzing");
-        addLog(makeLogEntry("system", "Agent 15 (Workflow Orchestrator) analyzing request\u2026", userPrompt.slice(0, 80)));
-        await new Promise((r) => setTimeout(r, 1500));
+        addLog(makeLogEntry("system", "Agent 15 analyzing request\u2026", userPrompt.slice(0, 80)));
+        await new Promise((r) => setTimeout(r, 300));
 
         setPhase("planning");
         const { pipeline, reasoning } = selectPipeline(userPrompt);
         const newPlan = buildPlan(pipeline, reasoning);
         setPlan(newPlan);
-        addLog(makeLogEntry("system", `Selected pipeline: ${pipeline.name}`, reasoning.slice(0, 100)));
-        addLog(makeLogEntry("system", `Built ${newPlan.steps.length}-step execution plan`));
-        await new Promise((r) => setTimeout(r, 1200));
+        addLog(makeLogEntry("system", `Pipeline: ${pipeline.name}`, reasoning.slice(0, 100)));
+        addLog(makeLogEntry("system", `${newPlan.steps.length}-step execution plan ready`));
 
         let result: AsanaProvisionResult | null = null;
         if (asanaConnected && pat && workspaceGid) {

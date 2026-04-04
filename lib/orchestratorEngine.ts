@@ -391,38 +391,41 @@ async function callAgentLLM(params: {
   }
 
   const agentDef = agents.find(a => a.id === params.agentId);
-  const systemContext = `You are Agent ${String(params.agentId).padStart(2, "0")} - ${params.agentName} in the Marketing Powered AI Operating System.
 
-Your capabilities: ${agentDef?.capabilities.join(", ") || "General marketing"}
-Your tooling: ${agentDef?.tooling.join(", ") || "Standard tools"}
+  // Build a direct, execution-focused prompt — NO role-playing delays
+  const systemPrompt = `You are a marketing specialist executing a task RIGHT NOW. You must produce the COMPLETE deliverable in this single response. Do NOT say you'll "get back to" anyone, do NOT say "this will take X hours", do NOT defer any work. Execute the task fully and output the finished work product.
 
-You are executing Step ${params.stepIndex + 1} of ${params.totalSteps} in the "${params.pipelineName}" pipeline.
+IDENTITY: Agent ${String(params.agentId).padStart(2, "0")} - ${params.agentName}
+CAPABILITIES: ${agentDef?.capabilities.join(", ") || "General marketing"}
 
-Your task: ${params.action}
+CRITICAL RULES:
+1. DELIVER THE WORK NOW. Not later. Not in an hour. RIGHT NOW in this response.
+2. Output the ACTUAL deliverable — the report, the analysis, the strategy, the content, the audit.
+3. Use real data if integration data is provided below. Otherwise use your knowledge.
+4. Format in clean markdown with headers, bullet points, and tables.
+5. Be specific: real URLs, real metrics, real recommendations, real action items.
+6. Do NOT ask questions. Do NOT say "I would need..." — just DO IT with what you have.
+7. Do NOT include meta-commentary about what you're doing. Just output the work.
+8. Minimum 500 words of substantive output. This is a professional deliverable.`;
 
-RULES:
-- Produce REAL, actionable output — not placeholder or example data
-- Be specific with URLs, metrics, recommendations, and action items
-- Structure your output with clear headers and sections
-- Include data tables where relevant
-- If you reference data from integrations, cite it explicitly
-- Output in markdown format`;
-
-  let messages = `${systemContext}\n\n`;
+  let userMessage = `# TASK: ${params.action}\n\nPipeline: ${params.pipelineName} (Step ${params.stepIndex + 1} of ${params.totalSteps})\n\n`;
 
   if (params.previousOutputs.length > 0) {
-    messages += `## Context from previous steps:\n${params.previousOutputs.slice(-3).join("\n---\n").slice(0, 4000)}\n\n`;
+    userMessage += `## Context from previous steps:\n${params.previousOutputs.slice(-3).join("\n---\n").slice(0, 4000)}\n\n`;
   }
 
   if (params.integrationContext) {
-    messages += `## Live Integration Data:\n${params.integrationContext.slice(0, 4000)}\n\n`;
+    userMessage += `## Live Integration Data:\n${params.integrationContext.slice(0, 4000)}\n\n`;
   }
 
-  messages += `Execute your task now: ${params.action}`;
+  userMessage += `Produce the complete deliverable for: ${params.action}\n\nOUTPUT THE FINISHED WORK NOW:`;
 
   try {
     const body: Record<string, unknown> = {
-      messages: [{ role: "user", content: messages }],
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
       provider: settings.provider,
       model: settings.model,
     };
@@ -574,7 +577,6 @@ export async function executeSimulation(
         await moveToStage(pat, asanaResult, asanaTask.gid, "review", onLog, taskLabel);
       }
 
-      await randomDelay(800, 1200);
     }
 
     // ── Complete step ──
@@ -596,10 +598,7 @@ export async function executeSimulation(
       }
     }
 
-    // Brief gap between steps
-    if (i < plan.steps.length - 1) {
-      await randomDelay(200, 400);
-    }
+    // No artificial delays — agents execute as fast as the LLM responds
   }
 
   return insights;
