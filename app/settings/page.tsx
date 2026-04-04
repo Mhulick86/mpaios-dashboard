@@ -261,6 +261,7 @@ export default function SettingsPage() {
   const [keys, setKeys] = useState<ApiKeyConfig[]>(defaultKeys);
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [activeTab, setActiveTab] = useState<"keys" | "models" | "endpoints">("keys");
   const [endpoints, setEndpoints] = useState<CustomEndpoint[]>([]);
   const [modelAssignments, setModelAssignments] = useState<Record<AgentRole, string>>({
@@ -294,51 +295,78 @@ export default function SettingsPage() {
     } catch {}
   }, []);
 
-  async function handleSave() {
-    // Build key map
-    const keyMap: Record<string, string> = {};
-    keys.forEach((k) => {
-      if (k.value) keyMap[k.id] = k.value;
-    });
+  function handleSave() {
+    setSaveError("");
 
-    // 1. Hard save to localStorage (instant)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(keyMap));
-    localStorage.setItem(ENDPOINTS_KEY, JSON.stringify(endpoints));
-    localStorage.setItem(MODEL_ASSIGNMENTS_KEY, JSON.stringify(modelAssignments));
-
-    // Also store in the unified ai-settings key for chat API compatibility
-    localStorage.setItem("ai-settings", JSON.stringify({
-      providers: {
-        openai: { apiKey: keyMap.openai || "" },
-        anthropic: { apiKey: keyMap.anthropic || "" },
-        google: { apiKey: keyMap.google || "" },
-        perplexity: { apiKey: keyMap.perplexity || "" },
-      },
-      keys: keyMap,
-      endpoints,
-      modelAssignments,
-    }));
-
-    // 2. Hard save to Supabase (persistent across devices)
     try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase.from("profiles").update({
-          preferences: {
-            api_keys_configured: Object.keys(keyMap),
-            model_assignments: modelAssignments,
-            endpoints_count: endpoints.length,
-            last_saved: new Date().toISOString(),
-          },
-        }).eq("id", user.id);
-      }
-    } catch {
-      // Supabase save failed silently - localStorage is the primary store
-    }
+      // Build key map
+      const keyMap: Record<string, string> = {};
+      keys.forEach((k) => {
+        if (k.value.trim()) keyMap[k.id] = k.value.trim();
+      });
 
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+      // 1. Hard save to localStorage — multiple keys for compatibility
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(keyMap));
+      localStorage.setItem(ENDPOINTS_KEY, JSON.stringify(endpoints));
+      localStorage.setItem(MODEL_ASSIGNMENTS_KEY, JSON.stringify(modelAssignments));
+
+      // Unified ai-settings key (used by chat API and orchestrator)
+      const aiSettings = {
+        providers: {
+          openai: { apiKey: keyMap.openai || "" },
+          anthropic: { apiKey: keyMap.anthropic || "" },
+          google: { apiKey: keyMap.google || "" },
+          perplexity: { apiKey: keyMap.perplexity || "" },
+          OpenAI: { apiKey: keyMap.openai || "" },
+          Anthropic: { apiKey: keyMap.anthropic || "" },
+        },
+        keys: keyMap,
+        endpoints,
+        modelAssignments,
+      };
+      localStorage.setItem("ai-settings", JSON.stringify(aiSettings));
+
+      // Verify the save actually worked
+      const verify = localStorage.getItem(STORAGE_KEY);
+      if (!verify) {
+        throw new Error("localStorage.setItem succeeded but getItem returned null");
+      }
+
+      const verifiedKeys = JSON.parse(verify);
+      const savedCount = Object.keys(verifiedKeys).length;
+
+      console.log(`[Settings] Saved ${savedCount} API keys to localStorage`);
+      console.log(`[Settings] Keys saved:`, Object.keys(verifiedKeys));
+
+      // 2. Try Supabase save (non-blocking, fire-and-forget)
+      try {
+        const supabase = createClient();
+        supabase.auth.getUser().then(({ data: { user } }) => {
+          if (user) {
+            supabase.from("profiles").update({
+              preferences: {
+                api_keys_configured: Object.keys(keyMap),
+                model_assignments: modelAssignments,
+                endpoints_count: endpoints.length,
+                last_saved: new Date().toISOString(),
+              },
+            }).eq("id", user.id).then(() => {
+              console.log("[Settings] Also saved to Supabase");
+            });
+          }
+        });
+      } catch {
+        // Supabase is optional
+      }
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 4000);
+
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown save error";
+      console.error("[Settings] Save failed:", msg);
+      setSaveError(msg);
+    }
   }
 
   function toggleVisibility(id: string) {
@@ -470,6 +498,27 @@ export default function SettingsPage() {
         </button>
       </div>
 
+      {/* Save error */}
+      {saveError && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-4 flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+          <p className="text-[13px] text-red-600">{saveError}</p>
+        </div>
+      )}
+
+      {/* Save success with details */}
+      {saved && (
+        <div className="bg-brand-green/10 border border-brand-green/20 rounded-xl p-4 mb-4">
+          <p className="text-[13px] text-brand-green font-semibold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4" />
+            Saved! {configuredCount} API keys stored to localStorage.
+          </p>
+          <p className="text-[11px] text-text-muted mt-1">
+            Keys configured: {keys.filter(k => k.value.trim()).map(k => k.label).join(", ") || "None"}
+          </p>
+        </div>
+      )}
+
       {/* Status bar */}
       <div className="bg-surface-raised rounded-xl border border-border p-3 md:p-4 mb-6 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 md:gap-3 min-w-0">
@@ -479,7 +528,7 @@ export default function SettingsPage() {
               {configuredCount}/{keys.length} providers configured
             </p>
             <p className="text-[10px] md:text-[11px] text-text-muted truncate">
-              Keys stored locally — never sent to any server
+              Keys stored in browser localStorage — never sent to any server
             </p>
           </div>
         </div>
