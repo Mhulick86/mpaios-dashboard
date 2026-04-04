@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Send,
   Paperclip,
@@ -19,7 +19,10 @@ import {
   MessageSquare,
   Trash2,
   Clock,
+  Wrench,
+  ChevronDown,
 } from "lucide-react";
+import { tools as allTools } from "@/lib/tools";
 import { AgentActivityPanel } from "@/components/AgentActivityPanel";
 import { ChatChart, parseChartBlocks } from "@/components/ChatChart";
 import {
@@ -211,6 +214,8 @@ export default function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [selectedTool, setSelectedTool] = useState<string>("orchestrator");
+  const [showToolDropdown, setShowToolDropdown] = useState(false);
 
   // Agent activity state
   const [currentActivities, setCurrentActivities] = useState<AgentActivity[]>([]);
@@ -219,6 +224,20 @@ export default function ChatPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const toolDropdownRef = useRef<HTMLDivElement>(null);
+
+  /* --- Close tool dropdown on outside click --- */
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (toolDropdownRef.current && !toolDropdownRef.current.contains(e.target as Node)) {
+        setShowToolDropdown(false);
+      }
+    }
+    if (showToolDropdown) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showToolDropdown]);
 
   /* --- Load conversations on mount --- */
   useEffect(() => {
@@ -442,6 +461,7 @@ export default function ChatPage() {
           messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })),
           ...apiKeys,
           knowledgeContext,
+          selectedTool: selectedTool !== "orchestrator" ? selectedTool : undefined,
         }),
         signal: controller.signal,
       });
@@ -571,26 +591,155 @@ export default function ChatPage() {
     if (abortRef.current) abortRef.current.abort();
   }
 
+  /* --- Agent activity inline rendering --- */
+  const AGENT_DISPLAY_NAMES: Record<number, string> = {
+    1: "Competitive Intelligence Analyst",
+    2: "Head of Strategy & Campaign Planning",
+    3: "Authority Content Strategist",
+    4: "Authority Copywriter",
+    5: "Ad Creative Director",
+    6: "Landing Page Architect",
+    7: "Meta Ads Performance Manager",
+    8: "Google Ads Performance Manager",
+    9: "Social Media Advertising Specialist",
+    10: "SEO & Organic Growth Manager",
+    11: "Social Media Organic Manager",
+    12: "Brand Sentiment & Reputation Monitor",
+    13: "Campaign Performance Analyst",
+    14: "Conversion Rate Optimization Specialist",
+    15: "Workflow Orchestrator & Task Manager",
+    16: "Client Reporting & Insights Compiler",
+    17: "Budget & Financial Operations Manager",
+    18: "System Intelligence & Memory Agent",
+  };
+
+  const ACTION_STYLES: Record<string, { bg: string; text: string; bar: string; icon: string; pct: number; label: string }> = {
+    activated: { bg: "bg-emerald-50 border-emerald-200", text: "text-emerald-700", bar: "bg-emerald-500", icon: "⚡", pct: 15, label: "Initializing" },
+    thinking:  { bg: "bg-amber-50 border-amber-200", text: "text-amber-700", bar: "bg-amber-500", icon: "🧠", pct: 45, label: "Processing" },
+    responding:{ bg: "bg-blue-50 border-blue-200", text: "text-blue-700", bar: "bg-blue-500", icon: "💬", pct: 75, label: "Generating" },
+    handoff:   { bg: "bg-purple-50 border-purple-200", text: "text-purple-700", bar: "bg-purple-500", icon: "🔄", pct: 90, label: "Handing off" },
+    complete:  { bg: "bg-gray-50 border-gray-200", text: "text-gray-600", bar: "bg-green-500", icon: "✅", pct: 100, label: "Complete" },
+  };
+
+  function renderAgentMarkerInline(agentId: number, action: string, message: string) {
+    const name = AGENT_DISPLAY_NAMES[agentId] || `Agent ${agentId}`;
+    const style = ACTION_STYLES[action] || ACTION_STYLES.activated;
+    const isComplete = action === "complete";
+    return (
+      <div className={`my-2 rounded-lg border overflow-hidden ${style.bg} text-[11px] md:text-[12px]`}>
+        <div className="flex items-center gap-2 px-3 py-2">
+          <span className="shrink-0">{style.icon}</span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <span className={`font-semibold ${style.text} truncate`}>
+                Agent {String(agentId).padStart(2, "0")} — {name}
+              </span>
+              <span className={`text-[10px] font-medium ${style.text} shrink-0`}>
+                {style.pct}%
+              </span>
+            </div>
+            {message && <p className="text-gray-600 mt-0.5 truncate">{message}</p>}
+          </div>
+        </div>
+        {/* Progress bar */}
+        <div className="h-1.5 w-full bg-black/5">
+          <div
+            className={`h-full ${style.bar} ${!isComplete ? "transition-all duration-700 ease-out" : ""}`}
+            style={{ width: `${style.pct}%` }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   /* --- Markdown rendering --- */
   function renderContent(content: string) {
-    const parsed = parseAgentActivity(content);
-    const { cleanContent: withoutLearnings } = parseLearnings(parsed.cleanContent);
-    const cleaned = withoutLearnings
+    // Instead of stripping agent markers, render them inline as styled blocks
+    const { cleanContent: withoutLearnings } = parseLearnings(content);
+    let cleaned = withoutLearnings
       .replace(/\n\n---\n📎 FILE:[\s\S]*?```\n---/g, "")
       .replace(/\n\n\[Attached file:.*?\]/g, "")
       .trim();
 
-    // Parse chart blocks first
-    const segments = parseChartBlocks(cleaned);
+    // Split content by agent markers and render them inline
+    const agentMarkerRegex = /\[AGENT:(\d{1,2}):(activated|thinking|responding|handoff|complete)\]\s*([^\[]*?)\s*\[\/AGENT\]/g;
+    const handoffRegex = /\[HANDOFF:(\d{1,2})>(\d{1,2})\]\s*([^\[]*?)\s*\[\/HANDOFF\]/g;
 
-    return segments.map((segment, segIdx) => {
-      if (segment.type === "chart") {
-        return <ChatChart key={`chart-${segIdx}`} chart={segment.chart} />;
+    // Collect all markers with their positions
+    const markers: Array<{ start: number; end: number; element: React.ReactNode }> = [];
+    let m;
+
+    while ((m = agentMarkerRegex.exec(cleaned)) !== null) {
+      markers.push({
+        start: m.index,
+        end: m.index + m[0].length,
+        element: renderAgentMarkerInline(parseInt(m[1]), m[2], m[3].trim()),
+      });
+    }
+
+    while ((m = handoffRegex.exec(cleaned)) !== null) {
+      const fromId = parseInt(m[1]);
+      const toId = parseInt(m[2]);
+      const msg = m[3].trim();
+      const toName = AGENT_DISPLAY_NAMES[toId] || `Agent ${toId}`;
+      markers.push({
+        start: m.index,
+        end: m.index + m[0].length,
+        element: renderAgentMarkerInline(fromId, "handoff", msg || `Handing off to ${toName}`),
+      });
+    }
+
+    // Sort markers by position
+    markers.sort((a, b) => a.start - b.start);
+
+    if (markers.length === 0) {
+      // No agent markers, render normally
+      const segments = parseChartBlocks(cleaned);
+      return segments.map((segment, segIdx) => {
+        if (segment.type === "chart") {
+          return <ChatChart key={`chart-${segIdx}`} chart={segment.chart} />;
+        }
+        return <div key={`text-${segIdx}`}>{renderMarkdown(segment.content)}</div>;
+      });
+    }
+
+    // Interleave text segments and agent markers
+    const elements: React.ReactNode[] = [];
+    let lastEnd = 0;
+
+    for (let i = 0; i < markers.length; i++) {
+      const marker = markers[i];
+      // Text before this marker
+      const textBefore = cleaned.slice(lastEnd, marker.start).trim();
+      if (textBefore) {
+        const segments = parseChartBlocks(textBefore);
+        segments.forEach((segment, segIdx) => {
+          if (segment.type === "chart") {
+            elements.push(<ChatChart key={`chart-${elements.length}`} chart={segment.chart} />);
+          } else {
+            elements.push(<div key={`text-${elements.length}`}>{renderMarkdown(segment.content)}</div>);
+          }
+        });
       }
-      return (
-        <div key={`text-${segIdx}`}>{renderMarkdown(segment.content)}</div>
-      );
-    });
+      // The agent marker
+      elements.push(<div key={`agent-${elements.length}`}>{marker.element}</div>);
+      lastEnd = marker.end;
+    }
+
+    // Text after last marker
+    const textAfter = cleaned.slice(lastEnd).trim();
+    if (textAfter) {
+      const segments = parseChartBlocks(textAfter);
+      segments.forEach((segment, segIdx) => {
+        if (segment.type === "chart") {
+          elements.push(<ChatChart key={`chart-${elements.length}`} chart={segment.chart} />);
+        } else {
+          elements.push(<div key={`text-${elements.length}`}>{renderMarkdown(segment.content)}</div>);
+        }
+      });
+    }
+
+    return elements;
   }
 
   function renderMarkdown(text: string) {
@@ -738,6 +887,19 @@ export default function ChatPage() {
   })();
 
   const showQuickPrompts = messages.length === 0;
+
+  // Memoize tool options so we don't rebuild on every render
+  const toolOptions = useMemo(() => allTools.map((t) => ({
+    id: t.id,
+    name: t.name,
+    color: t.color,
+    desc: t.description.length > 80 ? t.description.slice(0, 80) + "..." : t.description,
+  })), []);
+
+  const selectedToolName = useMemo(() => {
+    if (selectedTool === "orchestrator") return "All Agents";
+    return toolOptions.find((t) => t.id === selectedTool)?.name || selectedTool;
+  }, [selectedTool, toolOptions]);
 
   /* ---------- render ---------- */
   return (
@@ -973,6 +1135,92 @@ export default function ChatPage() {
 
         {/* Input Area */}
         <form onSubmit={onSubmit} className="px-3 md:px-6 py-3 border-t border-border bg-white shrink-0">
+          {/* Tool selector bar */}
+          <div className="flex items-center gap-2 mb-2">
+            <div ref={toolDropdownRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setShowToolDropdown(!showToolDropdown)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] md:text-[12px] font-medium transition-all ${
+                  selectedTool !== "orchestrator"
+                    ? "border-brand-blue/40 bg-brand-blue/5 text-brand-blue"
+                    : "border-border bg-gray-50 text-text-secondary hover:border-gray-300"
+                }`}
+              >
+                <Wrench className="w-3.5 h-3.5" />
+                <span className="max-w-[140px] md:max-w-[200px] truncate">
+                  {selectedToolName}
+                </span>
+                <ChevronDown className={`w-3 h-3 transition-transform ${showToolDropdown ? "rotate-180" : ""}`} />
+              </button>
+
+              {showToolDropdown && (
+                <div className="absolute bottom-full left-0 mb-1 w-64 md:w-80 max-h-72 overflow-y-auto rounded-xl border border-border bg-white shadow-lg z-30">
+                  <div className="p-1.5">
+                    {/* Default option */}
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedTool("orchestrator"); setShowToolDropdown(false); }}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-[11px] md:text-[12px] transition-colors ${
+                        selectedTool === "orchestrator"
+                          ? "bg-brand-blue/10 text-brand-blue font-medium"
+                          : "hover:bg-gray-50 text-text-secondary"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Bot className="w-4 h-4 shrink-0" />
+                        <div>
+                          <p className="font-medium">All Agents (Orchestrator)</p>
+                          <p className="text-[10px] text-text-muted mt-0.5">Routes to all 24 agents automatically</p>
+                        </div>
+                      </div>
+                    </button>
+
+                    <div className="h-px bg-border my-1" />
+
+                    {/* Tool list */}
+                    {toolOptions.map((tool) => (
+                      <button
+                        key={tool.id}
+                        type="button"
+                        onClick={() => { setSelectedTool(tool.id); setShowToolDropdown(false); }}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-[11px] md:text-[12px] transition-colors ${
+                          selectedTool === tool.id
+                            ? "bg-brand-blue/10 text-brand-blue font-medium"
+                            : "hover:bg-gray-50 text-text-secondary"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-4 h-4 rounded shrink-0 flex items-center justify-center text-[9px]"
+                            style={{ backgroundColor: tool.color + "20", color: tool.color }}
+                          >
+                            <Wrench className="w-2.5 h-2.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{tool.name}</p>
+                            <p className="text-[10px] text-text-muted mt-0.5 truncate">{tool.desc}</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {selectedTool !== "orchestrator" && (
+              <button
+                type="button"
+                onClick={() => setSelectedTool("orchestrator")}
+                className="text-[10px] text-text-muted hover:text-red-500 transition-colors"
+                title="Clear tool selection"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
           {/* Attachment previews */}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-3">

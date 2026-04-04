@@ -14,6 +14,8 @@ import {
   Brain,
   Shield,
   RefreshCw,
+  Loader2,
+  Download,
 } from "lucide-react";
 
 interface ApiKeyConfig {
@@ -217,10 +219,54 @@ export default function SettingsPage() {
         id: Date.now().toString(),
         name: "LM Studio",
         url: "http://localhost:1234/v1",
-        apiKey: "",
-        model: "lm-studio-local",
+        apiKey: "lm-studio",
+        model: "",
       },
     ]);
+  }
+
+  const [fetchingModels, setFetchingModels] = useState<Record<string, boolean>>({});
+  const [availableModels, setAvailableModels] = useState<Record<string, string[]>>({});
+  const [endpointErrors, setEndpointErrors] = useState<Record<string, string>>({});
+
+  async function fetchModelsForEndpoint(epId: string) {
+    const ep = endpoints.find((e) => e.id === epId);
+    if (!ep?.url) return;
+
+    setFetchingModels((prev) => ({ ...prev, [epId]: true }));
+    setEndpointErrors((prev) => ({ ...prev, [epId]: "" }));
+    try {
+      // Use server-side proxy to avoid CORS issues with localhost model servers
+      const resp = await fetch("/api/local-models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: ep.url, apiKey: ep.apiKey || undefined }),
+      });
+
+      const data = await resp.json();
+
+      if (!resp.ok || data.error) {
+        setEndpointErrors((prev) => ({ ...prev, [epId]: data.error || `Server returned ${resp.status}` }));
+        return;
+      }
+
+      const modelIds: string[] = (data.models || []).map((m: { id: string }) => m.id);
+
+      if (modelIds.length === 0) {
+        setEndpointErrors((prev) => ({ ...prev, [epId]: "No models found. Make sure the server is running and a model is loaded." }));
+        return;
+      }
+
+      setAvailableModels((prev) => ({ ...prev, [epId]: modelIds }));
+      if (modelIds.length > 0 && !ep.model) {
+        updateEndpoint(epId, "model", modelIds[0]);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setEndpointErrors((prev) => ({ ...prev, [epId]: `Connection failed: ${msg}. Local models only work when running locally.` }));
+    } finally {
+      setFetchingModels((prev) => ({ ...prev, [epId]: false }));
+    }
   }
 
   const tabs = [
@@ -464,13 +510,16 @@ export default function SettingsPage() {
                     ))}
                   </optgroup>
                 )}
-                {localModels.length > 0 && (
+                {endpoints.filter((ep) => ep.model).length > 0 && (
                   <optgroup label="⚡ Local Models">
-                    {endpoints.filter((ep) => ep.model).map((ep) => (
-                      <option key={ep.id} value={ep.model}>
-                        {ep.model} ({ep.name || "Custom"})
-                      </option>
-                    ))}
+                    {endpoints.filter((ep) => ep.model).map((ep) => {
+                      const host = (() => { try { return new URL(ep.url).host; } catch { return ep.url; } })();
+                      return (
+                        <option key={ep.id} value={ep.model}>
+                          {ep.model} — {host}{ep.name ? ` (${ep.name})` : ""}
+                        </option>
+                      );
+                    })}
                   </optgroup>
                 )}
               </select>
@@ -543,15 +592,48 @@ export default function SettingsPage() {
                   <label className="block text-[11px] font-medium text-text-muted mb-1">
                     Model ID
                   </label>
-                  <input
-                    type="text"
-                    value={ep.model}
-                    onChange={(e) =>
-                      updateEndpoint(ep.id, "model", e.target.value)
-                    }
-                    placeholder="llama3.1:70b"
-                    className="w-full px-3 py-2 border border-border rounded-lg text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue"
-                  />
+                  <div className="flex gap-2">
+                    {availableModels[ep.id]?.length ? (
+                      <select
+                        value={ep.model}
+                        onChange={(e) =>
+                          updateEndpoint(ep.id, "model", e.target.value)
+                        }
+                        className="flex-1 px-3 py-2 border border-border rounded-lg text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue bg-white"
+                      >
+                        <option value="">Select a model...</option>
+                        {availableModels[ep.id].map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={ep.model}
+                        onChange={(e) =>
+                          updateEndpoint(ep.id, "model", e.target.value)
+                        }
+                        placeholder="llama3.1:70b"
+                        className="flex-1 px-3 py-2 border border-border rounded-lg text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue"
+                      />
+                    )}
+                    <button
+                      onClick={() => fetchModelsForEndpoint(ep.id)}
+                      disabled={!ep.url || fetchingModels[ep.id]}
+                      className="px-3 py-2 border border-border rounded-lg text-[11px] font-medium hover:bg-brand-blue/5 hover:border-brand-blue/40 transition-colors disabled:opacity-40 flex items-center gap-1.5 shrink-0"
+                      title="Fetch available models from server"
+                    >
+                      {fetchingModels[ep.id] ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                      {fetchingModels[ep.id] ? "Loading..." : "Fetch"}
+                    </button>
+                  </div>
+                  {endpointErrors[ep.id] && (
+                    <p className="text-[11px] text-red-500 mt-1">{endpointErrors[ep.id]}</p>
+                  )}
                 </div>
               </div>
             </div>
