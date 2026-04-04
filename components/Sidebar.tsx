@@ -25,6 +25,7 @@ import {
   Workflow,
   LogOut,
   User,
+  MapPin,
 } from "lucide-react";
 import { getConversations } from "@/lib/conversations";
 
@@ -46,6 +47,7 @@ const navItems = [
   { href: "/knowledge", label: "Knowledge Base", icon: Brain },
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/tools", label: "Tools", icon: Wrench },
+  { href: "/local-seo", label: "Local SEO", icon: MapPin },
   { href: "/observability", label: "Observability", icon: Activity },
   { href: "/integrations", label: "Integrations", icon: Plug },
   { href: "/settings", label: "Settings", icon: Settings },
