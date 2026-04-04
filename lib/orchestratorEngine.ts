@@ -10,7 +10,6 @@ import type {
 } from "./orchestrator";
 import { ASANA_STAGES } from "./orchestrator";
 import type { IntegrationsConfig } from "./asana";
-import { generateAgentOutput } from "./agentOutputs";
 
 /* ─── Helpers ─── */
 
@@ -340,7 +339,118 @@ async function uploadToDrive(
   }
 }
 
-/* ─── Simulation Execution ─── */
+/* ─── Real LLM Agent Execution ─── */
+
+// Gets API settings from localStorage for making real LLM calls
+function getApiSettings(): { provider: string; model: string; apiKey: string; customEndpoint?: { url: string; apiKey: string; model: string } } | null {
+  try {
+    const stored = localStorage.getItem("mpaios_api_keys");
+    if (!stored) return null;
+    const keys = JSON.parse(stored) as Record<string, string>;
+
+    // Prefer Anthropic, fallback to OpenAI
+    if (keys.anthropic) {
+      return { provider: "anthropic", model: "claude-sonnet-4-20250514", apiKey: keys.anthropic };
+    }
+    if (keys.openai) {
+      return { provider: "openai", model: "gpt-4o", apiKey: keys.openai };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Gets Ahrefs API key from localStorage
+function getAhrefsKey(): string | null {
+  try {
+    const stored = localStorage.getItem("mpaios_api_keys");
+    if (!stored) return null;
+    const keys = JSON.parse(stored) as Record<string, string>;
+    return keys.ahrefs || null;
+  } catch {
+    return null;
+  }
+}
+
+// Calls the real chat API with agent-specific context
+async function callAgentLLM(params: {
+  agentId: number;
+  agentName: string;
+  action: string;
+  pipelineName: string;
+  stepIndex: number;
+  totalSteps: number;
+  previousOutputs: string[];
+  integrationContext: string;
+  userPrompt?: string;
+}): Promise<string> {
+  const settings = getApiSettings();
+  if (!settings) {
+    return `[Agent ${params.agentId} - ${params.agentName}]\n\nNo API keys configured. Go to Settings → API Keys to add an Anthropic or OpenAI key.\n\nAction requested: ${params.action}`;
+  }
+
+  const agentDef = agents.find(a => a.id === params.agentId);
+  const systemContext = `You are Agent ${String(params.agentId).padStart(2, "0")} - ${params.agentName} in the Marketing Powered AI Operating System.
+
+Your capabilities: ${agentDef?.capabilities.join(", ") || "General marketing"}
+Your tooling: ${agentDef?.tooling.join(", ") || "Standard tools"}
+
+You are executing Step ${params.stepIndex + 1} of ${params.totalSteps} in the "${params.pipelineName}" pipeline.
+
+Your task: ${params.action}
+
+RULES:
+- Produce REAL, actionable output — not placeholder or example data
+- Be specific with URLs, metrics, recommendations, and action items
+- Structure your output with clear headers and sections
+- Include data tables where relevant
+- If you reference data from integrations, cite it explicitly
+- Output in markdown format`;
+
+  let messages = `${systemContext}\n\n`;
+
+  if (params.previousOutputs.length > 0) {
+    messages += `## Context from previous steps:\n${params.previousOutputs.slice(-3).join("\n---\n").slice(0, 4000)}\n\n`;
+  }
+
+  if (params.integrationContext) {
+    messages += `## Live Integration Data:\n${params.integrationContext.slice(0, 4000)}\n\n`;
+  }
+
+  messages += `Execute your task now: ${params.action}`;
+
+  try {
+    const body: Record<string, unknown> = {
+      messages: [{ role: "user", content: messages }],
+      provider: settings.provider,
+      model: settings.model,
+    };
+
+    if (settings.provider === "anthropic") {
+      body.anthropicKey = settings.apiKey;
+    } else if (settings.provider === "openai") {
+      body.openaiKey = settings.apiKey;
+    } else if (settings.customEndpoint) {
+      body.customEndpoint = settings.customEndpoint;
+    }
+
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      return `[Agent ${params.agentId} Error]\n\n${err.error || "LLM call failed"}\n\nFalling back to task description:\n${params.action}`;
+    }
+
+    return await res.text();
+  } catch (err) {
+    return `[Agent ${params.agentId} Error]\n\n${err instanceof Error ? err.message : "Unknown error"}\n\nTask: ${params.action}`;
+  }
+}
 
 export async function executeSimulation(
   plan: OrchestrationPlan,
@@ -353,6 +463,17 @@ export async function executeSimulation(
   driveConfig?: { accessToken: string; folderId: string } | null
 ): Promise<InsightData> {
   let insights: InsightData = { gaOverview: null, gscOverview: null };
+  const stepOutputs: string[] = [];
+
+  // Check if we have API keys
+  const hasApiKeys = !!getApiSettings();
+  if (!hasApiKeys) {
+    onLog(makeLogEntry("system", "No LLM API keys configured — go to Settings to add Anthropic or OpenAI key"));
+  }
+
+  // Check for Ahrefs integration
+  const ahrefsKey = getAhrefsKey();
+  let ahrefsContext = "";
 
   for (let i = 0; i < plan.steps.length; i++) {
     const step = plan.steps[i];
@@ -361,7 +482,7 @@ export async function executeSimulation(
 
     // ── Start step ──
     onStepUpdate(i, "active");
-    onLog(makeLogEntry("agent", `${step.agentShortName} starting...`, step.action));
+    onLog(makeLogEntry("agent", `${step.agentShortName} executing...`, step.action));
 
     // Move task: Queued → In Progress
     if (pat && asanaResult && asanaTask) {
@@ -375,20 +496,50 @@ export async function executeSimulation(
       onInsightUpdate(insights);
     }
 
-    // Simulate agent work
-    await randomDelay(1200, 2500);
+    // Fetch Ahrefs data for SEO-related agents (10, 03, 01, 30, 31)
+    const SEO_AGENTS = [1, 3, 10, 21, 30, 31];
+    if (ahrefsKey && SEO_AGENTS.includes(step.agentId) && !ahrefsContext) {
+      onLog(makeLogEntry("data", "Pulling live Ahrefs SEO data..."));
+      try {
+        // Extract domain from action text if possible
+        const domainMatch = step.action.match(/(?:https?:\/\/)?([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+        const target = domainMatch?.[1] || "marketingpowered.ai";
+        const res = await fetch("/api/ahrefs/overview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ apiKey: ahrefsKey, target }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          ahrefsContext = data.markdown || "";
+          onLog(makeLogEntry("data", `Ahrefs data loaded for ${target}`, `DR, backlinks, keywords, competitors`));
+        }
+      } catch {
+        onLog(makeLogEntry("system", "Ahrefs fetch failed — continuing without SEO data"));
+      }
+    }
 
-    // ── Generate agent output ──
-    const agentOutput = generateAgentOutput({
+    // Build integration context string
+    let integrationCtx = "";
+    if (insights.gaOverview) integrationCtx += `\n${insights.gaOverview}`;
+    if (insights.gscOverview) integrationCtx += `\n${insights.gscOverview}`;
+    if (ahrefsContext) integrationCtx += `\n${ahrefsContext}`;
+
+    // ── REAL LLM Agent Call ──
+    const agentOutput = await callAgentLLM({
       agentId: step.agentId,
       agentName: step.agentName,
-      agentShortName: step.agentShortName,
       action: step.action,
+      pipelineName: plan.pipelineName,
       stepIndex: step.stepIndex,
       totalSteps: plan.steps.length,
-      pipelineName: plan.pipelineName,
-      insights,
+      previousOutputs: stepOutputs,
+      integrationContext: integrationCtx,
     });
+
+    stepOutputs.push(`## Step ${i + 1}: ${step.agentShortName}\n${agentOutput.slice(0, 2000)}`);
+
+    onLog(makeLogEntry("agent", `${step.agentShortName} produced ${agentOutput.length} chars of output`));
 
     // Write output into Asana task notes
     if (pat && asanaResult && asanaTask) {
@@ -396,9 +547,9 @@ export async function executeSimulation(
         await asanaPost("/api/asana/tasks/update", {
           pat,
           taskGid: asanaTask.gid,
-          notes: agentOutput,
+          notes: agentOutput.slice(0, 20000), // Asana has a notes limit
         });
-        onLog(makeLogEntry("asana", `Output written to task`, `${step.agentShortName} — ${agentOutput.length} chars`));
+        onLog(makeLogEntry("asana", `Output written to task`, `${step.agentShortName}`));
       } catch {
         // Non-critical
       }
@@ -413,9 +564,8 @@ export async function executeSimulation(
     // ── Human review checkpoint ──
     if (step.isHumanReview) {
       onStepUpdate(i, "human_review");
-      onLog(makeLogEntry("human", `Human review checkpoint`, `${step.agentShortName} — auto-approving for demo`));
+      onLog(makeLogEntry("human", `Human review checkpoint`, `${step.agentShortName} output ready for review`));
 
-      // Move task: In Progress → Review
       if (pat && asanaResult && asanaTask) {
         await moveToStage(pat, asanaResult, asanaTask.gid, "review", onLog, taskLabel);
       }
@@ -442,9 +592,9 @@ export async function executeSimulation(
       }
     }
 
-    // Gap between steps
+    // Brief gap between steps
     if (i < plan.steps.length - 1) {
-      await randomDelay(300, 500);
+      await randomDelay(200, 400);
     }
   }
 
