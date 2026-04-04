@@ -72,7 +72,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-brand-black flex">
       {/* ── Left: Login Form ── */}
-      <div className="w-full lg:w-[480px] flex flex-col justify-center p-8 lg:p-12 shrink-0">
+      <div className="w-full lg:w-[480px] flex flex-col justify-center items-center lg:items-start p-6 sm:p-8 lg:p-12 shrink-0">
         {/* Brand Header */}
         <div className="flex items-center gap-3 mb-10">
           <BrandLogoMark size={42} />
@@ -80,11 +80,11 @@ export default function LoginPage() {
         </div>
 
         {/* Auth Card */}
-        <div className="bg-surface-dark-raised rounded-2xl border border-border-dark p-8">
-          <h2 className="text-[22px] font-semibold text-white mb-1">
+        <div className="bg-surface-dark-raised rounded-2xl border border-border-dark p-6 sm:p-8 w-full max-w-[420px]">
+          <h2 className="text-[20px] sm:text-[22px] font-semibold text-white mb-1 text-center lg:text-left">
             {mode === "login" ? "Welcome back" : "Create your account"}
           </h2>
-          <p className="text-[13px] text-text-muted mb-8">
+          <p className="text-[13px] text-text-muted mb-8 text-center lg:text-left">
             {mode === "login"
               ? "Sign in to your AI Operating System"
               : "Start automating with 33 AI agents"}
@@ -171,7 +171,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <p className="text-[11px] text-text-muted mt-8">
+        <p className="text-[11px] text-text-muted mt-8 text-center lg:text-left">
           33 Specialized AI Agents &middot; 9 Operational Divisions &middot; Full-Stack Automation
         </p>
       </div>
