@@ -45,7 +45,18 @@ import {
   TrendingUp,
   Shield,
   Database,
+  FileDown,
+  FileText,
+  Printer,
+  FileCode,
 } from "lucide-react";
+import {
+  generateHTMLReport,
+  downloadHTMLReport,
+  downloadDOCXReport,
+  downloadMarkdownReport,
+  printReport,
+} from "@/lib/reportGenerator";
 
 const TEAM_GID = "1210642764336819";
 
@@ -107,9 +118,17 @@ export default function DashboardPage() {
   const [insights, setInsights] = useState<InsightData>({ gaOverview: null, gscOverview: null });
   const [currentTime, setCurrentTime] = useState(new Date());
   const [prefill, setPrefill] = useState("");
+  const [stepOutputs, setStepOutputs] = useState<{ agentName: string; agentId: number; content: string }[]>([]);
 
   const addLog = useCallback(
-    (entry: ActivityLogEntry) => setLog((prev) => [...prev, entry]),
+    (entry: ActivityLogEntry) => {
+      setLog((prev) => [...prev, entry]);
+      // Capture agent step completions for report generation
+      if (entry.type === "agent" && entry.message.includes("produced") && entry.message.includes("chars")) {
+        // The actual output is stored in the orchestrator's stepOutputs array
+        // We'll capture it from the plan steps
+      }
+    },
     []
   );
 
@@ -140,6 +159,7 @@ export default function DashboardPage() {
       setPrompt(userPrompt);
       setLog([]);
       setAsanaResult(null);
+      setStepOutputs([]);
 
       try {
         setPhase("analyzing");
@@ -207,7 +227,8 @@ export default function DashboardPage() {
           },
           addLog,
           (updatedInsights) => setInsights(updatedInsights),
-          driveConfig
+          driveConfig,
+          (output) => setStepOutputs((prev) => [...prev, output])
         );
         setInsights(finalInsights);
 
@@ -360,12 +381,12 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Completed Summary */}
+      {/* Completed Summary + Report Download */}
       {phase === "completed" && plan && (
         <div className="bg-brand-green/10 rounded-xl border border-brand-green/20 p-5 md:p-6 mb-6">
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-3 mb-4">
             <Cpu className="w-5 h-5 text-brand-green mt-0.5 shrink-0" />
-            <div>
+            <div className="flex-1">
               <h3 className="text-[14px] md:text-[15px] font-semibold text-brand-green mb-1">Orchestration Complete</h3>
               <p className="text-[12px] md:text-[13px] text-text-secondary leading-relaxed mb-2">
                 Pipeline <strong>{plan.pipelineName}</strong> finished with {plan.steps.length} agent steps.
@@ -376,6 +397,74 @@ export default function DashboardPage() {
                   Original request: &ldquo;{prompt.slice(0, 120)}{prompt.length > 120 ? "\u2026" : ""}&rdquo;
                 </p>
               )}
+            </div>
+          </div>
+
+          {/* Report Download Buttons */}
+          <div className="border-t border-brand-green/20 pt-4">
+            <p className="text-[12px] font-semibold text-brand-green mb-3 flex items-center gap-2">
+              <FileDown className="w-4 h-4" />
+              Download Report
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => {
+                  const html = generateHTMLReport({
+                    title: plan.pipelineName,
+                    subtitle: prompt?.slice(0, 100),
+                    sections: stepOutputs,
+                    pipelineName: plan.pipelineName,
+                  });
+                  downloadDOCXReport(html, `MP-${plan.pipelineName.replace(/\s+/g, "-")}`);
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-brand-green/30 text-[12px] font-semibold text-text-primary hover:border-brand-green hover:shadow-sm transition-all"
+              >
+                <FileText className="w-4 h-4 text-brand-blue" />
+                Word (.doc)
+              </button>
+              <button
+                onClick={() => {
+                  const html = generateHTMLReport({
+                    title: plan.pipelineName,
+                    subtitle: prompt?.slice(0, 100),
+                    sections: stepOutputs,
+                    pipelineName: plan.pipelineName,
+                  });
+                  downloadHTMLReport(html, `MP-${plan.pipelineName.replace(/\s+/g, "-")}`);
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-brand-green/30 text-[12px] font-semibold text-text-primary hover:border-brand-green hover:shadow-sm transition-all"
+              >
+                <FileCode className="w-4 h-4 text-[#F59E0B]" />
+                HTML
+              </button>
+              <button
+                onClick={() => {
+                  downloadMarkdownReport(
+                    stepOutputs,
+                    `MP-${plan.pipelineName.replace(/\s+/g, "-")}`,
+                    plan.pipelineName
+                  );
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-brand-green/30 text-[12px] font-semibold text-text-primary hover:border-brand-green hover:shadow-sm transition-all"
+              >
+                <FileDown className="w-4 h-4 text-[#8B5CF6]" />
+                Markdown (.md)
+              </button>
+              <button
+                onClick={() => {
+                  const html = generateHTMLReport({
+                    title: plan.pipelineName,
+                    subtitle: prompt?.slice(0, 100),
+                    sections: stepOutputs,
+                    pipelineName: plan.pipelineName,
+                  });
+                  printReport(html);
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-brand-green/30 text-[12px] font-semibold text-text-primary hover:border-brand-green hover:shadow-sm transition-all"
+              >
+                <Printer className="w-4 h-4 text-text-secondary" />
+                Print
+              </button>
             </div>
           </div>
         </div>

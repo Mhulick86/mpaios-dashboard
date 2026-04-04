@@ -460,7 +460,8 @@ export async function executeSimulation(
   onStepUpdate: (stepIndex: number, status: OrchestrationStep["status"]) => void,
   onLog: (entry: ActivityLogEntry) => void,
   onInsightUpdate: (insights: InsightData) => void,
-  driveConfig?: { accessToken: string; folderId: string } | null
+  driveConfig?: { accessToken: string; folderId: string } | null,
+  onStepOutput?: (output: { agentName: string; agentId: number; content: string }) => void
 ): Promise<InsightData> {
   let insights: InsightData = { gaOverview: null, gscOverview: null };
   const stepOutputs: string[] = [];
@@ -538,6 +539,9 @@ export async function executeSimulation(
     });
 
     stepOutputs.push(`## Step ${i + 1}: ${step.agentShortName}\n${agentOutput.slice(0, 2000)}`);
+
+    // Send output to report collector
+    onStepOutput?.({ agentName: step.agentName, agentId: step.agentId, content: agentOutput });
 
     onLog(makeLogEntry("agent", `${step.agentShortName} produced ${agentOutput.length} chars of output`));
 
