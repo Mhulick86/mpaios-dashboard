@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Send, Loader2, Sparkles } from "lucide-react";
 
 interface Props {
   onSubmit: (prompt: string) => void;
   disabled: boolean;
   phase: string;
+  prefill?: string;
 }
 
 const PLACEHOLDERS = [
@@ -17,11 +18,24 @@ const PLACEHOLDERS = [
   "Build an email nurture sequence for our latest lead magnet…",
 ];
 
-export function RequestInputBar({ onSubmit, disabled, phase }: Props) {
+export function RequestInputBar({ onSubmit, disabled, phase, prefill }: Props) {
   const [value, setValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
   const [placeholder] = useState(
     () => PLACEHOLDERS[Math.floor(Math.random() * PLACEHOLDERS.length)]
   );
+
+  // Pre-fill from quick-start cards
+  useEffect(() => {
+    if (prefill) {
+      setValue(prefill);
+      // Focus and place cursor at end so user can edit
+      setTimeout(() => {
+        inputRef.current?.focus();
+        inputRef.current?.setSelectionRange(prefill.length, prefill.length);
+      }, 50);
+    }
+  }, [prefill]);
 
   const handleSubmit = () => {
     const trimmed = value.trim();
@@ -35,6 +49,7 @@ export function RequestInputBar({ onSubmit, disabled, phase }: Props) {
       <div className="flex items-center gap-3 bg-surface-raised rounded-xl border border-border p-3 md:p-4 focus-within:border-brand-blue/40 transition-colors">
         <Sparkles className="w-5 h-5 text-brand-blue shrink-0" />
         <input
+          ref={inputRef}
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}

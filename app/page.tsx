@@ -106,6 +106,7 @@ export default function DashboardPage() {
   const [prompt, setPrompt] = useState("");
   const [insights, setInsights] = useState<InsightData>({ gaOverview: null, gscOverview: null });
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [prefill, setPrefill] = useState("");
 
   const addLog = useCallback(
     (entry: ActivityLogEntry) => setLog((prev) => [...prev, entry]),
@@ -328,7 +329,7 @@ export default function DashboardPage() {
 
       {/* Request Input */}
       <div className="mb-6">
-        <RequestInputBar onSubmit={handleSubmit} disabled={isRunning} phase={phase} />
+        <RequestInputBar onSubmit={handleSubmit} disabled={isRunning} phase={phase} prefill={prefill} />
       </div>
 
       {/* Orchestration Status */}
@@ -386,21 +387,21 @@ export default function DashboardPage() {
           <h2 className="text-[14px] md:text-[16px] font-semibold mb-4 text-text-secondary">Quick Start</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {[
-              { label: "Launch Campaign", desc: "Full multi-channel campaign from research to deployment", prompt: "Launch a full campaign for a new DTC skincare brand", icon: Rocket, color: "#2CACE8", agents: "02, 05, 07, 08" },
-              { label: "Onboard Client", desc: "End-to-end client discovery and Asana project setup", prompt: "Onboard a new B2B SaaS client with competitive analysis", icon: Users, color: "#08AE67", agents: "19, 01, 25" },
-              { label: "Optimize Performance", desc: "Weekly optimization cycle across all active campaigns", prompt: "Run a performance optimization cycle on all active campaigns", icon: TrendingUp, color: "#F59E0B", agents: "13, 14, 07, 08" },
-              { label: "Content Engine", desc: "Produce authority content with SEO and social distribution", prompt: "Create an authority content piece on AI marketing trends", icon: Brain, color: "#8B5CF6", agents: "03, 04, 10, 21" },
-              { label: "AI Visibility Audit", desc: "Audit brand presence across ChatGPT, Claude, Perplexity", prompt: "Run an LLMO audit for our brand across AI search platforms", icon: Search, color: "#EF4444", agents: "21, 10, 03" },
-              { label: "Local SEO Scan", desc: "GEO grid rank scan and Google Business Profile audit", prompt: "Run a local SEO geo-grid scan for our top 3 service areas and audit our GBP listing", icon: MapPin, color: "#14B8A6", agents: "31, 32, 33" },
-              { label: "Email Sequences", desc: "Build automated nurture workflows with behavioral triggers", prompt: "Build an email nurture sequence for our free trial signups", icon: Mail, color: "#0EA5E9", agents: "24, 04, 14" },
-              { label: "Revenue Intelligence", desc: "Client LTV analysis, churn prediction, and upsell scan", prompt: "Run a revenue intelligence report across all active clients with churn risk and upsell opportunities", icon: BarChart3, color: "#F97316", agents: "27, 25, 26" },
-              { label: "Market Research", desc: "Industry trends, competitive landscape, and TAM analysis", prompt: "Conduct market research on the behavioral health industry with TAM analysis and competitor mapping", icon: Target, color: "#EC4899", agents: "30, 01, 29" },
+              { label: "Launch Campaign", desc: "Full multi-channel campaign from research to deployment", prompt: "Launch a full campaign for [CLIENT/BRAND NAME] targeting [AUDIENCE] across [CHANNELS]", icon: Rocket, color: "#2CACE8", agents: "02, 05, 07, 08" },
+              { label: "Onboard Client", desc: "End-to-end client discovery and Asana project setup", prompt: "Onboard new client [CLIENT NAME] in the [INDUSTRY] vertical with competitive analysis", icon: Users, color: "#08AE67", agents: "19, 01, 25" },
+              { label: "Optimize Performance", desc: "Weekly optimization cycle across all active campaigns", prompt: "Run a performance optimization cycle on all active campaigns for [CLIENT NAME]", icon: TrendingUp, color: "#F59E0B", agents: "13, 14, 07, 08" },
+              { label: "Content Engine", desc: "Produce authority content with SEO and social distribution", prompt: "Create an authority content piece about [TOPIC] for [CLIENT/BRAND] targeting [AUDIENCE]", icon: Brain, color: "#8B5CF6", agents: "03, 04, 10, 21" },
+              { label: "AI Visibility Audit", desc: "Audit brand presence across ChatGPT, Claude, Perplexity", prompt: "Run an LLMO audit for [BRAND NAME] across ChatGPT, Claude, Perplexity, and Google AI Overviews", icon: Search, color: "#EF4444", agents: "21, 10, 03" },
+              { label: "Local SEO Scan", desc: "GEO grid rank scan and Google Business Profile audit", prompt: "Run a local SEO geo-grid scan for [BUSINESS NAME] in [CITY/SERVICE AREA] and audit the GBP listing", icon: MapPin, color: "#14B8A6", agents: "31, 32, 33" },
+              { label: "Email Sequences", desc: "Build automated nurture workflows with behavioral triggers", prompt: "Build an email nurture sequence for [CLIENT NAME] targeting [AUDIENCE/SEGMENT] with [GOAL]", icon: Mail, color: "#0EA5E9", agents: "24, 04, 14" },
+              { label: "Revenue Intelligence", desc: "Client LTV analysis, churn prediction, and upsell scan", prompt: "Run a revenue intelligence report for [CLIENT NAME] with churn risk analysis and upsell opportunities", icon: BarChart3, color: "#F97316", agents: "27, 25, 26" },
+              { label: "Market Research", desc: "Industry trends, competitive landscape, and TAM analysis", prompt: "Conduct market research on the [INDUSTRY] industry with TAM analysis and competitor mapping", icon: Target, color: "#EC4899", agents: "30, 01, 29" },
             ].map((item) => {
               const Icon = item.icon;
               return (
                 <button
                   key={item.label}
-                  onClick={() => handleSubmit(item.prompt)}
+                  onClick={() => { setPrefill(item.prompt); window.scrollTo({ top: 0, behavior: "smooth" }); }}
                   className="text-left bg-surface-raised rounded-xl border border-border p-4 hover:border-opacity-50 transition-all group relative overflow-hidden"
                   style={{ borderTopWidth: 2, borderTopColor: item.color }}
                 >
