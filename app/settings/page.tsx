@@ -16,7 +16,9 @@ import {
   RefreshCw,
   Loader2,
   Download,
+  HardDrive,
 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 interface ApiKeyConfig {
   id: string;
@@ -39,13 +41,14 @@ interface CustomEndpoint {
 }
 
 const defaultKeys: ApiKeyConfig[] = [
+  // ── LLM Providers ──
   {
     id: "openai",
     label: "OpenAI",
     provider: "OpenAI",
     envVar: "OPENAI_API_KEY",
     value: "",
-    description: "Powers GPT-4o agents for strategy, copywriting, and analysis",
+    description: "GPT-4o for strategy, copywriting, and analysis",
     docsUrl: "https://platform.openai.com/api-keys",
     models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "o1", "o3-mini"],
     required: true,
@@ -56,7 +59,7 @@ const defaultKeys: ApiKeyConfig[] = [
     provider: "Anthropic",
     envVar: "ANTHROPIC_API_KEY",
     value: "",
-    description: "Powers Claude agents for orchestration, content, and reasoning",
+    description: "Claude for orchestration, content, and reasoning",
     docsUrl: "https://console.anthropic.com/settings/keys",
     models: ["claude-sonnet-4-20250514", "claude-3.5-haiku", "claude-3-opus"],
     required: true,
@@ -67,9 +70,9 @@ const defaultKeys: ApiKeyConfig[] = [
     provider: "Google",
     envVar: "GOOGLE_API_KEY",
     value: "",
-    description: "Powers Gemini agents for multimodal analysis and search grounding",
+    description: "Gemini for multimodal analysis and search grounding",
     docsUrl: "https://aistudio.google.com/apikey",
-    models: ["gemini-2.0-flash", "gemini-2.0-pro", "gemini-1.5-pro"],
+    models: ["gemini-2.0-flash", "gemini-2.5-pro", "gemini-2.5-flash"],
     required: false,
   },
   {
@@ -78,20 +81,21 @@ const defaultKeys: ApiKeyConfig[] = [
     provider: "Perplexity",
     envVar: "PERPLEXITY_API_KEY",
     value: "",
-    description: "Real-time web search for competitive intelligence and trend analysis",
+    description: "Real-time web search for competitive intel and LLMO audits",
     docsUrl: "https://docs.perplexity.ai",
     models: ["sonar-pro", "sonar"],
     required: false,
   },
+  // ── SEO & Search ──
   {
-    id: "stability",
-    label: "Stability AI",
-    provider: "Stability",
-    envVar: "STABILITY_API_KEY",
+    id: "ahrefs",
+    label: "Ahrefs",
+    provider: "Ahrefs",
+    envVar: "AHREFS_API_KEY",
     value: "",
-    description: "Image generation for ad creatives, social assets, and landing pages",
-    docsUrl: "https://platform.stability.ai/account/keys",
-    models: ["stable-diffusion-xl", "stable-image-core"],
+    description: "Backlink analysis, keyword research, site audits, competitor SEO (Agents 03, 10, 30)",
+    docsUrl: "https://ahrefs.com/api",
+    models: [],
     required: false,
   },
   {
@@ -100,8 +104,123 @@ const defaultKeys: ApiKeyConfig[] = [
     provider: "SerpAPI",
     envVar: "SERPAPI_KEY",
     value: "",
-    description: "Search engine results for SEO analysis and keyword research",
+    description: "SERP scraping for rank tracking and local pack monitoring (Agents 10, 31)",
     docsUrl: "https://serpapi.com/manage-api-key",
+    models: [],
+    required: false,
+  },
+  {
+    id: "dataforseo",
+    label: "DataForSEO",
+    provider: "DataForSEO",
+    envVar: "DATAFORSEO_API_KEY",
+    value: "",
+    description: "GEO grid rank tracking, local SERP data, Google Maps rankings (Agent 31)",
+    docsUrl: "https://dataforseo.com/apis",
+    models: [],
+    required: false,
+  },
+  // ── Advertising Platforms ──
+  {
+    id: "meta",
+    label: "Meta Marketing API",
+    provider: "Meta",
+    envVar: "META_ACCESS_TOKEN",
+    value: "",
+    description: "Facebook & Instagram ad creation, optimization, audience building (Agent 07)",
+    docsUrl: "https://developers.facebook.com/docs/marketing-apis/",
+    models: [],
+    required: false,
+  },
+  {
+    id: "google_ads",
+    label: "Google Ads API",
+    provider: "Google",
+    envVar: "GOOGLE_ADS_DEVELOPER_TOKEN",
+    value: "",
+    description: "Search, Display, PMax, YouTube ad management (Agent 08)",
+    docsUrl: "https://developers.google.com/google-ads/api/docs/start",
+    models: [],
+    required: false,
+  },
+  // ── Local & Maps ──
+  {
+    id: "google_places",
+    label: "Google Places / Maps API",
+    provider: "Google",
+    envVar: "GOOGLE_PLACES_API_KEY",
+    value: "",
+    description: "GBP data, local business info, geo-grid scanning, map rankings (Agents 31, 32)",
+    docsUrl: "https://console.cloud.google.com/apis/library/places-backend.googleapis.com",
+    models: [],
+    required: false,
+  },
+  // ── Email & CRM ──
+  {
+    id: "sendgrid",
+    label: "SendGrid",
+    provider: "SendGrid",
+    envVar: "SENDGRID_API_KEY",
+    value: "",
+    description: "Email sending, nurture sequences, deliverability tracking (Agent 24)",
+    docsUrl: "https://app.sendgrid.com/settings/api_keys",
+    models: [],
+    required: false,
+  },
+  {
+    id: "hubspot",
+    label: "HubSpot CRM",
+    provider: "HubSpot",
+    envVar: "HUBSPOT_API_KEY",
+    value: "",
+    description: "CRM sync, contact management, deal tracking, client lifecycle (Agents 25, 26)",
+    docsUrl: "https://developers.hubspot.com/docs/api/private-apps",
+    models: [],
+    required: false,
+  },
+  // ── Creative & Media ──
+  {
+    id: "stability",
+    label: "Stability AI",
+    provider: "Stability",
+    envVar: "STABILITY_API_KEY",
+    value: "",
+    description: "AI image generation for ad creatives and social assets (Agent 05)",
+    docsUrl: "https://platform.stability.ai/account/keys",
+    models: ["stable-diffusion-xl", "stable-image-core"],
+    required: false,
+  },
+  {
+    id: "canva",
+    label: "Canva Connect API",
+    provider: "Canva",
+    envVar: "CANVA_API_KEY",
+    value: "",
+    description: "Design asset creation, brand templates, social graphics (Agent 05)",
+    docsUrl: "https://www.canva.dev/docs/connect/",
+    models: [],
+    required: false,
+  },
+  // ── Analytics & Monitoring ──
+  {
+    id: "stripe",
+    label: "Stripe",
+    provider: "Stripe",
+    envVar: "STRIPE_SECRET_KEY",
+    value: "",
+    description: "Payment data, revenue tracking, MRR/LTV calculations (Agent 27)",
+    docsUrl: "https://dashboard.stripe.com/apikeys",
+    models: [],
+    required: false,
+  },
+  {
+    id: "slack",
+    label: "Slack Webhook",
+    provider: "Slack",
+    envVar: "SLACK_WEBHOOK_URL",
+    value: "",
+    description: "Real-time notifications, alerts, agent status updates",
+    docsUrl: "https://api.slack.com/messaging/webhooks",
     models: [],
     required: false,
   },
@@ -119,17 +238,23 @@ type AgentRole =
   | "ads"
   | "seo"
   | "analytics"
-  | "operations";
+  | "operations"
+  | "client_success"
+  | "data_engineering"
+  | "local_community";
 
 const agentRoles: { role: AgentRole; label: string; description: string }[] = [
   { role: "orchestrator", label: "Orchestrator", description: "Central routing and coordination" },
-  { role: "strategy", label: "Strategy & Intelligence", description: "Agents 1-2" },
-  { role: "content", label: "Content & Copywriting", description: "Agents 3-4" },
-  { role: "creative", label: "Creative & Landing Pages", description: "Agents 5-6" },
-  { role: "ads", label: "Paid Media", description: "Agents 7-9" },
-  { role: "seo", label: "Organic & Social", description: "Agents 10-12" },
-  { role: "analytics", label: "Analytics & CRO", description: "Agents 13-14" },
-  { role: "operations", label: "Operations & Infra", description: "Agents 15-18" },
+  { role: "strategy", label: "Strategy & Intelligence", description: "Agents 01-02, 19" },
+  { role: "content", label: "Content & Copywriting", description: "Agents 03-06, 20" },
+  { role: "creative", label: "Creative & Landing Pages", description: "Agents 05-06" },
+  { role: "ads", label: "Paid Media", description: "Agents 07-09" },
+  { role: "seo", label: "Organic & Authority", description: "Agents 10-12, 21, 23" },
+  { role: "analytics", label: "Analytics & Optimization", description: "Agents 13-14, 22" },
+  { role: "operations", label: "Operations & Infra", description: "Agents 15-18, 24" },
+  { role: "client_success", label: "Client Success & Revenue", description: "Agents 25-27" },
+  { role: "data_engineering", label: "Data Engineering & Intelligence", description: "Agents 28-30" },
+  { role: "local_community", label: "Local & Community Growth", description: "Agents 31-33" },
 ];
 
 export default function SettingsPage() {
@@ -147,6 +272,9 @@ export default function SettingsPage() {
     seo: "gpt-4o-mini",
     analytics: "gpt-4o",
     operations: "claude-3.5-haiku",
+    client_success: "gpt-4o",
+    data_engineering: "gpt-4o-mini",
+    local_community: "gpt-4o-mini",
   });
 
   // Load from localStorage
@@ -166,16 +294,51 @@ export default function SettingsPage() {
     } catch {}
   }, []);
 
-  function handleSave() {
+  async function handleSave() {
+    // Build key map
     const keyMap: Record<string, string> = {};
     keys.forEach((k) => {
       if (k.value) keyMap[k.id] = k.value;
     });
+
+    // 1. Hard save to localStorage (instant)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(keyMap));
     localStorage.setItem(ENDPOINTS_KEY, JSON.stringify(endpoints));
     localStorage.setItem(MODEL_ASSIGNMENTS_KEY, JSON.stringify(modelAssignments));
+
+    // Also store in the unified ai-settings key for chat API compatibility
+    localStorage.setItem("ai-settings", JSON.stringify({
+      providers: {
+        openai: { apiKey: keyMap.openai || "" },
+        anthropic: { apiKey: keyMap.anthropic || "" },
+        google: { apiKey: keyMap.google || "" },
+        perplexity: { apiKey: keyMap.perplexity || "" },
+      },
+      keys: keyMap,
+      endpoints,
+      modelAssignments,
+    }));
+
+    // 2. Hard save to Supabase (persistent across devices)
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from("profiles").update({
+          preferences: {
+            api_keys_configured: Object.keys(keyMap),
+            model_assignments: modelAssignments,
+            endpoints_count: endpoints.length,
+            last_saved: new Date().toISOString(),
+          },
+        }).eq("id", user.id);
+      }
+    } catch {
+      // Supabase save failed silently - localStorage is the primary store
+    }
+
     setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    setTimeout(() => setSaved(false), 3000);
   }
 
   function toggleVisibility(id: string) {
@@ -286,21 +449,21 @@ export default function SettingsPage() {
         </div>
         <button
           onClick={handleSave}
-          className={`px-3 md:px-4 py-2 text-[12px] md:text-[13px] font-medium rounded-lg transition-all flex items-center gap-2 shrink-0 ${
+          className={`px-3 md:px-5 py-2.5 text-[12px] md:text-[13px] font-semibold rounded-lg transition-all flex items-center gap-2 shrink-0 shadow-sm ${
             saved
-              ? "bg-brand-green text-white"
-              : "bg-brand-blue text-white hover:bg-brand-blue-dark"
+              ? "bg-brand-green text-white shadow-brand-green/20"
+              : "bg-brand-blue text-white hover:bg-brand-blue-dark shadow-brand-blue/20"
           }`}
         >
           {saved ? (
             <>
               <CheckCircle2 className="w-4 h-4" />
-              Saved
+              Saved to Device + Cloud
             </>
           ) : (
             <>
-              <Save className="w-4 h-4" />
-              <span className="hidden sm:inline">Save Changes</span>
+              <HardDrive className="w-4 h-4" />
+              <span className="hidden sm:inline">Hard Save</span>
               <span className="sm:hidden">Save</span>
             </>
           )}
