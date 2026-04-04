@@ -409,13 +409,12 @@ export default function DashboardPage() {
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => {
-                  const html = generateHTMLReport({
-                    title: plan.pipelineName,
-                    subtitle: prompt?.slice(0, 100),
-                    sections: stepOutputs,
-                    pipelineName: plan.pipelineName,
-                  });
-                  downloadDOCXReport(html, `MP-${plan.pipelineName.replace(/\s+/g, "-")}`);
+                  downloadDOCXReport(
+                    stepOutputs,
+                    `MP-${plan.pipelineName.replace(/\s+/g, "-")}`,
+                    plan.pipelineName,
+                    prompt?.slice(0, 100)
+                  );
                 }}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-brand-green/30 text-[12px] font-semibold text-text-primary hover:border-brand-green hover:shadow-sm transition-all"
               >
@@ -438,13 +437,11 @@ export default function DashboardPage() {
                 HTML
               </button>
               <button
-                onClick={() => {
-                  downloadMarkdownReport(
-                    stepOutputs,
-                    `MP-${plan.pipelineName.replace(/\s+/g, "-")}`,
-                    plan.pipelineName
-                  );
-                }}
+                onClick={() => downloadMarkdownReport(
+                  stepOutputs,
+                  `MP-${plan.pipelineName.replace(/\s+/g, "-")}`,
+                  plan.pipelineName
+                )}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-brand-green/30 text-[12px] font-semibold text-text-primary hover:border-brand-green hover:shadow-sm transition-all"
               >
                 <FileDown className="w-4 h-4 text-[#8B5CF6]" />
