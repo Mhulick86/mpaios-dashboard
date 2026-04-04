@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Desktop_Commander__list_directory",
+      "mcp__Desktop_Commander__read_file",
+      "Bash(npx next build)",
+      "Bash(npx next lint)",
+      "Bash(grep -r \"memory\\\\|context\\\\|knowledge\" /Users/mikehulick/Downloads/mpaios/*.md)",
+      "Bash(npm run build)",
+      "Bash(pandoc \"/Users/mikehulick/Downloads/Project Arsenal 2/CMO Arsenal UI Buildout_ \\(1\\).docx\" -t plain --wrap=none)",
+      "Bash(python3 -c \":*)",
+      "Bash(npm install recharts)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(lsof -ti :3000)",
+      "Bash(kill 95254)",
+      "Read(//Users/mikehulick/Downloads/**)",
+      "Bash(mkdir -p /tmp/kimi_agent)",
+      "Bash(unzip -o \"Kimi_Agent_营销自动化部署指南.zip\" -d /tmp/kimi_agent)",
+      "mcp__Desktop_Commander__get_file_info",
+      "mcp__Desktop_Commander__start_process",
+      "mcp__Desktop_Commander__read_process_output",
+      "Bash(kill 17413)",
+      "Bash(gh auth:*)",
+      "Bash(gh repo:*)",
+      "Bash(npx create-next-app@latest mp-local-seo --typescript --tailwind --eslint --app --src-dir --no-import-alias --use-npm)",
+      "Bash(npx create-next-app@latest mp-local-seo --typescript --tailwind --eslint --app --src-dir --no-import-alias --use-npm --no-turbopack)",
+      "Bash(mkdir -p /Users/mikehulick/Downloads/mp-local-seo)",
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npx vercel:*)"
+    ]
+  }
+}
