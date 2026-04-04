@@ -4,7 +4,7 @@ import { AppShell } from "@/components/AppShell";
 
 export const metadata: Metadata = {
   title: "Marketing Powered | AI Operating System",
-  description: "24 Specialized AI Agents. 6 Operational Divisions. Full-Stack Agency Automation.",
+  description: "33 Specialized AI Agents. 9 Operational Divisions. Full-Stack Agency Automation.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
