@@ -88,6 +88,7 @@ export default function TeamPage() {
 
       // Create invitation record
       const { data, error } = await supabase.from("invitations").insert({
+        invited_by: user?.id,
         email: inviteEmail.trim().toLowerCase(),
         role: inviteRole,
       }).select().single();
