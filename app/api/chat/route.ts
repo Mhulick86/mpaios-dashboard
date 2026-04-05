@@ -550,6 +550,39 @@ export async function POST(req: Request) {
         latency_ms: latencyMs,
       }).then(() => {});
 
+      // Extract and log agent executions from response markers
+      const agentPattern = /\[AGENT:(\d{1,2}):(activated|executing|thinking|responding|handoff|complete)\]\s*([^\[]*?)\s*\[\/AGENT\]/g;
+      let agentMatch;
+      const seenAgents = new Set<number>();
+      while ((agentMatch = agentPattern.exec(result.text)) !== null) {
+        const agentId = parseInt(agentMatch[1]);
+        const action = agentMatch[2];
+        const message = agentMatch[3].trim();
+        if (!seenAgents.has(agentId)) {
+          seenAgents.add(agentId);
+          const agentNames: Record<number, string> = {
+            1:"Competitive Intel",2:"Head of Strategy",3:"Content Strategist",4:"Copywriter",5:"Creative Director",
+            6:"Landing Pages",7:"Meta Ads",8:"Google Ads",9:"Social Ads",10:"SEO Manager",11:"Social Organic",
+            12:"Brand Monitor",13:"Performance Analyst",14:"CRO Specialist",15:"Workflow Orchestrator",
+            16:"Client Reporting",17:"Budget Manager",18:"System Intelligence",19:"Client Onboarding",
+            20:"Video Producer",21:"LLMO Specialist",22:"Brand QA",23:"PR Manager",24:"Email Automation",
+            25:"Client Success",26:"Proposal Strategist",27:"Revenue Intel",28:"Data Engineer",
+            29:"Predictive Analytics",30:"Market Research",31:"Local SEO",32:"GBP Manager",33:"Community Growth",
+          };
+          supabase.from("agent_executions").insert({
+            agent_id: agentId,
+            agent_name: agentNames[agentId] || `Agent ${agentId}`,
+            division: agentId <= 2 || agentId === 19 ? "Strategy" : agentId <= 6 || agentId === 20 ? "Content" : agentId <= 9 ? "Paid Media" : agentId <= 12 || agentId === 21 || agentId === 23 ? "Organic" : agentId <= 14 || agentId === 22 ? "Analytics" : agentId <= 18 || agentId === 24 ? "Operations" : agentId <= 27 ? "Client Success" : agentId <= 30 ? "Data Engineering" : "Local",
+            action: message || action,
+            status: "completed",
+            tokens_used: Math.ceil((tokensInput + tokensOutput) / Math.max(seenAgents.size, 1)),
+            cost: ((tokensInput * 0.000003) + (tokensOutput * 0.000015)) / Math.max(seenAgents.size, 1),
+            latency_ms: latencyMs,
+            completed_at: new Date().toISOString(),
+          }).then(() => {});
+        }
+      }
+
       // Extract and store learning markers from response
       const learningPattern = /\[LEARNING:(\w+):(\w+)\]\s*(.+?)\s*\[\/LEARNING\]/gs;
       let match;
