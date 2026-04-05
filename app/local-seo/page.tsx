@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   MapPin, Search, Globe, Star, AlertTriangle, CheckCircle2,
   TrendingUp, TrendingDown, Minus, BarChart3, Building2,
   Phone, Clock, Camera, MessageSquare, Loader2, Zap,
+  History, ArrowUpRight, ArrowDownRight, Trash2,
 } from "lucide-react";
+import { saveScan, getScanHistory, deleteScan, compareScanPoints, type ScanRecord } from "@/lib/localSeoHistory";
 
 /* ── Types ── */
 interface GridPoint {
@@ -110,15 +112,38 @@ export default function LocalSEOPage() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<GridPoint | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "heatmap">("grid");
+  const [history, setHistory] = useState<ScanRecord[]>([]);
+  const [compareScan, setCompareScan] = useState<ScanRecord | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+
+  // Load scan history on mount
+  useEffect(() => {
+    getScanHistory({ limit: 20 }).then(setHistory);
+  }, []);
 
   const handleScan = async () => {
     if (!keyword.trim() || !businessName.trim()) return;
     setScanning(true);
-    // Simulate scan delay (replace with real API call)
     await new Promise(r => setTimeout(r, 2000));
     const result = generateScan(keyword, businessName, gridSize);
     setScanResult(result);
     setScanning(false);
+
+    // Save to Supabase
+    const saved = await saveScan({
+      businessName: result.businessName,
+      keyword: result.keyword,
+      gridSize: result.gridSize,
+      avgRank: result.avgRank,
+      topRank: result.topRank,
+      visibility: result.visibility,
+      totalPoints: result.points.length,
+      rankingPoints: result.points.filter(p => p.rank !== null).length,
+      points: result.points,
+    });
+    if (saved) {
+      setHistory(prev => [saved, ...prev]);
+    }
   };
 
   return (
@@ -420,7 +445,7 @@ export default function LocalSEOPage() {
       )}
 
       {/* Empty State */}
-      {!scanResult && !scanning && (
+      {!scanResult && !scanning && history.length === 0 && (
         <div className="bg-surface-raised rounded-xl border border-border p-12 text-center">
           <MapPin className="w-12 h-12 text-brand-blue/20 mx-auto mb-4" />
           <h3 className="text-[16px] font-semibold mb-2">GEO Grid Rank Scanner</h3>
@@ -438,6 +463,144 @@ export default function LocalSEOPage() {
                 {kw}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Scan History ── */}
+      {history.length > 0 && (
+        <div className="mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-[14px] md:text-[16px] font-semibold flex items-center gap-2">
+              <History className="w-4 h-4 text-brand-blue" />
+              Scan History
+            </h2>
+            <span className="text-[11px] text-text-muted">{history.length} scans saved</span>
+          </div>
+
+          {/* Trend Chart (if 2+ scans for same keyword) */}
+          {(() => {
+            const keywordScans = scanResult
+              ? history.filter(s => s.keyword === scanResult.keyword).reverse()
+              : [];
+            if (keywordScans.length >= 2) {
+              return (
+                <div className="bg-surface-raised rounded-xl border border-border p-5 mb-4">
+                  <h3 className="text-[13px] font-semibold mb-3">
+                    Trend: &ldquo;{scanResult!.keyword}&rdquo; over {keywordScans.length} scans
+                  </h3>
+                  <div className="flex items-end gap-1 h-[80px]">
+                    {keywordScans.map((scan, i) => {
+                      const maxVis = Math.max(...keywordScans.map(s => s.visibility), 1);
+                      const height = (scan.visibility / maxVis) * 100;
+                      const isLatest = i === keywordScans.length - 1;
+                      return (
+                        <div key={scan.id} className="flex-1 flex flex-col items-center gap-1">
+                          <span className="text-[9px] font-semibold" style={{ color: isLatest ? "#2CACE8" : "#9ca3af" }}>
+                            {scan.visibility}%
+                          </span>
+                          <div
+                            className="w-full rounded-t transition-all"
+                            style={{
+                              height: `${Math.max(height, 5)}%`,
+                              backgroundColor: isLatest ? "#2CACE8" : "#e5e7eb",
+                            }}
+                          />
+                          <span className="text-[8px] text-text-muted">
+                            {new Date(scan.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center justify-between mt-2 text-[10px] text-text-muted">
+                    <span>Top 3 Visibility %</span>
+                    {keywordScans.length >= 2 && (() => {
+                      const first = keywordScans[0].visibility;
+                      const last = keywordScans[keywordScans.length - 1].visibility;
+                      const diff = last - first;
+                      return (
+                        <span className={`font-semibold flex items-center gap-0.5 ${diff > 0 ? "text-brand-green" : diff < 0 ? "text-red-500" : "text-text-muted"}`}>
+                          {diff > 0 ? <ArrowUpRight className="w-3 h-3" /> : diff < 0 ? <ArrowDownRight className="w-3 h-3" /> : null}
+                          {diff > 0 ? "+" : ""}{diff}% overall
+                        </span>
+                      );
+                    })()}
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
+
+          {/* History Table */}
+          <div className="bg-surface-raised rounded-xl border border-border overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border bg-gray-50/50">
+                    <th className="text-left text-[10px] font-semibold text-text-muted uppercase tracking-wider px-4 py-2.5">Date</th>
+                    <th className="text-left text-[10px] font-semibold text-text-muted uppercase tracking-wider px-4 py-2.5">Keyword</th>
+                    <th className="text-left text-[10px] font-semibold text-text-muted uppercase tracking-wider px-4 py-2.5">Business</th>
+                    <th className="text-center text-[10px] font-semibold text-text-muted uppercase tracking-wider px-4 py-2.5">Grid</th>
+                    <th className="text-center text-[10px] font-semibold text-text-muted uppercase tracking-wider px-4 py-2.5">Avg Rank</th>
+                    <th className="text-center text-[10px] font-semibold text-text-muted uppercase tracking-wider px-4 py-2.5">Best</th>
+                    <th className="text-center text-[10px] font-semibold text-text-muted uppercase tracking-wider px-4 py-2.5">Visibility</th>
+                    <th className="text-center text-[10px] font-semibold text-text-muted uppercase tracking-wider px-4 py-2.5">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((scan) => (
+                    <tr key={scan.id} className="border-b border-border last:border-0 hover:bg-gray-50/30 transition-colors">
+                      <td className="px-4 py-2.5 text-[12px] text-text-secondary">
+                        {new Date(scan.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </td>
+                      <td className="px-4 py-2.5 text-[12px] font-medium">{scan.keyword}</td>
+                      <td className="px-4 py-2.5 text-[12px] text-text-secondary">{scan.business_name}</td>
+                      <td className="px-4 py-2.5 text-[12px] text-center text-text-muted">{scan.grid_size}x{scan.grid_size}</td>
+                      <td className="px-4 py-2.5 text-[12px] text-center font-semibold">{scan.avg_rank}</td>
+                      <td className="px-4 py-2.5 text-[12px] text-center font-semibold text-brand-green">#{scan.top_rank}</td>
+                      <td className="px-4 py-2.5 text-[12px] text-center">
+                        <span className={`font-semibold ${scan.visibility >= 50 ? "text-brand-green" : scan.visibility >= 25 ? "text-brand-blue" : "text-[#F59E0B]"}`}>
+                          {scan.visibility}%
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => {
+                              setScanResult({
+                                keyword: scan.keyword,
+                                businessName: scan.business_name,
+                                gridSize: scan.grid_size,
+                                points: scan.points,
+                                avgRank: scan.avg_rank,
+                                topRank: scan.top_rank,
+                                visibility: scan.visibility,
+                                scanDate: scan.created_at,
+                              });
+                              window.scrollTo({ top: 0, behavior: "smooth" });
+                            }}
+                            className="px-2 py-1 rounded text-[10px] font-medium text-brand-blue bg-brand-blue/5 hover:bg-brand-blue/10 transition-colors"
+                          >
+                            View
+                          </button>
+                          <button
+                            onClick={async () => {
+                              await deleteScan(scan.id);
+                              setHistory(prev => prev.filter(s => s.id !== scan.id));
+                            }}
+                            className="p-1 rounded text-text-muted hover:text-red-500 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

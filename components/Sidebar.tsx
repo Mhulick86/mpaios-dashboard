@@ -49,6 +49,7 @@ const navItems = [
   { href: "/tools", label: "Tools", icon: Wrench },
   { href: "/local-seo", label: "Local SEO", icon: MapPin },
   { href: "/observability", label: "Observability", icon: Activity },
+  { href: "/team", label: "Team", icon: Users },
   { href: "/integrations", label: "Integrations", icon: Plug },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
