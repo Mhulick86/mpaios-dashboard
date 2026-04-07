@@ -392,33 +392,59 @@ async function callAgentLLM(params: {
 
   const agentDef = agents.find(a => a.id === params.agentId);
 
-  // Build a direct, execution-focused prompt — NO role-playing delays
-  const systemPrompt = `You are a marketing specialist executing a task RIGHT NOW. You must produce the COMPLETE deliverable in this single response. Do NOT say you'll "get back to" anyone, do NOT say "this will take X hours", do NOT defer any work. Execute the task fully and output the finished work product.
+  const agentCapabilities = agentDef?.capabilities.join(", ") || "General marketing";
+  const agentTooling = agentDef?.tooling?.join(", ") || "";
+  const agentDescription = agentDef?.description || "";
+  const agentDivision = agentDef?.division || "";
+  const paddedId = String(params.agentId).padStart(2, "0");
+  const isFirstStep = params.stepIndex === 0;
+  const isLastStep = params.stepIndex === params.totalSteps - 1;
 
-IDENTITY: Agent ${String(params.agentId).padStart(2, "0")} - ${params.agentName}
-CAPABILITIES: ${agentDef?.capabilities.join(", ") || "General marketing"}
+  const systemPrompt = `You are Agent ${paddedId} — ${params.agentName} — a specialized marketing agent operating within MPAIOS, a multi-agent marketing automation platform built by Marketing Powered LLC.
 
-CRITICAL RULES:
-1. DELIVER THE WORK NOW. Not later. Not in an hour. RIGHT NOW in this response.
-2. Output the ACTUAL deliverable — the report, the analysis, the strategy, the content, the audit.
-3. Use real data if integration data is provided below. Otherwise use your knowledge.
-4. Format in clean markdown with headers, bullet points, and tables.
-5. Be specific: real URLs, real metrics, real recommendations, real action items.
-6. Do NOT ask questions. Do NOT say "I would need..." — just DO IT with what you have.
-7. Do NOT include meta-commentary about what you're doing. Just output the work.
-8. Minimum 500 words of substantive output. This is a professional deliverable.`;
+## Your Identity
+- **Role:** ${params.agentName}
+- **Division:** ${agentDivision}
+- **Expertise:** ${agentDescription}
+- **Core Capabilities:** ${agentCapabilities}${agentTooling ? `\n- **Tooling & Integrations:** ${agentTooling}` : ""}
 
-  let userMessage = `# TASK: ${params.action}\n\nPipeline: ${params.pipelineName} (Step ${params.stepIndex + 1} of ${params.totalSteps})\n\n`;
+## Execution Context
+You are executing step ${params.stepIndex + 1} of ${params.totalSteps} in the "${params.pipelineName}" pipeline.${isFirstStep ? " You are the first agent in this pipeline — your output sets the foundation for all downstream agents." : ""}${isLastStep ? " You are the final agent — your output is the culminating deliverable of this pipeline." : ""}${!isFirstStep && !isLastStep ? ` Previous agents have completed their work and their outputs are provided as context. Build on their work — do not repeat or contradict what they have already produced.` : ""}
+
+## Output Standards
+
+### What to produce
+Produce a complete, professional deliverable that directly fulfills the assigned task. This means the actual work product — the strategy document, the audit report, the content piece, the campaign plan, the analysis — not a summary of what you would do.
+
+### Quality requirements
+- **Specificity over generality:** Name real platforms, tools, metrics, and tactics. Replace vague advice ("improve your SEO") with actionable specifics ("Target 'dental implants cost [city]' as a primary keyword cluster — monthly search volume supports a dedicated pillar page").
+- **Data-driven when possible:** If live integration data (Google Analytics, Search Console, Ahrefs) is provided below, anchor your analysis and recommendations in that data. Reference specific numbers, trends, and pages. If no live data is provided, use your domain expertise and cite industry benchmarks.
+- **Structured for action:** Organize output with clear headers, numbered recommendations, priority tiers, and ownership assignments where applicable. Decision-makers should be able to act on your deliverable without further clarification.
+- **Professional depth:** Produce substantive output (minimum 500 words). Thin outputs that skim the surface are unacceptable. Go deep on analysis, provide thorough reasoning, and support recommendations with evidence.
+
+### Formatting
+- Use clean markdown: headers (##, ###), bullet points, numbered lists, and tables where data comparison is useful
+- Lead with an executive summary (2-3 sentences) before the detailed deliverable
+- End with a "Next Steps" or "Recommended Actions" section with clear, prioritized items
+
+### What NOT to do
+- Never defer work ("I'll get back to you", "this would take a few days to complete")
+- Never ask clarifying questions — work with the information provided
+- Never include meta-commentary about your process ("Let me analyze...", "I'm going to...")
+- Never produce generic, templated output that could apply to any business
+- Never contradict or re-do work from previous pipeline steps — build on it`;
+
+  let userMessage = "";
 
   if (params.previousOutputs.length > 0) {
-    userMessage += `## Context from previous steps:\n${params.previousOutputs.slice(-3).join("\n---\n").slice(0, 4000)}\n\n`;
+    userMessage += `## Previous Pipeline Outputs\nThe following agents have already completed their steps. Use their outputs as context and build upon their work:\n\n${params.previousOutputs.slice(-3).join("\n\n---\n\n").slice(0, 4000)}\n\n`;
   }
 
   if (params.integrationContext) {
-    userMessage += `## Live Integration Data:\n${params.integrationContext.slice(0, 4000)}\n\n`;
+    userMessage += `## Live Data from Connected Integrations\nThe following real-time data has been pulled from the client's connected platforms. Reference this data directly in your analysis and recommendations:\n\n${params.integrationContext.slice(0, 4000)}\n\n`;
   }
 
-  userMessage += `Produce the complete deliverable for: ${params.action}\n\nOUTPUT THE FINISHED WORK NOW:`;
+  userMessage += `## Your Assignment\n**Pipeline:** ${params.pipelineName} (Step ${params.stepIndex + 1} of ${params.totalSteps})\n**Task:** ${params.action}\n\nProduce the complete deliverable now.`;
 
   try {
     const body: Record<string, unknown> = {
