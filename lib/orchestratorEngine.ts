@@ -345,15 +345,42 @@ async function uploadToDrive(
 function getApiSettings(): { provider: string; model: string; apiKey: string; customEndpoint?: { url: string; apiKey: string; model: string } } | null {
   try {
     const stored = localStorage.getItem("mpaios_api_keys");
-    if (!stored) return null;
-    const keys = JSON.parse(stored) as Record<string, string>;
+    const keys = stored ? (JSON.parse(stored) as Record<string, string>) : {};
+
+    // Check model assignments for orchestrator model override
+    const assignmentsRaw = localStorage.getItem("mpaios_model_assignments");
+    const assignments = assignmentsRaw ? (JSON.parse(assignmentsRaw) as Record<string, string>) : {};
+    const orchestratorModel = assignments.orchestrator || "";
+
+    // Check custom endpoints (LM Studio, Ollama, vLLM, etc.)
+    const endpointsRaw = localStorage.getItem("mpaios_custom_endpoints");
+    if (endpointsRaw) {
+      const endpoints = JSON.parse(endpointsRaw) as Array<{
+        id: string; name: string; url: string; apiKey: string; model: string;
+      }>;
+
+      // Match by orchestrator model assignment, or use first valid endpoint
+      const match = orchestratorModel
+        ? endpoints.find((ep) => ep.model === orchestratorModel)
+        : null;
+      const endpoint = match || endpoints.find((ep) => ep.url && ep.model);
+
+      if (endpoint?.url && endpoint?.model) {
+        return {
+          provider: "custom",
+          model: endpoint.model,
+          apiKey: endpoint.apiKey || "lm-studio",
+          customEndpoint: { url: endpoint.url, apiKey: endpoint.apiKey || "lm-studio", model: endpoint.model },
+        };
+      }
+    }
 
     // Prefer Anthropic, fallback to OpenAI
     if (keys.anthropic) {
-      return { provider: "anthropic", model: "claude-sonnet-4-20250514", apiKey: keys.anthropic };
+      return { provider: "anthropic", model: orchestratorModel || "claude-sonnet-4-20250514", apiKey: keys.anthropic };
     }
     if (keys.openai) {
-      return { provider: "openai", model: "gpt-4o", apiKey: keys.openai };
+      return { provider: "openai", model: orchestratorModel || "gpt-4o", apiKey: keys.openai };
     }
     return null;
   } catch {
@@ -371,6 +398,61 @@ function getAhrefsKey(): string | null {
   } catch {
     return null;
   }
+}
+
+// Detect if URL points to a local/private address (unreachable from Vercel)
+function isLocalEndpoint(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname;
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "0.0.0.0" ||
+      host === "::1" ||
+      host.endsWith(".local") ||
+      /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(host)
+    );
+  } catch {
+    return false;
+  }
+}
+
+// Call a local OpenAI-compatible endpoint directly from the browser
+async function callLocalEndpoint(
+  endpoint: { url: string; apiKey: string; model: string },
+  systemPrompt: string,
+  userMessage: string
+): Promise<string> {
+  let baseURL = endpoint.url.replace(/\/+$/, "");
+  if (!baseURL.endsWith("/v1")) {
+    baseURL = `${baseURL}/v1`;
+  }
+
+  const res = await fetch(`${baseURL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${endpoint.apiKey || "lm-studio"}`,
+    },
+    body: JSON.stringify({
+      model: endpoint.model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+      temperature: 0.7,
+      max_tokens: 4096,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Local LLM error ${res.status}: ${err}`);
+  }
+
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "[No response from local model]";
 }
 
 // Calls the real chat API with agent-specific context
@@ -447,6 +529,13 @@ Produce a complete, professional deliverable that directly fulfills the assigned
   userMessage += `## Your Assignment\n**Pipeline:** ${params.pipelineName} (Step ${params.stepIndex + 1} of ${params.totalSteps})\n**Task:** ${params.action}\n\nProduce the complete deliverable now.`;
 
   try {
+    // Local endpoints (LM Studio, Ollama on localhost) → call directly from browser
+    // because the Vercel server can't reach localhost on the user's machine
+    if (settings.customEndpoint && isLocalEndpoint(settings.customEndpoint.url)) {
+      return await callLocalEndpoint(settings.customEndpoint, systemPrompt, userMessage);
+    }
+
+    // Cloud providers → route through server-side API
     const body: Record<string, unknown> = {
       messages: [
         { role: "system", content: systemPrompt },

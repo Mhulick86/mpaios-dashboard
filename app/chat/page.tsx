@@ -454,17 +454,42 @@ export default function ChatPage() {
       const latestUserMsg = updatedMessages.filter((m) => m.role === "user").pop();
       const knowledgeContext = buildKnowledgeContext(latestUserMsg?.content);
 
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })),
-          ...apiKeys,
-          knowledgeContext,
-          selectedTool: selectedTool !== "orchestrator" ? selectedTool : undefined,
-        }),
-        signal: controller.signal,
-      });
+      // If using a local endpoint (LM Studio, Ollama), call it directly from browser
+      // because the Vercel server can't reach localhost on the user's machine
+      const isLocal = apiKeys.customEndpoint?.url &&
+        /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|::1|.*\.local)(:\d+)?/i.test(apiKeys.customEndpoint.url);
+
+      let response: Response;
+
+      if (isLocal && apiKeys.provider === "custom" && apiKeys.customEndpoint) {
+        let baseURL = apiKeys.customEndpoint.url.replace(/\/+$/, "");
+        if (!baseURL.endsWith("/v1")) baseURL = `${baseURL}/v1`;
+        response = await fetch(`${baseURL}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKeys.customEndpoint.apiKey || "lm-studio"}`,
+          },
+          body: JSON.stringify({
+            model: apiKeys.customEndpoint.model || apiKeys.model,
+            messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })),
+            stream: true,
+          }),
+          signal: controller.signal,
+        });
+      } else {
+        response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })),
+            ...apiKeys,
+            knowledgeContext,
+            selectedTool: selectedTool !== "orchestrator" ? selectedTool : undefined,
+          }),
+          signal: controller.signal,
+        });
+      }
 
       if (!response.ok) {
         let errorMsg = `Request failed (${response.status})`;
@@ -490,7 +515,26 @@ export default function ChatPage() {
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        accumulated += chunk;
+
+        if (isLocal) {
+          // Parse SSE from local OpenAI-compatible endpoint (LM Studio, Ollama)
+          const lines = chunk.split("\n");
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === "data: [DONE]") continue;
+            if (trimmed.startsWith("data: ")) {
+              try {
+                const json = JSON.parse(trimmed.slice(6));
+                const token = json.choices?.[0]?.delta?.content;
+                if (token) accumulated += token;
+              } catch {
+                // Partial JSON or non-JSON line — skip
+              }
+            }
+          }
+        } else {
+          accumulated += chunk;
+        }
 
         const parsed = parseAgentActivity(accumulated);
         if (parsed.activities.length > 0) {
