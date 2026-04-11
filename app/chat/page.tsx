@@ -462,8 +462,42 @@ export default function ChatPage() {
       let response: Response;
 
       if (isLocal && apiKeys.provider === "custom" && apiKeys.customEndpoint) {
+        // Fetch the full MPAIOS system prompt from the server (with Asana context, GA data, etc.)
+        let systemPrompt = "";
+        try {
+          const ctxRes = await fetch("/api/chat/prepare-context", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              asanaPat: apiKeys.asanaPat || undefined,
+              asanaWorkspace: apiKeys.asanaWorkspace || undefined,
+              gaAccessToken: apiKeys.gaAccessToken || undefined,
+              gaPropertyId: apiKeys.gaPropertyId || undefined,
+              gscAccessToken: apiKeys.gscAccessToken || undefined,
+              gscSiteUrl: apiKeys.gscSiteUrl || undefined,
+              driveAccessToken: apiKeys.driveAccessToken || undefined,
+              driveFolderId: apiKeys.driveFolderId || undefined,
+              knowledgeContext,
+              selectedTool: selectedTool !== "orchestrator" ? selectedTool : undefined,
+              lastUserMessage: updatedMessages.filter(m => m.role === "user").pop()?.content,
+            }),
+          });
+          if (ctxRes.ok) {
+            const ctxData = await ctxRes.json();
+            systemPrompt = ctxData.systemPrompt || "";
+          }
+        } catch {
+          // Continue without system prompt if context fetch fails
+        }
+
         let baseURL = apiKeys.customEndpoint.url.replace(/\/+$/, "");
         if (!baseURL.endsWith("/v1")) baseURL = `${baseURL}/v1`;
+
+        // Build messages with system prompt for the local model
+        const localMessages = systemPrompt
+          ? [{ role: "system", content: systemPrompt }, ...updatedMessages.map((m) => ({ role: m.role, content: m.content }))]
+          : updatedMessages.map((m) => ({ role: m.role, content: m.content }));
+
         response = await fetch(`${baseURL}/chat/completions`, {
           method: "POST",
           headers: {
@@ -472,7 +506,7 @@ export default function ChatPage() {
           },
           body: JSON.stringify({
             model: apiKeys.customEndpoint.model || apiKeys.model,
-            messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })),
+            messages: localMessages,
             stream: true,
           }),
           signal: controller.signal,
@@ -545,6 +579,40 @@ export default function ChatPage() {
         setMessages((prev) =>
           prev.map((m) => (m.id === assistantId ? { ...m, content: current } : m))
         );
+      }
+
+      // Execute Asana markers from local endpoint responses (client-side)
+      if (isLocal && apiKeys.asanaPat && apiKeys.asanaWorkspace && /\[ASANA_CREATE\]/.test(accumulated)) {
+        const asanaPattern = /\[ASANA_CREATE\]\s*([\s\S]*?)\s*\[\/ASANA_CREATE\]/g;
+        let asanaMatch;
+        while ((asanaMatch = asanaPattern.exec(accumulated)) !== null) {
+          try {
+            const board = JSON.parse(asanaMatch[1]);
+            // Call server-side Asana endpoint to create the project
+            const asanaRes = await fetch("/api/asana/create-board", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                pat: apiKeys.asanaPat,
+                workspaceGid: apiKeys.asanaWorkspace,
+                board,
+              }),
+            });
+            const asanaData = await asanaRes.json();
+            const resultMsg = asanaData.success
+              ? `\n\n---\n✅ **Asana project created!** ${asanaData.summary || ""}\n[Open in Asana](https://app.asana.com/0/${asanaData.projectGid})`
+              : `\n\n---\n❌ **Asana error:** ${asanaData.error || "Unknown error"}`;
+            accumulated += resultMsg;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, content: accumulated } : m))
+            );
+          } catch {
+            accumulated += "\n\n---\n❌ **Asana error:** Could not parse task data";
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, content: accumulated } : m))
+            );
+          }
+        }
       }
 
       const finalParsed = parseAgentActivity(accumulated);
