@@ -131,6 +131,10 @@ function getApiKeys() {
         orchestratorModel.startsWith("o3")
       ) {
         provider = "openai";
+      } else if (orchestratorModel.startsWith("gemini")) {
+        provider = "google";
+      } else if (orchestratorModel.startsWith("sonar")) {
+        provider = "perplexity";
       }
     }
 
@@ -170,6 +174,8 @@ function getApiKeys() {
     return {
       anthropicKey: keys.anthropic || "",
       openaiKey: keys.openai || "",
+      googleKey: keys.google || "",
+      perplexityKey: keys.perplexity || "",
       provider,
       model: orchestratorModel,
       customEndpoint,
@@ -186,6 +192,8 @@ function getApiKeys() {
     return {
       anthropicKey: "",
       openaiKey: "",
+      googleKey: "",
+      perplexityKey: "",
       provider: "anthropic",
       model: "claude-sonnet-4-20250514",
       customEndpoint: undefined,

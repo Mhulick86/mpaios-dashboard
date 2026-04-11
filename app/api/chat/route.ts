@@ -1,5 +1,6 @@
 import { streamText } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
@@ -252,6 +253,8 @@ export async function POST(req: Request) {
     messages,
     anthropicKey,
     openaiKey,
+    googleKey,
+    perplexityKey,
     provider = "anthropic",
     model = "claude-sonnet-4-20250514",
     asanaPat,
@@ -269,6 +272,8 @@ export async function POST(req: Request) {
     messages: Array<{ role: string; content: string }>;
     anthropicKey?: string;
     openaiKey?: string;
+    googleKey?: string;
+    perplexityKey?: string;
     provider?: string;
     model?: string;
     asanaPat?: string;
@@ -324,13 +329,41 @@ export async function POST(req: Request) {
       baseURL: "https://api.anthropic.com/v1",
     });
     modelInstance = anthropic(model || "claude-sonnet-4-20250514");
+  } else if (provider === "google") {
+    const key = googleKey;
+    if (!key) {
+      return new Response(
+        JSON.stringify({
+          error: "Google AI API key not configured. Go to Settings → API Keys to add it.",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    const google = createGoogleGenerativeAI({ apiKey: key });
+    modelInstance = google(model || "gemini-2.5-flash");
+  } else if (provider === "perplexity") {
+    const key = perplexityKey;
+    if (!key) {
+      return new Response(
+        JSON.stringify({
+          error: "Perplexity API key not configured. Go to Settings → API Keys to add it.",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    // Perplexity uses OpenAI-compatible API
+    const perplexity = createOpenAI({
+      apiKey: key,
+      baseURL: "https://api.perplexity.ai",
+    });
+    modelInstance = perplexity(model || "sonar-pro");
   } else {
+    // Default to OpenAI for any unrecognized provider with gpt/o1/o3 models
     const key = openaiKey;
     if (!key) {
       return new Response(
         JSON.stringify({
-          error:
-            "OpenAI API key not configured. Go to Settings → API Keys to add it.",
+          error: "OpenAI API key not configured. Go to Settings → API Keys to add it.",
         }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
