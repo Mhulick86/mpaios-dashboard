@@ -463,7 +463,14 @@ export async function POST(req: Request) {
 
             controller.close();
           } catch (err) {
-            controller.error(err);
+            const errMsg = err instanceof Error ? err.message : "Unknown error";
+            console.error("[chat] Custom endpoint stream error:", errMsg);
+            try {
+              controller.enqueue(encoder.encode(`[Error: ${errMsg}]`));
+              controller.close();
+            } catch {
+              controller.error(err);
+            }
           }
         },
       });
@@ -606,7 +613,15 @@ export async function POST(req: Request) {
 
           controller.close();
         } catch (err) {
-          controller.error(err);
+          // Send the error as readable text to the client instead of silently failing
+          const errMsg = err instanceof Error ? err.message : "Unknown error from AI model";
+          console.error("[chat] Stream error:", errMsg, err);
+          try {
+            controller.enqueue(encoder.encode(`[Error: ${errMsg}]`));
+            controller.close();
+          } catch {
+            controller.error(err);
+          }
         }
       },
     });
