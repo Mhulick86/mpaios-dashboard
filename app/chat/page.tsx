@@ -622,8 +622,8 @@ export default function ChatPage() {
         saveLearnings(learnings, conv!.id, conv!.title);
         // Also save to Supabase memory table (the Knowledge Base page reads from here)
         try {
-          const { createClientComponentClient } = await import("@supabase/auth-helpers-nextjs");
-          const sb = createClientComponentClient();
+          const { createClient } = await import("@/lib/supabase/client");
+          const sb = createClient();
           const { data: { user: authUser } } = await sb.auth.getUser();
           if (authUser) {
             for (const l of learnings) {

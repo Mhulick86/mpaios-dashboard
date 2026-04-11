@@ -21,7 +21,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useAuth } from "@/lib/supabase/auth-context";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from "@/lib/supabase/client";
 
 interface TableConfig {
   name: string;
@@ -159,7 +159,7 @@ function formatCell(value: unknown, column: string): string {
 
 export default function DatabasePage() {
   const { user } = useAuth();
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   const [activeTable, setActiveTable] = useState<TableConfig>(TABLES[0]);
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);

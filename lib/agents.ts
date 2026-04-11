@@ -10,6 +10,7 @@ export interface Agent {
   capabilities: string[];
   tooling: string[];
   status: AgentStatus;
+  systemPrompt?: string;
 }
 
 export interface Division {
