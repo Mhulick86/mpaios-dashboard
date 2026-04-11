@@ -1,5 +1,6 @@
 import { pipelines, type Pipeline } from "./pipelines";
 import { agents } from "./agents";
+import { AGENT_PROMPTS } from "./agentPrompts";
 import type {
   OrchestrationPlan,
   OrchestrationStep,
@@ -482,7 +483,10 @@ async function callAgentLLM(params: {
   const isFirstStep = params.stepIndex === 0;
   const isLastStep = params.stepIndex === params.totalSteps - 1;
 
-  const systemPrompt = `You are Agent ${paddedId} — ${params.agentName} — a specialized marketing agent operating within MPAIOS, a multi-agent marketing automation platform built by Marketing Powered LLC.
+  // Use enhanced agent prompt if available, otherwise fall back to generic
+  const enhancedPrompt = AGENT_PROMPTS[params.agentId];
+
+  const systemPrompt = (enhancedPrompt || `You are Agent ${paddedId} — ${params.agentName} — a specialized marketing agent operating within MPAIOS, a multi-agent marketing automation platform built by Marketing Powered LLC.
 
 ## Your Identity
 - **Role:** ${params.agentName}
@@ -514,7 +518,18 @@ Produce a complete, professional deliverable that directly fulfills the assigned
 - Never ask clarifying questions — work with the information provided
 - Never include meta-commentary about your process ("Let me analyze...", "I'm going to...")
 - Never produce generic, templated output that could apply to any business
-- Never contradict or re-do work from previous pipeline steps — build on it`;
+- Never contradict or re-do work from previous pipeline steps — build on it`) + `
+
+## Execution Context
+You are executing step ${params.stepIndex + 1} of ${params.totalSteps} in the "${params.pipelineName}" pipeline.${isFirstStep ? " You are the first agent — your output sets the foundation for all downstream agents." : ""}${isLastStep ? " You are the final agent — your output is the culminating deliverable." : ""}${!isFirstStep && !isLastStep ? " Build on previous agents' work — do not repeat or contradict." : ""}
+
+## Output Rules
+- Produce the COMPLETE deliverable — not a summary of what you would do
+- Minimum 500 words of substantive output
+- Use clean markdown: headers, bullet points, numbered lists, tables
+- Lead with an executive summary (2-3 sentences)
+- End with "Next Steps" or "Recommended Actions"
+- Never defer work, ask questions, or include meta-commentary`;
 
   let userMessage = "";
 
