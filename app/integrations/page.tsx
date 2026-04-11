@@ -81,6 +81,13 @@ export default function IntegrationsPage() {
   const [driveError, setDriveError] = useState<string | null>(null);
   const [driveUser, setDriveUser] = useState<{ displayName: string; emailAddress: string } | null>(null);
 
+  // Ahrefs state
+  const [ahrefsKey, setAhrefsKey] = useState("");
+  const [showAhrefsKey, setShowAhrefsKey] = useState(false);
+  const [ahrefsTesting, setAhrefsTesting] = useState(false);
+  const [ahrefsError, setAhrefsError] = useState<string | null>(null);
+  const [ahrefsResult, setAhrefsResult] = useState<{ domainRating?: number; ahrefsRank?: number } | null>(null);
+
   // Load config from localStorage
   useEffect(() => {
     try {
@@ -96,6 +103,7 @@ export default function IntegrationsPage() {
         if (merged.googleSearchConsole?.siteUrl) setGscSiteUrl(merged.googleSearchConsole.siteUrl);
         if (merged.googleDrive?.accessToken) setDriveToken(merged.googleDrive.accessToken);
         if (merged.googleDrive?.folderId) setDriveFolderId(merged.googleDrive.folderId);
+        if (merged.ahrefs?.apiKey) setAhrefsKey(merged.ahrefs.apiKey);
       }
     } catch {
       // ignore
@@ -115,6 +123,7 @@ export default function IntegrationsPage() {
     config.googleAnalytics?.connected,
     config.googleSearchConsole?.connected,
     config.googleDrive?.connected,
+    config.ahrefs?.connected,
   ].filter(Boolean).length;
 
   /* ─── Asana Handlers ─── */
@@ -315,10 +324,71 @@ export default function IntegrationsPage() {
     setDriveUser(null);
   }
 
+  /* ─── Ahrefs Handlers ─── */
+  async function handleAhrefsTest() {
+    if (!ahrefsKey.trim()) return;
+    setAhrefsTesting(true);
+    setAhrefsError(null);
+    setAhrefsResult(null);
+    try {
+      const res = await fetch("/api/ahrefs/overview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: ahrefsKey.trim(), target: "marketingpowered.ai" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Connection failed");
+      // Parse DR from the markdown response
+      const drMatch = data.markdown?.match(/Domain Rating:\*\*\s*(\d+)/);
+      const rankMatch = data.markdown?.match(/Ahrefs Rank:\*\*\s*([\d,]+)/);
+      setAhrefsResult({
+        domainRating: drMatch ? parseInt(drMatch[1]) : undefined,
+        ahrefsRank: rankMatch ? parseInt(rankMatch[1].replace(/,/g, "")) : undefined,
+      });
+      saveConfig({
+        ...config,
+        ahrefs: {
+          apiKey: ahrefsKey.trim(),
+          connected: true,
+          connectedAt: new Date().toISOString(),
+        },
+      });
+      // Also save to mpaios_api_keys for orchestrator compatibility
+      try {
+        const stored = localStorage.getItem("mpaios_api_keys");
+        const keys = stored ? JSON.parse(stored) : {};
+        keys.ahrefs = ahrefsKey.trim();
+        localStorage.setItem("mpaios_api_keys", JSON.stringify(keys));
+      } catch {}
+    } catch (err: unknown) {
+      setAhrefsError(err instanceof Error ? err.message : "Failed to connect");
+    } finally {
+      setAhrefsTesting(false);
+    }
+  }
+
+  function handleAhrefsDisconnect() {
+    const updated = { ...config, ahrefs: defaultIntegrations().ahrefs };
+    saveConfig(updated);
+    setAhrefsKey("");
+    setAhrefsError(null);
+    setAhrefsResult(null);
+    // Also remove from mpaios_api_keys
+    try {
+      const stored = localStorage.getItem("mpaios_api_keys");
+      if (stored) {
+        const keys = JSON.parse(stored);
+        delete keys.ahrefs;
+        localStorage.setItem("mpaios_api_keys", JSON.stringify(keys));
+      }
+    } catch {}
+  }
+
   const asanaConnected = config.asana?.connected && config.asana?.workspace;
   const gaConnected = config.googleAnalytics?.connected;
   const gscConnected = config.googleSearchConsole?.connected;
   const driveConnected = config.googleDrive?.connected;
+  const ahrefsConnected = config.ahrefs?.connected;
 
   return (
     <div className="max-w-4xl">
@@ -708,6 +778,96 @@ export default function IntegrationsPage() {
             )}
           </div>
         )}
+      </div>
+
+      {/* ─── Ahrefs ─── */}
+      <div className="bg-surface-raised rounded-xl border border-border overflow-hidden">
+        <button
+          className="w-full flex items-center justify-between p-5 cursor-pointer hover:bg-gray-50/50 transition-colors"
+          onClick={() => {
+            const el = document.getElementById("ahrefs-panel");
+            if (el) el.classList.toggle("hidden");
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${ahrefsConnected ? "bg-orange-100" : "bg-gray-100"}`}>
+              <Search className={`w-5 h-5 ${ahrefsConnected ? "text-orange-600" : "text-gray-400"}`} />
+            </div>
+            <div className="text-left">
+              <div className="flex items-center gap-2">
+                <h3 className="text-[14px] font-semibold">Ahrefs</h3>
+                {ahrefsConnected ? (
+                  <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-green-100 text-green-700"><CheckCircle2 className="w-3 h-3" /> Connected</span>
+                ) : (
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 text-gray-400">Not Connected</span>
+                )}
+              </div>
+              <p className="text-[11px] text-text-muted">SEO data — backlinks, keywords, domain rating, competitors (Agents 03, 10, 21, 30, 31)</p>
+            </div>
+          </div>
+        </button>
+
+        <div id="ahrefs-panel" className={ahrefsConnected ? "hidden" : ""}>
+          <div className="border-t border-border p-5 space-y-3">
+            {ahrefsConnected ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[13px] font-medium text-green-700">Ahrefs API Connected</p>
+                    {ahrefsResult?.domainRating !== undefined && (
+                      <p className="text-[11px] text-text-muted mt-0.5">
+                        DR: {ahrefsResult.domainRating} | Ahrefs Rank: {ahrefsResult.ahrefsRank?.toLocaleString() || "N/A"}
+                      </p>
+                    )}
+                    <p className="text-[10px] text-text-muted mt-0.5">Connected {config.ahrefs?.connectedAt ? new Date(config.ahrefs.connectedAt).toLocaleDateString() : ""}</p>
+                  </div>
+                  <button onClick={handleAhrefsDisconnect} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-50 transition-colors text-[12px] font-medium text-red-500">
+                    <Unplug className="w-3.5 h-3.5" /> Disconnect
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-text-muted mb-1">Ahrefs API Key</label>
+                  <div className="flex gap-2">
+                    <div className="flex-1 relative">
+                      <input
+                        type={showAhrefsKey ? "text" : "password"}
+                        value={ahrefsKey}
+                        onChange={(e) => setAhrefsKey(e.target.value)}
+                        placeholder="Enter your Ahrefs API token"
+                        className="w-full px-3 py-2 border border-border rounded-lg text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue pr-10"
+                      />
+                      <button
+                        onClick={() => setShowAhrefsKey(!showAhrefsKey)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                      >
+                        {showAhrefsKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <button
+                      onClick={handleAhrefsTest}
+                      disabled={!ahrefsKey.trim() || ahrefsTesting}
+                      className="px-4 py-2 bg-brand-blue text-white rounded-lg text-[12px] font-medium hover:bg-brand-blue/90 transition-colors disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+                    >
+                      {ahrefsTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plug className="w-3.5 h-3.5" />}
+                      Test & Connect
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-text-muted mt-1.5">
+                    Get your API key from <a href="https://app.ahrefs.com/user/api" target="_blank" rel="noopener noreferrer" className="text-brand-blue hover:underline">Ahrefs → User → API <ExternalLink className="w-3 h-3 inline" /></a>. Powers SEO agents with live backlink, keyword, and competitor data.
+                  </p>
+                </div>
+              </div>
+            )}
+            {ahrefsError && (
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
+                <AlertCircle className="w-4 h-4 shrink-0" /> {ahrefsError}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Coming Soon cards */}
