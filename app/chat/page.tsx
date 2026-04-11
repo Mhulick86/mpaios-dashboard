@@ -359,14 +359,16 @@ export default function ChatPage() {
         type: file.type,
       };
 
-      const textTypes = ["text/", "application/json", "application/xml", ".csv", ".md", ".txt"];
+      const textTypes = ["text/", "application/json", "application/xml", "application/javascript", "application/typescript", "application/yaml", "application/toml"];
+      const textExtensions = [".csv", ".md", ".txt", ".json", ".xml", ".yaml", ".yml", ".toml", ".html", ".htm", ".css", ".js", ".ts", ".tsx", ".jsx", ".py", ".sql", ".sh", ".env", ".log", ".conf", ".ini", ".cfg"];
       const isTextFile =
         textTypes.some((t) => file.type.includes(t)) ||
-        textTypes.some((t) => file.name.endsWith(t)) ||
+        textExtensions.some((t) => file.name.toLowerCase().endsWith(t)) ||
         file.name.endsWith(".docx") ||
         file.name.endsWith(".doc");
 
-      if (isTextFile || file.size < 500000) {
+      // Read text content for text files up to 2MB, or any file under 1MB
+      if (isTextFile || file.size < 1000000) {
         try {
           att.textContent = await readFileAsText(file);
         } catch {
@@ -375,15 +377,18 @@ export default function ChatPage() {
       }
 
       if (file.type.startsWith("image/")) {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          setAttachments((prev) =>
-            prev.map((a) =>
-              a.id === att.id ? { ...a, preview: ev.target?.result as string } : a
-            )
-          );
-        };
-        reader.readAsDataURL(file);
+        // Read image as base64 data URL — await so it's ready for buildMessageContent
+        try {
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => resolve(ev.target?.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          att.preview = dataUrl;
+        } catch {
+          // Image preview failed — non-critical
+        }
       }
 
       newAttachments.push(att);
@@ -403,7 +408,15 @@ export default function ChatPage() {
     const fileContext = attachments
       .map((att) => {
         if (att.textContent) {
-          return `\n\n---\n📎 FILE: ${att.name} (${formatFileSize(att.size)})\n\`\`\`\n${att.textContent}\n\`\`\`\n---`;
+          // Truncate very large files to avoid exceeding context limits
+          const content = att.textContent.length > 50000
+            ? att.textContent.slice(0, 50000) + `\n\n... [truncated — ${formatFileSize(att.size)} total]`
+            : att.textContent;
+          return `\n\n---\n📎 FILE: ${att.name} (${formatFileSize(att.size)})\n\`\`\`\n${content}\n\`\`\`\n---`;
+        }
+        if (att.preview && att.type?.startsWith("image/")) {
+          // Include base64 image data for vision models
+          return `\n\n---\n📎 IMAGE: ${att.name} (${formatFileSize(att.size)})\n[image:${att.preview}]\n---`;
         }
         return `\n\n[Attached file: ${att.name} (${formatFileSize(att.size)}) — binary file, content not readable as text]`;
       })
