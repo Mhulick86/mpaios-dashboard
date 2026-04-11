@@ -190,7 +190,7 @@ export function AgentActivityPanel({
 
               {/* Latest message (always shown) */}
               {latestAction.message && (
-                <div className="px-3 pb-2 -mt-0.5">
+                <div className="px-3 pb-1 -mt-0.5">
                   <p className="text-[11px] text-text-secondary leading-relaxed pl-8">
                     {latestAction.action === "handoff" && latestAction.targetAgent && (
                       <span className="font-medium text-brand-blue">
@@ -199,6 +199,32 @@ export function AgentActivityPanel({
                     )}
                     {latestAction.message}
                   </p>
+                </div>
+              )}
+
+              {/* Output preview — shows what the agent is producing */}
+              {latestAction.outputPreview && (
+                <div className="px-3 pb-2 pl-11">
+                  <div className="rounded-md bg-gray-50 border border-gray-100 px-2.5 py-2 max-h-[120px] overflow-hidden relative">
+                    <p className="text-[10px] font-mono text-text-muted leading-relaxed whitespace-pre-wrap">
+                      {latestAction.outputPreview}
+                    </p>
+                    <div className="absolute bottom-0 left-0 right-0 h-5 bg-gradient-to-t from-gray-50 to-transparent" />
+                  </div>
+                </div>
+              )}
+
+              {/* Streaming indicator for active agents */}
+              {isStreaming && (latestAction.action === "executing" || latestAction.action === "responding" || latestAction.action === "activated") && !latestAction.outputPreview && (
+                <div className="px-3 pb-2 pl-11">
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex gap-0.5">
+                      <div className="w-1 h-1 rounded-full bg-gray-300 animate-pulse" style={{ animationDelay: "0ms" }} />
+                      <div className="w-1 h-1 rounded-full bg-gray-300 animate-pulse" style={{ animationDelay: "150ms" }} />
+                      <div className="w-1 h-1 rounded-full bg-gray-300 animate-pulse" style={{ animationDelay: "300ms" }} />
+                    </div>
+                    <span className="text-[10px] text-text-muted italic">Generating output...</span>
+                  </div>
                 </div>
               )}
 

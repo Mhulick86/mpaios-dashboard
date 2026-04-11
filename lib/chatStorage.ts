@@ -12,8 +12,9 @@ export interface ChatMessage {
 export interface AgentActivity {
   agentId: number;
   agentName: string;
-  action: "activated" | "thinking" | "responding" | "handoff" | "complete";
+  action: "activated" | "thinking" | "responding" | "executing" | "handoff" | "complete";
   message?: string;
+  outputPreview?: string;
   targetAgent?: string;
   timestamp: number;
 }
@@ -147,6 +148,21 @@ const AGENT_NAMES: Record<number, string> = {
   16: "Client Reporting & Insights Compiler",
   17: "Budget & Financial Operations Manager",
   18: "System Intelligence & Memory Agent",
+  19: "Client Onboarding & Discovery Specialist",
+  20: "Video & Multimedia Producer",
+  21: "LLMO & AI Visibility Specialist",
+  22: "Brand Compliance & QA Reviewer",
+  23: "Community & PR Manager",
+  24: "Email & Marketing Automation Manager",
+  25: "Client Success & Retention Manager",
+  26: "Proposal & Revenue Strategist",
+  27: "Revenue Intelligence Analyst",
+  28: "Data Pipeline & Enrichment Engineer",
+  29: "Predictive Modeling & Analytics Specialist",
+  30: "Market Research & Trends Analyst",
+  31: "Local SEO & GEO Grid Analyst",
+  32: "Google Business Profile & Citations Manager",
+  33: "Hyperlocal Community & Awareness Strategist",
 };
 
 export function parseAgentActivity(content: string): ParsedResponse {
@@ -155,7 +171,7 @@ export function parseAgentActivity(content: string): ParsedResponse {
 
   // Parse structured markers: [AGENT:05:activated] Analyzing creative brief [/AGENT]
   const agentRegex =
-    /\[AGENT:(\d{1,2}):(activated|thinking|responding|handoff|complete)\]\s*([^\[]*?)\s*\[\/AGENT\]/g;
+    /\[AGENT:(\d{1,2}):(activated|thinking|responding|executing|handoff|complete)\]\s*([^\[]*?)\s*\[\/AGENT\]/g;
 
   let match;
   while ((match = agentRegex.exec(content)) !== null) {
@@ -163,11 +179,29 @@ export function parseAgentActivity(content: string): ParsedResponse {
     const action = match[2] as AgentActivity["action"];
     const message = match[3].trim();
 
+    // Extract a preview of the agent's output from the content below
+    // Look for content associated with this agent (after markers, in the body)
+    let outputPreview: string | undefined;
+    const agentLabel = AGENT_NAMES[agentId] || `Agent ${agentId}`;
+    const previewPatterns = [
+      new RegExp(`(?:As ${agentLabel}|Agent ${String(agentId).padStart(2, "0")})[^\\n]*\\n([\\s\\S]{20,300}?)(?=\\n##|\\n---|\n\\[AGENT|$)`, "i"),
+      new RegExp(`##[^\\n]*(?:${agentLabel}|Agent ${agentId})[^\\n]*\\n([\\s\\S]{20,300}?)(?=\\n##|\\n---|\n\\[|$)`, "i"),
+    ];
+    for (const pat of previewPatterns) {
+      const previewMatch = pat.exec(content);
+      if (previewMatch?.[1]) {
+        outputPreview = previewMatch[1].trim().slice(0, 200);
+        if (outputPreview.length >= 200) outputPreview += "...";
+        break;
+      }
+    }
+
     activities.push({
       agentId,
-      agentName: AGENT_NAMES[agentId] || `Agent ${agentId}`,
+      agentName: agentLabel,
       action,
       message: message || undefined,
+      outputPreview,
       timestamp: Date.now(),
     });
 
