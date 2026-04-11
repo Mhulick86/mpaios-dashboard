@@ -582,21 +582,38 @@ export default function SettingsPage() {
     setFetchingModels((prev) => ({ ...prev, [epId]: true }));
     setEndpointErrors((prev) => ({ ...prev, [epId]: "" }));
     try {
-      // Use server-side proxy to avoid CORS issues with localhost model servers
-      const resp = await fetch("/api/local-models", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: ep.url, apiKey: ep.apiKey || undefined }),
-      });
+      // Detect local endpoints — call directly from browser instead of
+      // routing through Vercel (which can't reach localhost)
+      const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|::1|.*\.local)(:\d+)?/i.test(ep.url);
 
-      const data = await resp.json();
+      let modelIds: string[] = [];
 
-      if (!resp.ok || data.error) {
-        setEndpointErrors((prev) => ({ ...prev, [epId]: data.error || `Server returned ${resp.status}` }));
-        return;
+      if (isLocal) {
+        let baseURL = ep.url.replace(/\/+$/, "");
+        if (!baseURL.endsWith("/v1")) baseURL = `${baseURL}/v1`;
+        const resp = await fetch(`${baseURL}/models`, {
+          headers: ep.apiKey ? { Authorization: `Bearer ${ep.apiKey}` } : {},
+        });
+        if (!resp.ok) {
+          setEndpointErrors((prev) => ({ ...prev, [epId]: `Server returned ${resp.status}. Make sure CORS is enabled in LM Studio Server Settings.` }));
+          return;
+        }
+        const data = await resp.json();
+        modelIds = (data.data || []).map((m: { id: string }) => m.id);
+      } else {
+        // Remote endpoints — use server-side proxy
+        const resp = await fetch("/api/local-models", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: ep.url, apiKey: ep.apiKey || undefined }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+          setEndpointErrors((prev) => ({ ...prev, [epId]: data.error || `Server returned ${resp.status}` }));
+          return;
+        }
+        modelIds = (data.models || []).map((m: { id: string }) => m.id);
       }
-
-      const modelIds: string[] = (data.models || []).map((m: { id: string }) => m.id);
 
       if (modelIds.length === 0) {
         setEndpointErrors((prev) => ({ ...prev, [epId]: "No models found. Make sure the server is running and a model is loaded." }));
@@ -609,7 +626,7 @@ export default function SettingsPage() {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      setEndpointErrors((prev) => ({ ...prev, [epId]: `Connection failed: ${msg}. Local models only work when running locally.` }));
+      setEndpointErrors((prev) => ({ ...prev, [epId]: `Connection failed: ${msg}. Make sure the server is running and CORS is enabled.` }));
     } finally {
       setFetchingModels((prev) => ({ ...prev, [epId]: false }));
     }
