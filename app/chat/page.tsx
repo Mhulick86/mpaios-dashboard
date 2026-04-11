@@ -369,18 +369,50 @@ export default function ChatPage() {
 
       const textTypes = ["text/", "application/json", "application/xml", "application/javascript", "application/typescript", "application/yaml", "application/toml"];
       const textExtensions = [".csv", ".md", ".txt", ".json", ".xml", ".yaml", ".yml", ".toml", ".html", ".htm", ".css", ".js", ".ts", ".tsx", ".jsx", ".py", ".sql", ".sh", ".env", ".log", ".conf", ".ini", ".cfg"];
+      const binaryExtractable = [".pdf", ".docx", ".doc"];
       const isTextFile =
         textTypes.some((t) => file.type.includes(t)) ||
-        textExtensions.some((t) => file.name.toLowerCase().endsWith(t)) ||
-        file.name.endsWith(".docx") ||
-        file.name.endsWith(".doc");
+        textExtensions.some((t) => file.name.toLowerCase().endsWith(t));
+      const needsExtraction =
+        binaryExtractable.some((t) => file.name.toLowerCase().endsWith(t)) ||
+        file.type === "application/pdf";
 
-      // Read text content for text files up to 2MB, or any file under 1MB
-      if (isTextFile || file.size < 1000000) {
+      if (isTextFile || (!needsExtraction && file.size < 1000000)) {
+        // Direct text read for plain text files
         try {
           att.textContent = await readFileAsText(file);
         } catch {
           att.textContent = `[Could not read file: ${file.name}]`;
+        }
+      } else if (needsExtraction && file.size < 10000000) {
+        // Send PDFs and docs to server for text extraction (up to 10MB)
+        try {
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = reader.result as string;
+              resolve(result.split(",")[1]); // strip data URL prefix
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          const res = await fetch("/api/extract-text", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              fileName: file.name,
+              fileType: file.type,
+              base64Data: base64,
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            att.textContent = data.text || `[Could not extract text from ${file.name}]`;
+          } else {
+            att.textContent = `[Failed to extract text from ${file.name}]`;
+          }
+        } catch {
+          att.textContent = `[Could not process file: ${file.name}]`;
         }
       }
 
@@ -1426,7 +1458,7 @@ export default function ChatPage() {
               ref={fileInputRef}
               type="file"
               multiple
-              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.json"
+              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.json,.xml,.yaml,.yml,.py,.sql,.html,.css,.js,.ts,.tsx,.jsx,.sh,.log,.env,.conf"
               onChange={handleFileSelect}
               className="hidden"
             />
