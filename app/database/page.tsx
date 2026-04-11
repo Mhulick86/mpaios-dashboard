@@ -159,7 +159,8 @@ function formatCell(value: unknown, column: string): string {
 
 export default function DatabasePage() {
   const { user } = useAuth();
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
+  const [authReady, setAuthReady] = useState(false);
 
   const [activeTable, setActiveTable] = useState<TableConfig>(TABLES[0]);
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
@@ -176,22 +177,28 @@ export default function DatabasePage() {
   const fetchCounts = useCallback(async () => {
     if (!user) return;
     const counts: Record<string, number> = {};
+    const missing: string[] = [];
     for (const t of TABLES) {
-      try {
-        const { count } = await supabase
-          .from(t.name)
-          .select("*", { count: "exact", head: true });
+      const { count, error: err } = await supabase
+        .from(t.name)
+        .select("*", { count: "exact", head: true });
+      if (err) {
+        console.warn(`[database] Table "${t.name}":`, err.message);
+        counts[t.name] = -1; // Mark as error
+        missing.push(t.name);
+      } else {
         counts[t.name] = count || 0;
-      } catch {
-        counts[t.name] = 0;
       }
     }
     setTableCounts(counts);
+    if (missing.length > 0) {
+      console.warn(`[database] Missing or inaccessible tables: ${missing.join(", ")}`);
+    }
   }, [user, supabase]);
 
   // Fetch rows for active table
   const fetchRows = useCallback(async () => {
-    if (!user) return;
+    if (!user || !authReady) return;
     setLoading(true);
     setError(null);
     try {
@@ -229,11 +236,26 @@ export default function DatabasePage() {
     } finally {
       setLoading(false);
     }
-  }, [user, supabase, activeTable, page, searchQuery]);
+  }, [user, authReady, supabase, activeTable, page, searchQuery]);
+
+  // Wait for Supabase auth session to be ready before querying
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        setAuthReady(true);
+      } else {
+        // Listen for auth state change
+        const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+          if (session) setAuthReady(true);
+        });
+        return () => listener.subscription.unsubscribe();
+      }
+    });
+  }, [supabase]);
 
   useEffect(() => {
-    fetchCounts();
-  }, [fetchCounts]);
+    if (authReady) fetchCounts();
+  }, [authReady, fetchCounts]);
 
   useEffect(() => {
     setPage(0);
@@ -241,10 +263,10 @@ export default function DatabasePage() {
   }, [activeTable]);
 
   useEffect(() => {
-    fetchRows();
-  }, [fetchRows]);
+    if (authReady) fetchRows();
+  }, [authReady, fetchRows]);
 
-  const totalRows = Object.values(tableCounts).reduce((a, b) => a + b, 0);
+  const totalRows = Object.values(tableCounts).filter(c => c >= 0).reduce((a, b) => a + b, 0);
   const totalPages = Math.ceil(rowCount / PAGE_SIZE);
 
   return (
@@ -290,9 +312,13 @@ export default function DatabasePage() {
                 </div>
                 {count !== undefined && (
                   <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                    isActive ? "bg-brand-blue/20 text-brand-blue" : "bg-gray-100 text-gray-400"
+                    count === -1
+                      ? "bg-red-100 text-red-400"
+                      : isActive
+                        ? "bg-brand-blue/20 text-brand-blue"
+                        : "bg-gray-100 text-gray-400"
                   }`}>
-                    {count.toLocaleString()}
+                    {count === -1 ? "—" : count.toLocaleString()}
                   </span>
                 )}
               </button>
@@ -330,6 +356,21 @@ export default function DatabasePage() {
           {error && (
             <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700 mb-3">
               <AlertCircle className="w-4 h-4 shrink-0" /> {error}
+            </div>
+          )}
+
+          {/* Table doesn't exist */}
+          {tableCounts[activeTable.name] === -1 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-3">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[13px] font-medium text-amber-800">Table &quot;{activeTable.name}&quot; not found</p>
+                  <p className="text-[11px] text-amber-600 mt-1">
+                    This table hasn&apos;t been created in your Supabase database yet. Create it in the Supabase Dashboard → SQL Editor, or it will be auto-created when data is first written.
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
