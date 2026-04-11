@@ -526,7 +526,9 @@ export async function POST(req: Request) {
           confidence,
           source_agent: 18,
           metadata: { tags: parts[2]?.split(",").map(t => t.trim()) || [] },
-        }).then(() => {});
+        }).then(({ error: memErr }) => {
+          if (memErr) console.error("[chat] Failed to save learning to memory:", memErr.message, "category:", category);
+        });
       }
     }
 

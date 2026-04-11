@@ -620,6 +620,28 @@ export default function ChatPage() {
       const { learnings, cleanContent: contentAfterLearnings } = parseLearnings(accumulated);
       if (learnings.length > 0) {
         saveLearnings(learnings, conv!.id, conv!.title);
+        // Also save to Supabase memory table (the Knowledge Base page reads from here)
+        try {
+          const { createClientComponentClient } = await import("@supabase/auth-helpers-nextjs");
+          const sb = createClientComponentClient();
+          const { data: { user: authUser } } = await sb.auth.getUser();
+          if (authUser) {
+            for (const l of learnings) {
+              const parts = l.content ? [l.title, l.content].filter(Boolean) : [l.title];
+              await sb.from("memory").insert({
+                user_id: authUser.id,
+                category: l.category || "agent_learning",
+                content: parts.join(": "),
+                confidence: l.confidence === "high" ? 0.9 : l.confidence === "medium" ? 0.7 : typeof l.confidence === "number" ? l.confidence : 0.7,
+                source_agent: 18,
+                source_conversation: conv?.id || null,
+                metadata: { tags: l.tags || [], title: l.title },
+              });
+            }
+          }
+        } catch (e) {
+          console.error("Failed to save learnings to Supabase:", e);
+        }
         // Visual feedback: append a system note about extracted learnings
         const learningNote = `\n\n---\n🧠 **Agent 18 — Knowledge Base Updated** | ${learnings.length} learning${learnings.length > 1 ? "s" : ""} extracted and saved`;
         accumulated += learningNote;
