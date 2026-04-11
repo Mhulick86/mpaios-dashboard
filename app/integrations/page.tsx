@@ -179,7 +179,112 @@ export default function IntegrationsPage() {
     setAsanaError(null);
   }
 
+  /* ─── Google OAuth Popup Helper ─── */
+  function openGoogleOAuth(scopes: string[], onSuccess: (data: { accessToken: string; refreshToken: string }) => void) {
+    const redirectUri = `${window.location.origin}/auth/google/callback`;
+
+    // Listen for the callback message from the popup
+    function handleMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "GOOGLE_OAUTH_SUCCESS") {
+        window.removeEventListener("message", handleMessage);
+        onSuccess({
+          accessToken: event.data.accessToken,
+          refreshToken: event.data.refreshToken,
+        });
+      }
+    }
+    window.addEventListener("message", handleMessage);
+
+    // Get the auth URL from our API and open it
+    fetch("/api/google/auth-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scopes, redirectUri }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.error) {
+          window.removeEventListener("message", handleMessage);
+          throw new Error(data.error);
+        }
+        const w = 500;
+        const h = 600;
+        const left = window.screenX + (window.innerWidth - w) / 2;
+        const top = window.screenY + (window.innerHeight - h) / 2;
+        window.open(
+          data.url,
+          "google_oauth",
+          `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no`
+        );
+      })
+      .catch((err) => {
+        window.removeEventListener("message", handleMessage);
+        console.error("Google OAuth error:", err);
+      });
+  }
+
   /* ─── Google Analytics Handlers ─── */
+  function handleGASignIn() {
+    setGaTesting(true);
+    setGaError(null);
+    openGoogleOAuth(
+      ["https://www.googleapis.com/auth/analytics.readonly"],
+      async ({ accessToken, refreshToken }) => {
+        setGaToken(accessToken);
+        // Auto-detect the GA4 property
+        try {
+          // First, list available GA4 properties
+          const acctRes = await fetch(
+            "https://analyticsadmin.googleapis.com/v1beta/accountSummaries",
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          if (acctRes.ok) {
+            const acctData = await acctRes.json();
+            const summaries = acctData.accountSummaries || [];
+            // Find first GA4 property
+            for (const acct of summaries) {
+              const props = acct.propertySummaries || [];
+              if (props.length > 0) {
+                const prop = props[0];
+                const propId = prop.property?.replace("properties/", "") || "";
+                const propName = prop.displayName || `Property ${propId}`;
+                setGaPropertyId(propId);
+                saveConfig({
+                  ...config,
+                  googleAnalytics: {
+                    accessToken,
+                    propertyId: propId,
+                    propertyName: propName,
+                    connected: true,
+                    connectedAt: new Date().toISOString(),
+                  },
+                });
+                // Also save refresh token for auto-renewal
+                try {
+                  const stored = localStorage.getItem("mpaios_google_tokens") || "{}";
+                  const tokens = JSON.parse(stored);
+                  tokens.ga = { refreshToken, accessToken };
+                  localStorage.setItem("mpaios_google_tokens", JSON.stringify(tokens));
+                } catch {}
+                setGaTesting(false);
+                return;
+              }
+            }
+            setGaError("No GA4 properties found in your Google account. Create one at analytics.google.com first.");
+          } else {
+            setGaError("Could not fetch GA4 properties. The token may lack the correct scope.");
+          }
+        } catch (err) {
+          setGaError(err instanceof Error ? err.message : "Failed to detect GA4 property");
+        }
+        setGaTesting(false);
+      }
+    );
+    // Timeout fallback in case popup is closed without completing
+    setTimeout(() => setGaTesting(false), 120000);
+  }
+
   async function handleGATest() {
     if (!gaToken.trim() || !gaPropertyId.trim()) return;
     setGaTesting(true);
@@ -218,9 +323,70 @@ export default function IntegrationsPage() {
     setGaToken("");
     setGaPropertyId("");
     setGaError(null);
+    try {
+      const stored = localStorage.getItem("mpaios_google_tokens") || "{}";
+      const tokens = JSON.parse(stored);
+      delete tokens.ga;
+      localStorage.setItem("mpaios_google_tokens", JSON.stringify(tokens));
+    } catch {}
   }
 
   /* ─── Google Search Console Handlers ─── */
+  function handleGSCSignIn() {
+    setGscTesting(true);
+    setGscError(null);
+    openGoogleOAuth(
+      ["https://www.googleapis.com/auth/webmasters.readonly"],
+      async ({ accessToken, refreshToken }) => {
+        setGscToken(accessToken);
+        try {
+          // Auto-detect sites
+          const sitesRes = await fetch(
+            "https://www.googleapis.com/webmasters/v3/sites",
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          if (sitesRes.ok) {
+            const sitesData = await sitesRes.json();
+            const sites = (sitesData.siteEntry || []).map((s: { siteUrl: string; permissionLevel: string }) => ({
+              siteUrl: s.siteUrl,
+              permissionLevel: s.permissionLevel,
+            }));
+            if (sites.length === 1) {
+              setGscSiteUrl(sites[0].siteUrl);
+              saveConfig({
+                ...config,
+                googleSearchConsole: {
+                  accessToken,
+                  siteUrl: sites[0].siteUrl,
+                  connected: true,
+                  connectedAt: new Date().toISOString(),
+                },
+              });
+            } else if (sites.length > 1) {
+              setGscSites(sites);
+              setGscToken(accessToken);
+            } else {
+              setGscError("No sites found in your Search Console account.");
+            }
+            // Save refresh token
+            try {
+              const stored = localStorage.getItem("mpaios_google_tokens") || "{}";
+              const tokens = JSON.parse(stored);
+              tokens.gsc = { refreshToken, accessToken };
+              localStorage.setItem("mpaios_google_tokens", JSON.stringify(tokens));
+            } catch {}
+          } else {
+            setGscError("Could not fetch Search Console sites.");
+          }
+        } catch (err) {
+          setGscError(err instanceof Error ? err.message : "Failed to detect sites");
+        }
+        setGscTesting(false);
+      }
+    );
+    setTimeout(() => setGscTesting(false), 120000);
+  }
+
   async function handleGSCTest() {
     if (!gscToken.trim()) return;
     setGscTesting(true);
@@ -282,9 +448,56 @@ export default function IntegrationsPage() {
     setGscSiteUrl("");
     setGscError(null);
     setGscSites([]);
+    try {
+      const stored = localStorage.getItem("mpaios_google_tokens") || "{}";
+      const tokens = JSON.parse(stored);
+      delete tokens.gsc;
+      localStorage.setItem("mpaios_google_tokens", JSON.stringify(tokens));
+    } catch {}
   }
 
   /* ─── Google Drive Handlers ─── */
+  function handleDriveSignIn() {
+    setDriveTesting(true);
+    setDriveError(null);
+    openGoogleOAuth(
+      ["https://www.googleapis.com/auth/drive.file"],
+      async ({ accessToken, refreshToken }) => {
+        setDriveToken(accessToken);
+        try {
+          // Get user info
+          const userRes = await fetch(
+            "https://www.googleapis.com/drive/v3/about?fields=user",
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          if (userRes.ok) {
+            const userData = await userRes.json();
+            setDriveUser(userData.user || null);
+          }
+          saveConfig({
+            ...config,
+            googleDrive: {
+              accessToken,
+              folderId: driveFolderId,
+              connected: true,
+              connectedAt: new Date().toISOString(),
+            },
+          });
+          try {
+            const stored = localStorage.getItem("mpaios_google_tokens") || "{}";
+            const tokens = JSON.parse(stored);
+            tokens.drive = { refreshToken, accessToken };
+            localStorage.setItem("mpaios_google_tokens", JSON.stringify(tokens));
+          } catch {}
+        } catch (err) {
+          setDriveError(err instanceof Error ? err.message : "Failed to connect");
+        }
+        setDriveTesting(false);
+      }
+    );
+    setTimeout(() => setDriveTesting(false), 120000);
+  }
+
   async function handleDriveTest() {
     if (!driveToken.trim()) return;
     setDriveTesting(true);
@@ -549,9 +762,6 @@ export default function IntegrationsPage() {
               <p className="text-[12px] text-text-secondary mt-0.5">GA4 performance data, traffic sources, page views & attribution</p>
             </div>
           </div>
-          <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="text-[11px] text-brand-blue hover:text-brand-blue-dark font-medium flex items-center gap-1 shrink-0">
-            Get Token <ExternalLink className="w-3 h-3" />
-          </a>
         </div>
 
         {gaConnected ? (
@@ -579,27 +789,26 @@ export default function IntegrationsPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div>
-              <label className="block text-[12px] font-medium text-text-secondary mb-1.5">OAuth Access Token</label>
-              <div className="relative">
-                <input type={showGaToken ? "text" : "password"} value={gaToken} onChange={(e) => setGaToken(e.target.value)} placeholder="Enter your Google OAuth access token" className="w-full px-3 py-2.5 pr-10 border border-border rounded-lg text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue bg-white" />
-                <button type="button" onClick={() => setShowGaToken(!showGaToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors">
-                  {showGaToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-            <div>
-              <label className="block text-[12px] font-medium text-text-secondary mb-1.5">GA4 Property ID</label>
-              <div className="flex gap-2">
-                <input type="text" value={gaPropertyId} onChange={(e) => setGaPropertyId(e.target.value)} placeholder="e.g. 123456789" className="flex-1 px-3 py-2.5 border border-border rounded-lg text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue bg-white" />
-                <button onClick={handleGATest} disabled={!gaToken.trim() || !gaPropertyId.trim() || gaTesting} className="px-4 py-2.5 rounded-lg bg-brand-blue text-white text-[13px] font-medium hover:bg-brand-blue-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shrink-0">
-                  {gaTesting ? <><Loader2 className="w-4 h-4 animate-spin" /> Testing...</> : "Test Connection"}
-                </button>
-              </div>
-              <p className="text-[11px] text-text-muted mt-1.5">
-                Find your Property ID in GA4 → Admin → Property Settings. Use the <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="text-brand-blue hover:underline">OAuth Playground</a> with scope <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">analytics.readonly</code> to get a token.
-              </p>
-            </div>
+            <button
+              onClick={handleGASignIn}
+              disabled={gaTesting}
+              className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg border-2 border-gray-200 hover:border-brand-blue/40 hover:bg-brand-blue/5 transition-all text-[14px] font-medium disabled:opacity-50"
+            >
+              {gaTesting ? (
+                <Loader2 className="w-5 h-5 animate-spin text-brand-blue" />
+              ) : (
+                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+              )}
+              {gaTesting ? "Connecting..." : "Sign in with Google"}
+            </button>
+            <p className="text-[11px] text-text-muted text-center">
+              We&apos;ll auto-detect your GA4 property. Read-only access to analytics data.
+            </p>
             {gaError && (
               <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
                 <AlertCircle className="w-4 h-4 shrink-0" /> {gaError}
@@ -626,9 +835,6 @@ export default function IntegrationsPage() {
               <p className="text-[12px] text-text-secondary mt-0.5">Search queries, impressions, CTR, rankings & indexing data</p>
             </div>
           </div>
-          <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="text-[11px] text-brand-blue hover:text-brand-blue-dark font-medium flex items-center gap-1 shrink-0">
-            Get Token <ExternalLink className="w-3 h-3" />
-          </a>
         </div>
 
         {gscConnected ? (
@@ -654,26 +860,26 @@ export default function IntegrationsPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div>
-              <label className="block text-[12px] font-medium text-text-secondary mb-1.5">OAuth Access Token</label>
-              <div className="relative">
-                <input type={showGscToken ? "text" : "password"} value={gscToken} onChange={(e) => setGscToken(e.target.value)} placeholder="Enter your Google OAuth access token" className="w-full px-3 py-2.5 pr-10 border border-border rounded-lg text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue bg-white" />
-                <button type="button" onClick={() => setShowGscToken(!showGscToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors">
-                  {showGscToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-            <div>
-              <label className="block text-[12px] font-medium text-text-secondary mb-1.5">Site URL (optional — leave blank to list all sites)</label>
-              <div className="flex gap-2">
-                <input type="text" value={gscSiteUrl} onChange={(e) => setGscSiteUrl(e.target.value)} placeholder="e.g. https://example.com or sc-domain:example.com" className="flex-1 px-3 py-2.5 border border-border rounded-lg text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue bg-white" />
-                <button onClick={handleGSCTest} disabled={!gscToken.trim() || gscTesting} className="px-4 py-2.5 rounded-lg bg-brand-blue text-white text-[13px] font-medium hover:bg-brand-blue-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shrink-0">
-                  {gscTesting ? <><Loader2 className="w-4 h-4 animate-spin" /> Testing...</> : "Test Connection"}
-                </button>
-              </div>
-              <p className="text-[11px] text-text-muted mt-1.5">
-                Use the <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="text-brand-blue hover:underline">OAuth Playground</a> with scope <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">webmasters.readonly</code> to get a token.
-              </p>
+            <button
+              onClick={handleGSCSignIn}
+              disabled={gscTesting}
+              className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg border-2 border-gray-200 hover:border-brand-blue/40 hover:bg-brand-blue/5 transition-all text-[14px] font-medium disabled:opacity-50"
+            >
+              {gscTesting ? (
+                <Loader2 className="w-5 h-5 animate-spin text-brand-blue" />
+              ) : (
+                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+              )}
+              {gscTesting ? "Connecting..." : "Sign in with Google"}
+            </button>
+            <p className="text-[11px] text-text-muted text-center">
+              We&apos;ll auto-detect your verified sites. Read-only access to search data.
+            </p>
             </div>
             {gscError && (
               <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
@@ -750,25 +956,28 @@ export default function IntegrationsPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div>
-              <label className="block text-[12px] font-medium text-text-secondary mb-1.5">OAuth Access Token</label>
-              <div className="relative">
-                <input type={showDriveToken ? "text" : "password"} value={driveToken} onChange={(e) => setDriveToken(e.target.value)} placeholder="Enter your Google OAuth access token" className="w-full px-3 py-2.5 pr-10 border border-border rounded-lg text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue bg-white" />
-                <button type="button" onClick={() => setShowDriveToken(!showDriveToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors">
-                  {showDriveToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
+            <button
+              onClick={handleDriveSignIn}
+              disabled={driveTesting}
+              className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg border-2 border-gray-200 hover:border-brand-blue/40 hover:bg-brand-blue/5 transition-all text-[14px] font-medium disabled:opacity-50"
+            >
+              {driveTesting ? (
+                <Loader2 className="w-5 h-5 animate-spin text-brand-blue" />
+              ) : (
+                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+              )}
+              {driveTesting ? "Connecting..." : "Sign in with Google"}
+            </button>
             <div>
               <label className="block text-[12px] font-medium text-text-secondary mb-1.5">Root Folder ID (optional — leave blank for Drive root)</label>
-              <div className="flex gap-2">
-                <input type="text" value={driveFolderId} onChange={(e) => setDriveFolderId(e.target.value)} placeholder="e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2wtIs" className="flex-1 px-3 py-2.5 border border-border rounded-lg text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue bg-white" />
-                <button onClick={handleDriveTest} disabled={!driveToken.trim() || driveTesting} className="px-4 py-2.5 rounded-lg bg-brand-blue text-white text-[13px] font-medium hover:bg-brand-blue-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shrink-0">
-                  {driveTesting ? <><Loader2 className="w-4 h-4 animate-spin" /> Testing...</> : "Test Connection"}
-                </button>
-              </div>
+              <input type="text" value={driveFolderId} onChange={(e) => setDriveFolderId(e.target.value)} placeholder="e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2wtIs" className="w-full px-3 py-2.5 border border-border rounded-lg text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue bg-white" />
               <p className="text-[11px] text-text-muted mt-1.5">
-                Use the <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="text-brand-blue hover:underline">OAuth Playground</a> with scope <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">drive.file</code> to get a token. The folder ID is in the Drive URL after <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">folders/</code>.
+                Set a folder ID to organize pipeline outputs. Find it in the Drive URL after <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">folders/</code>.
               </p>
             </div>
             {driveError && (
