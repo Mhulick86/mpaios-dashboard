@@ -2,7 +2,16 @@
  * Refreshes an expired Google access token using a refresh token.
  */
 
+import { requireAuth } from "@/lib/apiAuth";
+
 export async function POST(req: Request) {
+  try {
+    const { user } = await requireAuth();
+  } catch (e) {
+    if (e instanceof Response) return e;
+    throw e;
+  }
+
   const { refreshToken } = await req.json();
 
   const clientId = process.env.GOOGLE_CLIENT_ID;

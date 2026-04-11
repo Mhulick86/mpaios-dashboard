@@ -3,7 +3,16 @@
  * Uses Authorization Code flow with server-side token exchange.
  */
 
+import { requireAuth } from "@/lib/apiAuth";
+
 export async function POST(req: Request) {
+  try {
+    const { user } = await requireAuth();
+  } catch (e) {
+    if (e instanceof Response) return e;
+    throw e;
+  }
+
   const { scopes, redirectUri } = await req.json();
 
   const clientId = process.env.GOOGLE_CLIENT_ID;

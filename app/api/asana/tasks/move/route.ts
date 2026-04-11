@@ -1,7 +1,9 @@
 import { asanaFetch } from "@/lib/asana";
+import { requireAuth } from "@/lib/apiAuth";
 
 export async function POST(req: Request) {
   try {
+    const { user } = await requireAuth();
     const { pat, taskGid, sectionGid } = (await req.json()) as {
       pat?: string;
       taskGid?: string;
@@ -26,6 +28,7 @@ export async function POST(req: Request) {
 
     return Response.json({ success: true, data: res.data });
   } catch (error: unknown) {
+    if (error instanceof Response) return error;
     const msg =
       error instanceof Error ? error.message : "Failed to move task";
     return Response.json({ error: msg }, { status: 500 });

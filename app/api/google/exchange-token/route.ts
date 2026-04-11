@@ -2,7 +2,16 @@
  * Exchanges a Google authorization code for access + refresh tokens.
  */
 
+import { requireAuth } from "@/lib/apiAuth";
+
 export async function POST(req: Request) {
+  try {
+    const { user } = await requireAuth();
+  } catch (e) {
+    if (e instanceof Response) return e;
+    throw e;
+  }
+
   const { code, redirectUri } = await req.json();
 
   const clientId = process.env.GOOGLE_CLIENT_ID;

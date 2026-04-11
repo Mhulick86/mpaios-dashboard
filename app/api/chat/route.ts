@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { asanaFetch, AsanaProject, AsanaTask } from "@/lib/asana";
 import { fetchGAOverview } from "@/lib/googleAnalytics";
 import { fetchGSCOverview } from "@/lib/googleSearchConsole";
+import { calculateCost } from "@/lib/observability";
 
 export const maxDuration = 120;
 
@@ -439,126 +440,144 @@ export async function POST(req: Request) {
       });
     }
 
-    // Cloud providers: use generateText (more reliable for Anthropic/OpenAI)
-    const result = await generateText({
+    // Cloud providers: use streamText for real-time streaming to client
+    const result = streamText({
       model: modelInstance,
       system: systemPrompt,
       messages: convertedMessages,
     });
 
-    const latencyMs = Date.now() - startTime;
+    // Stream chunks to the client while buffering full text for post-processing
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          let fullText = "";
+          for await (const chunk of result.textStream) {
+            fullText += chunk;
+            controller.enqueue(encoder.encode(chunk));
+          }
 
-    // ── Observability: Track token usage + audit log (fire-and-forget) ──
-    if (user) {
-      const usage = result.usage as Record<string, number> | undefined;
-      const tokensInput = usage?.promptTokens ?? usage?.inputTokens ?? Math.ceil(systemPrompt.length / 4);
-      const tokensOutput = usage?.completionTokens ?? usage?.outputTokens ?? Math.ceil(result.text.length / 4);
+          const latencyMs = Date.now() - startTime;
 
-      // Token usage tracking
-      supabase.from("token_usage").insert({
-        user_id: user.id,
-        model: model || "unknown",
-        provider: provider || "unknown",
-        tokens_input: tokensInput,
-        tokens_output: tokensOutput,
-        cost: (tokensInput * 0.000003) + (tokensOutput * 0.000015),
-        endpoint: "chat",
-      }).then(() => {});
+          // ── Post-stream: Execute Asana markers (REAL API calls) ──
+          if (asanaPat && asanaWorkspace && /\[ASANA_CREATE\]/.test(fullText)) {
+            let teamGid: string | undefined;
+            try {
+              const teamsRes = await asanaFetch<Array<{ gid: string }>>(
+                asanaPat,
+                `/workspaces/${asanaWorkspace}/teams?limit=1`
+              );
+              teamGid = teamsRes.data?.[0]?.gid;
+            } catch {
+              // Personal workspace — no team needed
+            }
 
-      // Audit log
-      supabase.from("audit_log").insert({
-        user_id: user.id,
-        event_type: "chat.completion",
-        resource_type: "message",
-        details: { model, provider, messageCount: messages.length },
-        tokens_used: tokensInput + tokensOutput,
-        cost: (tokensInput * 0.000003) + (tokensOutput * 0.000015),
-        model: model || "unknown",
-        latency_ms: latencyMs,
-      }).then(() => {});
+            const { executions } = parseAndExecuteAsanaMarkers(
+              fullText, asanaPat, asanaWorkspace, teamGid
+            );
+            if (executions.length > 0) {
+              const results = await Promise.all(executions);
+              const summary = "\n\n---\n" + results.join("\n\n");
+              controller.enqueue(encoder.encode(summary));
+            }
+          }
 
-      // Extract and log agent executions from response markers
-      const agentPattern = /\[AGENT:(\d{1,2}):(activated|executing|thinking|responding|handoff|complete)\]\s*([^\[]*?)\s*\[\/AGENT\]/g;
-      let agentMatch;
-      const seenAgents = new Set<number>();
-      while ((agentMatch = agentPattern.exec(result.text)) !== null) {
-        const agentId = parseInt(agentMatch[1]);
-        const action = agentMatch[2];
-        const message = agentMatch[3].trim();
-        if (!seenAgents.has(agentId)) {
-          seenAgents.add(agentId);
-          const agentNames: Record<number, string> = {
-            1:"Competitive Intel",2:"Head of Strategy",3:"Content Strategist",4:"Copywriter",5:"Creative Director",
-            6:"Landing Pages",7:"Meta Ads",8:"Google Ads",9:"Social Ads",10:"SEO Manager",11:"Social Organic",
-            12:"Brand Monitor",13:"Performance Analyst",14:"CRO Specialist",15:"Workflow Orchestrator",
-            16:"Client Reporting",17:"Budget Manager",18:"System Intelligence",19:"Client Onboarding",
-            20:"Video Producer",21:"LLMO Specialist",22:"Brand QA",23:"PR Manager",24:"Email Automation",
-            25:"Client Success",26:"Proposal Strategist",27:"Revenue Intel",28:"Data Engineer",
-            29:"Predictive Analytics",30:"Market Research",31:"Local SEO",32:"GBP Manager",33:"Community Growth",
-          };
-          supabase.from("agent_executions").insert({
-            agent_id: agentId,
-            agent_name: agentNames[agentId] || `Agent ${agentId}`,
-            division: agentId <= 2 || agentId === 19 ? "Strategy" : agentId <= 6 || agentId === 20 ? "Content" : agentId <= 9 ? "Paid Media" : agentId <= 12 || agentId === 21 || agentId === 23 ? "Organic" : agentId <= 14 || agentId === 22 ? "Analytics" : agentId <= 18 || agentId === 24 ? "Operations" : agentId <= 27 ? "Client Success" : agentId <= 30 ? "Data Engineering" : "Local",
-            action: message || action,
-            status: "completed",
-            tokens_used: Math.ceil((tokensInput + tokensOutput) / Math.max(seenAgents.size, 1)),
-            cost: ((tokensInput * 0.000003) + (tokensOutput * 0.000015)) / Math.max(seenAgents.size, 1),
-            latency_ms: latencyMs,
-            completed_at: new Date().toISOString(),
-          }).then(() => {});
+          // ── Post-stream: Observability (fire-and-forget) ──
+          if (user) {
+            // streamText usage resolves after the stream completes
+            const usage = await result.usage as Record<string, number> | undefined;
+            const tokensInput = usage?.promptTokens ?? usage?.inputTokens ?? Math.ceil(systemPrompt.length / 4);
+            const tokensOutput = usage?.completionTokens ?? usage?.outputTokens ?? Math.ceil(fullText.length / 4);
+
+            const cost = calculateCost(model || "unknown", tokensInput, tokensOutput);
+
+            // Token usage tracking
+            supabase.from("token_usage").insert({
+              user_id: user.id,
+              model: model || "unknown",
+              provider: provider || "unknown",
+              tokens_input: tokensInput,
+              tokens_output: tokensOutput,
+              cost,
+              endpoint: "chat",
+            }).then(() => {});
+
+            // Audit log
+            supabase.from("audit_log").insert({
+              user_id: user.id,
+              event_type: "chat.completion",
+              resource_type: "message",
+              details: { model, provider, messageCount: messages.length },
+              tokens_used: tokensInput + tokensOutput,
+              cost,
+              model: model || "unknown",
+              latency_ms: latencyMs,
+            }).then(() => {});
+
+            // Extract and log agent executions from response markers
+            const agentPattern = /\[AGENT:(\d{1,2}):(activated|executing|thinking|responding|handoff|complete)\]\s*([^\[]*?)\s*\[\/AGENT\]/g;
+            let agentMatch;
+            const seenAgents = new Set<number>();
+            while ((agentMatch = agentPattern.exec(fullText)) !== null) {
+              const agentId = parseInt(agentMatch[1]);
+              const action = agentMatch[2];
+              const message = agentMatch[3].trim();
+              if (!seenAgents.has(agentId)) {
+                seenAgents.add(agentId);
+                const agentNames: Record<number, string> = {
+                  1:"Competitive Intel",2:"Head of Strategy",3:"Content Strategist",4:"Copywriter",5:"Creative Director",
+                  6:"Landing Pages",7:"Meta Ads",8:"Google Ads",9:"Social Ads",10:"SEO Manager",11:"Social Organic",
+                  12:"Brand Monitor",13:"Performance Analyst",14:"CRO Specialist",15:"Workflow Orchestrator",
+                  16:"Client Reporting",17:"Budget Manager",18:"System Intelligence",19:"Client Onboarding",
+                  20:"Video Producer",21:"LLMO Specialist",22:"Brand QA",23:"PR Manager",24:"Email Automation",
+                  25:"Client Success",26:"Proposal Strategist",27:"Revenue Intel",28:"Data Engineer",
+                  29:"Predictive Analytics",30:"Market Research",31:"Local SEO",32:"GBP Manager",33:"Community Growth",
+                };
+                supabase.from("agent_executions").insert({
+                  agent_id: agentId,
+                  agent_name: agentNames[agentId] || `Agent ${agentId}`,
+                  division: agentId <= 2 || agentId === 19 ? "Strategy" : agentId <= 6 || agentId === 20 ? "Content" : agentId <= 9 ? "Paid Media" : agentId <= 12 || agentId === 21 || agentId === 23 ? "Organic" : agentId <= 14 || agentId === 22 ? "Analytics" : agentId <= 18 || agentId === 24 ? "Operations" : agentId <= 27 ? "Client Success" : agentId <= 30 ? "Data Engineering" : "Local",
+                  action: message || action,
+                  status: "completed",
+                  tokens_used: Math.ceil((tokensInput + tokensOutput) / Math.max(seenAgents.size, 1)),
+                  cost: cost / Math.max(seenAgents.size, 1),
+                  latency_ms: latencyMs,
+                  completed_at: new Date().toISOString(),
+                }).then(() => {});
+              }
+            }
+
+            // Extract and store learning markers from response
+            const learningPattern = /\[LEARNING:(\w+):(\w+)\]\s*(.+?)\s*\[\/LEARNING\]/gs;
+            let match;
+            while ((match = learningPattern.exec(fullText)) !== null) {
+              const category = match[1];
+              const confidence = match[2] === "high" ? 0.9 : match[2] === "medium" ? 0.7 : 0.5;
+              const parts = match[3].split("|").map(s => s.trim());
+              const content = parts.length > 1 ? `${parts[0]}: ${parts[1]}` : parts[0];
+
+              supabase.from("memory").insert({
+                user_id: user.id,
+                category,
+                content,
+                confidence,
+                source_agent: 18,
+                metadata: { tags: parts[2]?.split(",").map(t => t.trim()) || [] },
+              }).then(({ error: memErr }) => {
+                if (memErr) console.error("[chat] Failed to save learning to memory:", memErr.message, "category:", category);
+              });
+            }
+          }
+
+          controller.close();
+        } catch (err) {
+          controller.error(err);
         }
-      }
+      },
+    });
 
-      // Extract and store learning markers from response
-      const learningPattern = /\[LEARNING:(\w+):(\w+)\]\s*(.+?)\s*\[\/LEARNING\]/gs;
-      let match;
-      while ((match = learningPattern.exec(result.text)) !== null) {
-        const category = match[1];
-        const confidence = match[2] === "high" ? 0.9 : match[2] === "medium" ? 0.7 : 0.5;
-        const parts = match[3].split("|").map(s => s.trim());
-        const content = parts.length > 1 ? `${parts[0]}: ${parts[1]}` : parts[0];
-
-        supabase.from("memory").insert({
-          user_id: user.id,
-          category,
-          content,
-          confidence,
-          source_agent: 18,
-          metadata: { tags: parts[2]?.split(",").map(t => t.trim()) || [] },
-        }).then(({ error: memErr }) => {
-          if (memErr) console.error("[chat] Failed to save learning to memory:", memErr.message, "category:", category);
-        });
-      }
-    }
-
-    // ── Execute Asana markers (REAL API calls) ──
-    let finalText = result.text;
-    if (asanaPat && asanaWorkspace && /\[ASANA_CREATE\]/.test(finalText)) {
-      // Fetch first team in workspace for project creation
-      let teamGid: string | undefined;
-      try {
-        const teamsRes = await asanaFetch<Array<{ gid: string }>>(
-          asanaPat,
-          `/workspaces/${asanaWorkspace}/teams?limit=1`
-        );
-        teamGid = teamsRes.data?.[0]?.gid;
-      } catch {
-        // Personal workspace — no team needed
-      }
-
-      const { cleanText, executions } = parseAndExecuteAsanaMarkers(
-        finalText, asanaPat, asanaWorkspace, teamGid
-      );
-
-      if (executions.length > 0) {
-        const results = await Promise.all(executions);
-        let idx = 0;
-        finalText = cleanText.replace(/\{\{ASANA_RESULT\}\}/g, () => results[idx++] || "");
-      }
-    }
-
-    return new Response(finalText, {
+    return new Response(stream, {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   } catch (error: unknown) {

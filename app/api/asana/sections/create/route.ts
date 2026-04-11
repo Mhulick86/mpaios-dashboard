@@ -1,7 +1,9 @@
 import { asanaFetch } from "@/lib/asana";
+import { requireAuth } from "@/lib/apiAuth";
 
 export async function POST(req: Request) {
   try {
+    const { user } = await requireAuth();
     const { pat, projectGid, name } = (await req.json()) as {
       pat?: string;
       projectGid?: string;
@@ -26,6 +28,7 @@ export async function POST(req: Request) {
 
     return Response.json({ section: res.data });
   } catch (error: unknown) {
+    if (error instanceof Response) return error;
     const msg =
       error instanceof Error ? error.message : "Failed to create section";
     return Response.json({ error: msg }, { status: 500 });

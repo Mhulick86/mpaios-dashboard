@@ -1,7 +1,9 @@
 import { driveFetch, type DriveAbout } from "@/lib/googleDrive";
+import { requireAuth } from "@/lib/apiAuth";
 
 export async function POST(req: Request) {
   try {
+    const { user } = await requireAuth();
     const { accessToken } = (await req.json()) as { accessToken?: string };
 
     if (!accessToken) {

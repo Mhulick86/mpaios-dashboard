@@ -1,4 +1,5 @@
 import { gaFetch } from "@/lib/googleAnalytics";
+import { requireAuth } from "@/lib/apiAuth";
 
 interface GAPropertyListResponse {
   properties?: Array<{
@@ -10,6 +11,7 @@ interface GAPropertyListResponse {
 
 export async function POST(req: Request) {
   try {
+    const { user } = await requireAuth();
     const { accessToken, propertyId } = (await req.json()) as {
       accessToken?: string;
       propertyId?: string;
@@ -64,6 +66,7 @@ export async function POST(req: Request) {
       hasData: !!(report as { rows?: unknown[] }).rows?.length,
     });
   } catch (error: unknown) {
+    if (error instanceof Response) return error;
     const msg =
       error instanceof Error
         ? error.message

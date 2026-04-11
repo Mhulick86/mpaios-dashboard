@@ -1,4 +1,13 @@
+import { requireAuth } from "@/lib/apiAuth";
+
 export async function POST(req: Request) {
+  try {
+    const { user } = await requireAuth();
+  } catch (e) {
+    if (e instanceof Response) return e;
+    throw e;
+  }
+
   const { url, apiKey } = (await req.json()) as {
     url: string;
     apiKey?: string;

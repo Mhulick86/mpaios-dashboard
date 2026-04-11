@@ -1,7 +1,9 @@
 import { gscFetch, type GSCSite } from "@/lib/googleSearchConsole";
+import { requireAuth } from "@/lib/apiAuth";
 
 export async function POST(req: Request) {
   try {
+    const { user } = await requireAuth();
     const { accessToken, siteUrl } = (await req.json()) as {
       accessToken?: string;
       siteUrl?: string;
@@ -67,6 +69,7 @@ export async function POST(req: Request) {
       needsSiteSelection: false,
     });
   } catch (error: unknown) {
+    if (error instanceof Response) return error;
     const msg =
       error instanceof Error
         ? error.message

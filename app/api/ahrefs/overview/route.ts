@@ -1,6 +1,14 @@
 import { buildAhrefsContext } from "@/lib/ahrefs";
+import { requireAuth } from "@/lib/apiAuth";
 
 export async function POST(req: Request) {
+  try {
+    const { user } = await requireAuth();
+  } catch (e) {
+    if (e instanceof Response) return e;
+    throw e;
+  }
+
   const { apiKey, target, country } = await req.json();
 
   if (!apiKey || !target) {

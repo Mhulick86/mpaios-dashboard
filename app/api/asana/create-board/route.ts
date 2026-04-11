@@ -4,8 +4,16 @@
  */
 
 import { asanaFetch } from "@/lib/asana";
+import { requireAuth } from "@/lib/apiAuth";
 
 export async function POST(req: Request) {
+  try {
+    const { user } = await requireAuth();
+  } catch (e) {
+    if (e instanceof Response) return e;
+    throw e;
+  }
+
   const { pat, workspaceGid, board } = await req.json();
 
   if (!pat || !workspaceGid || !board?.project_name || !board?.tasks?.length) {

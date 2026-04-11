@@ -1,7 +1,9 @@
 import { asanaFetch, AsanaProject } from "@/lib/asana";
+import { requireAuth } from "@/lib/apiAuth";
 
 export async function POST(req: Request) {
   try {
+    const { user } = await requireAuth();
     const { pat, workspaceGid } = (await req.json()) as {
       pat?: string;
       workspaceGid?: string;
@@ -24,6 +26,7 @@ export async function POST(req: Request) {
 
     return Response.json({ projects: active });
   } catch (error: unknown) {
+    if (error instanceof Response) return error;
     const msg =
       error instanceof Error ? error.message : "Failed to fetch projects";
     return Response.json({ error: msg }, { status: 500 });

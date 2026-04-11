@@ -1,7 +1,9 @@
 import { driveUploadMultipart } from "@/lib/googleDrive";
+import { requireAuth } from "@/lib/apiAuth";
 
 export async function POST(req: Request) {
   try {
+    const { user } = await requireAuth();
     const { accessToken, fileName, content, folderId, mimeType } =
       (await req.json()) as {
         accessToken?: string;

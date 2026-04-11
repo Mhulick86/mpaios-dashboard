@@ -1,7 +1,9 @@
 import { asanaFetch, AsanaTask } from "@/lib/asana";
+import { requireAuth } from "@/lib/apiAuth";
 
 export async function POST(req: Request) {
   try {
+    const { user } = await requireAuth();
     const { pat, name, notes, projectGid, assignee, dueOn } =
       (await req.json()) as {
         pat?: string;
@@ -35,6 +37,7 @@ export async function POST(req: Request) {
 
     return Response.json({ task: res.data });
   } catch (error: unknown) {
+    if (error instanceof Response) return error;
     const msg =
       error instanceof Error ? error.message : "Failed to create task";
     return Response.json({ error: msg }, { status: 500 });

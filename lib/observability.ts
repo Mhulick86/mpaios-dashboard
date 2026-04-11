@@ -14,16 +14,20 @@ const COST_PER_1K: Record<string, { input: number; output: number }> = {
   "gpt-4o-mini": { input: 0.00015, output: 0.0006 },
   "gpt-4-turbo": { input: 0.01, output: 0.03 },
   "o1": { input: 0.015, output: 0.06 },
-  "o3-mini": { input: 0.00115, output: 0.0044 },
+  "o3-mini": { input: 0.0011, output: 0.0044 },
   "claude-sonnet-4-20250514": { input: 0.003, output: 0.015 },
+  "claude-opus-4-20250514": { input: 0.015, output: 0.075 },
   "claude-3.5-haiku": { input: 0.0008, output: 0.004 },
   "claude-3-opus": { input: 0.015, output: 0.075 },
+  "gemini-2.5-pro": { input: 0.00125, output: 0.01 },
+  "gemini-2.5-flash": { input: 0.00015, output: 0.0006 },
   "gemini-2.0-flash": { input: 0.0001, output: 0.0004 },
   "gemini-2.0-pro": { input: 0.00125, output: 0.005 },
   "gemini-1.5-pro": { input: 0.00125, output: 0.005 },
+  "local/custom": { input: 0, output: 0 },
 };
 
-function calculateCost(
+export function calculateCost(
   model: string,
   tokensInput: number,
   tokensOutput: number
