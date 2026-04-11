@@ -39,6 +39,7 @@ export async function POST(req: Request) {
       file: result,
     });
   } catch (error: unknown) {
+    if (error instanceof Response) return error;
     const msg =
       error instanceof Error
         ? error.message

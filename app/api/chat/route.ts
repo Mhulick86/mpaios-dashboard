@@ -1,4 +1,4 @@
-import { generateText, streamText } from "ai";
+import { streamText } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createServerClient } from "@supabase/ssr";
@@ -286,7 +286,7 @@ export async function POST(req: Request) {
 
   console.log(`[chat] provider=${provider} model=${model} customEndpoint=${customEndpoint ? JSON.stringify(customEndpoint) : "none"}`);
 
-  // Convert to the format generateText expects
+  // Convert to the format streamText expects
   const convertedMessages = messages.map((m) => ({
     role: m.role as "user" | "assistant",
     content: m.content,

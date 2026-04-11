@@ -52,6 +52,7 @@ export async function POST(req: Request) {
       folder: folder as DriveFolder,
     });
   } catch (error: unknown) {
+    if (error instanceof Response) return error;
     const msg =
       error instanceof Error
         ? error.message

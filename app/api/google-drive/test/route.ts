@@ -24,6 +24,7 @@ export async function POST(req: Request) {
       storageQuota: about.storageQuota,
     });
   } catch (error: unknown) {
+    if (error instanceof Response) return error;
     const msg =
       error instanceof Error
         ? error.message
