@@ -880,7 +880,6 @@ export default function IntegrationsPage() {
             <p className="text-[11px] text-text-muted text-center">
               We&apos;ll auto-detect your verified sites. Read-only access to search data.
             </p>
-            </div>
             {gscError && (
               <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
                 <AlertCircle className="w-4 h-4 shrink-0" /> {gscError}
