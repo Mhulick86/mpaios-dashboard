@@ -26,6 +26,7 @@ import {
   LogOut,
   User,
   MapPin,
+  Database,
 } from "lucide-react";
 import { getConversations } from "@/lib/conversations";
 
@@ -48,6 +49,7 @@ const navItems = [
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/tools", label: "Tools", icon: Wrench },
   { href: "/local-seo", label: "Local SEO", icon: MapPin },
+  { href: "/database", label: "Database", icon: Database },
   { href: "/observability", label: "Observability", icon: Activity },
   { href: "/team", label: "Team", icon: Users },
   { href: "/integrations", label: "Integrations", icon: Plug },
