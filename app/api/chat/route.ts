@@ -519,7 +519,8 @@ export async function POST(req: Request) {
           // ── Post-stream: Observability (fire-and-forget) ──
           if (user) {
             // streamText usage resolves after the stream completes
-            const usage = await result.usage as Record<string, number> | undefined;
+            let usage: Record<string, number> | undefined;
+            try { usage = await result.usage as Record<string, number> | undefined; } catch {};
             const tokensInput = usage?.promptTokens ?? usage?.inputTokens ?? Math.ceil(systemPrompt.length / 4);
             const tokensOutput = usage?.completionTokens ?? usage?.outputTokens ?? Math.ceil(fullText.length / 4);
 
