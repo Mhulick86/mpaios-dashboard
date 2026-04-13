@@ -116,7 +116,7 @@ export function Sidebar() {
       {/* Scrollable middle section */}
       <div className="flex-1 overflow-y-auto min-h-0">
       {/* Navigation */}
-      <nav className="px-3 space-y-0.5">
+      <nav className="px-3 space-y-0.5 pb-4">
         {navItems.map((item) => {
           const isActive =
             item.href === "/"
@@ -235,6 +235,7 @@ export function Sidebar() {
           ${mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
           aside-mobile-offset
         `}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
         {sidebarContent}
       </aside>
