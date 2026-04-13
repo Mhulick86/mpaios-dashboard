@@ -90,9 +90,32 @@
   }
 }
 
-/* Safe area support for notched devices */
-@supports (padding-bottom: env(safe-area-inset-bottom)) {
-  .safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
+/* Safe area support for notched devices / PWA standalone mode */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+/* Sidebar mobile top offset — matches top bar height + status bar safe area */
+.aside-mobile-offset {
+  padding-top: calc(3.5rem + env(safe-area-inset-top, 0px));
+}
+@media (min-width: 768px) {
+  .aside-mobile-offset {
+    padding-top: 0;
   }
+}
+/* Main scrollable content — adds safe area on top of existing padding */
+.main-safe-pb {
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 768px) {
+  .main-safe-pb {
+    padding-bottom: 2rem;
+  }
+}
+/* Legacy alias kept for compatibility */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }

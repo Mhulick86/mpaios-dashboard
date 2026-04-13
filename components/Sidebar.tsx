@@ -170,7 +170,10 @@ export function Sidebar() {
 
       {/* User Profile & Sign Out */}
       {user && (
-        <div className="p-3 border-t border-border-dark">
+        <div
+          className="p-3 border-t border-border-dark"
+          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+        >
           <div className="flex items-center gap-3 px-3 py-2">
             <div className="w-8 h-8 rounded-full bg-brand-blue/20 flex items-center justify-center shrink-0">
               <User className="w-4 h-4 text-brand-blue" />
@@ -197,7 +200,10 @@ export function Sidebar() {
   return (
     <>
       {/* Mobile top bar */}
-      <div className="fixed top-0 left-0 right-0 z-40 md:hidden bg-surface-dark flex items-center justify-between px-4 py-3 border-b border-border-dark">
+      <div
+        className="fixed top-0 left-0 right-0 z-40 md:hidden bg-surface-dark flex items-center justify-between px-4 pb-3 border-b border-border-dark"
+        style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}
+      >
         <Link href="/" className="flex items-center gap-2">
           <BrandLogoMark size={28} />
           <span className="text-white text-[14px] font-semibold tracking-tight">
@@ -227,7 +233,7 @@ export function Sidebar() {
           w-[260px] bg-surface-dark flex flex-col shrink-0
           transition-transform duration-300 ease-in-out
           ${mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-          pt-14 md:pt-0
+          aside-mobile-offset
         `}
       >
         {sidebarContent}
