@@ -81,12 +81,25 @@ export interface AhrefsConfig {
   connectedAt: string | null;
 }
 
+export interface MetaAdsIntegrationConfig {
+  accessToken: string;
+  expiresAt: number | null;
+  userId: string;
+  userName: string;
+  accountId: string;
+  accountName: string;
+  currency: string;
+  connected: boolean;
+  connectedAt: string | null;
+}
+
 export interface IntegrationsConfig {
   asana: AsanaConfig;
   googleAnalytics: GAConfig;
   googleSearchConsole: GSCConfig;
   googleDrive: GDriveConfig;
   ahrefs: AhrefsConfig;
+  metaAds: MetaAdsIntegrationConfig;
 }
 
 // Keep old type as alias for backwards compat
@@ -121,6 +134,17 @@ export function defaultIntegrations(): IntegrationsConfig {
     },
     ahrefs: {
       apiKey: "",
+      connected: false,
+      connectedAt: null,
+    },
+    metaAds: {
+      accessToken: "",
+      expiresAt: null,
+      userId: "",
+      userName: "",
+      accountId: "",
+      accountName: "",
+      currency: "",
       connected: false,
       connectedAt: null,
     },

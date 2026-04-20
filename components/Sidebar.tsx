@@ -27,6 +27,7 @@ import {
   User,
   MapPin,
   Database,
+  Facebook,
 } from "lucide-react";
 import { getConversations } from "@/lib/conversations";
 
@@ -40,6 +41,7 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/campaigns", label: "Campaigns", icon: Megaphone },
+  { href: "/meta-ads", label: "Meta Ads", icon: Facebook },
   { href: "/agents", label: "Agents", icon: Bot },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/alerts", label: "Alerts", icon: Bell },

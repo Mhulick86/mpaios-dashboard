@@ -30,7 +30,12 @@
       "Bash(git init:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(npx vercel:*)"
+      "Bash(npx vercel:*)",
+      "Bash(npx tsc *)",
+      "Bash(curl -s -I -L --max-redirs 0 http://localhost:3000/meta-ads)",
+      "Bash(curl -s -I http://localhost:3000/_next/static/css/app/layout.css)",
+      "Bash(curl -s http://localhost:3000/_next/static/css/app/layout.css)",
+      "Bash(curl -s \"http://localhost:3000/meta-ads\")"
     ]
   }
 }
