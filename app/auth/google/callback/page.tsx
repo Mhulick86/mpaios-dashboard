@@ -18,15 +18,28 @@ export default function GoogleCallbackPage() {
       const code = params.get("code");
       const errorParam = params.get("error");
 
-      if (errorParam) {
+      function reportError(message: string) {
         setStatus("error");
-        setError(errorParam === "access_denied" ? "Access denied — you cancelled the sign-in." : errorParam);
+        setError(message);
+        if (window.opener) {
+          window.opener.postMessage(
+            { type: "GOOGLE_OAUTH_ERROR", error: message },
+            window.location.origin
+          );
+        }
+      }
+
+      if (errorParam) {
+        reportError(
+          errorParam === "access_denied"
+            ? "Access denied — you cancelled the sign-in."
+            : errorParam
+        );
         return;
       }
 
       if (!code) {
-        setStatus("error");
-        setError("No authorization code received from Google.");
+        reportError("No authorization code received from Google.");
         return;
       }
 
@@ -66,8 +79,7 @@ export default function GoogleCallbackPage() {
           setError("Could not communicate with the main window. Please close this tab and try again.");
         }
       } catch (err) {
-        setStatus("error");
-        setError(err instanceof Error ? err.message : "Authentication failed");
+        reportError(err instanceof Error ? err.message : "Authentication failed");
       }
     }
 

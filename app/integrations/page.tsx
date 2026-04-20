@@ -180,47 +180,84 @@ export default function IntegrationsPage() {
   }
 
   /* ─── Google OAuth Popup Helper ─── */
-  function openGoogleOAuth(scopes: string[], onSuccess: (data: { accessToken: string; refreshToken: string }) => void) {
+  function openGoogleOAuth(
+    scopes: string[],
+    onSuccess: (data: { accessToken: string; refreshToken: string }) => void,
+    onError: (message: string) => void = (m) => console.error("Google OAuth error:", m)
+  ) {
     const redirectUri = `${window.location.origin}/auth/google/callback`;
+    let popup: Window | null = null;
+    let closedPoll: ReturnType<typeof setInterval> | null = null;
+    let settled = false;
 
-    // Listen for the callback message from the popup
+    function cleanup() {
+      window.removeEventListener("message", handleMessage);
+      if (closedPoll) clearInterval(closedPoll);
+    }
+    function fail(msg: string) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      onError(msg);
+    }
+    function succeed(data: { accessToken: string; refreshToken: string }) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      onSuccess(data);
+    }
+
     function handleMessage(event: MessageEvent) {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === "GOOGLE_OAUTH_SUCCESS") {
-        window.removeEventListener("message", handleMessage);
-        onSuccess({
+        succeed({
           accessToken: event.data.accessToken,
           refreshToken: event.data.refreshToken,
         });
+      } else if (event.data?.type === "GOOGLE_OAUTH_ERROR") {
+        fail(event.data.error || "Google sign-in failed in the popup window.");
       }
     }
     window.addEventListener("message", handleMessage);
 
-    // Get the auth URL from our API and open it
     fetch("/api/google/auth-url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scopes, redirectUri }),
     })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.error) {
-          window.removeEventListener("message", handleMessage);
-          throw new Error(data.error);
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) {
+          throw new Error(
+            data.error ||
+              (res.status === 401
+                ? "You must be signed in to MPAIOS before connecting Google. Sign in and try again."
+                : `Failed to start Google sign-in (HTTP ${res.status}).`)
+          );
         }
         const w = 500;
         const h = 600;
         const left = window.screenX + (window.innerWidth - w) / 2;
         const top = window.screenY + (window.innerHeight - h) / 2;
-        window.open(
+        popup = window.open(
           data.url,
           "google_oauth",
           `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no`
         );
+        if (!popup) {
+          throw new Error(
+            "Popup was blocked. Allow popups for this site and try again."
+          );
+        }
+        // Detect if the user closes the popup without completing sign-in.
+        closedPoll = setInterval(() => {
+          if (popup && popup.closed) {
+            fail("Sign-in window closed before completing. Please try again.");
+          }
+        }, 500);
       })
       .catch((err) => {
-        window.removeEventListener("message", handleMessage);
-        console.error("Google OAuth error:", err);
+        fail(err instanceof Error ? err.message : String(err));
       });
   }
 
@@ -279,10 +316,12 @@ export default function IntegrationsPage() {
           setGaError(err instanceof Error ? err.message : "Failed to detect GA4 property");
         }
         setGaTesting(false);
+      },
+      (msg) => {
+        setGaError(msg);
+        setGaTesting(false);
       }
     );
-    // Timeout fallback in case popup is closed without completing
-    setTimeout(() => setGaTesting(false), 120000);
   }
 
   async function handleGATest() {
@@ -382,9 +421,12 @@ export default function IntegrationsPage() {
           setGscError(err instanceof Error ? err.message : "Failed to detect sites");
         }
         setGscTesting(false);
+      },
+      (msg) => {
+        setGscError(msg);
+        setGscTesting(false);
       }
     );
-    setTimeout(() => setGscTesting(false), 120000);
   }
 
   async function handleGSCTest() {
@@ -493,9 +535,12 @@ export default function IntegrationsPage() {
           setDriveError(err instanceof Error ? err.message : "Failed to connect");
         }
         setDriveTesting(false);
+      },
+      (msg) => {
+        setDriveError(msg);
+        setDriveTesting(false);
       }
     );
-    setTimeout(() => setDriveTesting(false), 120000);
   }
 
   async function handleDriveTest() {
