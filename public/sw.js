@@ -1,61 +1,37 @@
-const CACHE_NAME = 'mpaios-v2';
-const STATIC_ASSETS = [
-  '/',
-  '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
-];
+// Kill-switch service worker.
+//
+// Earlier versions of this SW (mpaios-v1, mpaios-v2) were caching the
+// Settings page bundle that wired the LM Studio "Fetch" button to a
+// requireAuth-gated proxy. Even after the server-side fix shipped,
+// browsers kept serving the old bundle from SW cache and rendering
+// "Unauthorized".
+//
+// This file replaces the SW with one that:
+//   1) takes over on install (skipWaiting + clients.claim)
+//   2) deletes every cache it can find
+//   3) unregisters itself
+//   4) reloads any open clients so they pick up the un-cached site
+//
+// After every browser has hit this once, we can drop sw.js entirely.
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-  );
-  self.skipWaiting();
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+      await self.registration.unregister();
+      const clients = await self.clients.matchAll({ type: 'window' });
+      clients.forEach((client) => {
+        try { client.navigate(client.url); } catch {}
+      });
+    })()
   );
-  self.clients.claim();
 });
 
-self.addEventListener('fetch', (event) => {
-  // Only handle GET requests
-  if (event.request.method !== 'GET') return;
-
-  const url = new URL(event.request.url);
-
-  // Skip API routes and auth — always network-first
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) {
-    return;
-  }
-
-  // Cache-first for static assets, network-first for pages
-  const isStaticAsset =
-    url.pathname.startsWith('/_next/static/') ||
-    url.pathname.startsWith('/icons/') ||
-    url.pathname.startsWith('/fonts/') ||
-    url.pathname.endsWith('.png') ||
-    url.pathname.endsWith('.jpg') ||
-    url.pathname.endsWith('.svg') ||
-    url.pathname.endsWith('.woff2');
-
-  if (isStaticAsset) {
-    event.respondWith(
-      caches.match(event.request).then(
-        (cached) => cached || fetch(event.request).then((res) => {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          return res;
-        })
-      )
-    );
-  } else {
-    event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request))
-    );
-  }
+self.addEventListener('fetch', () => {
+  // Pass-through. Do not intercept any request.
 });
