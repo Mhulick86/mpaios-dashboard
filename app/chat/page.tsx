@@ -510,7 +510,7 @@ export default function ChatPage() {
       // If using a local endpoint (LM Studio, Ollama), call it directly from browser
       // because the Vercel server can't reach localhost on the user's machine
       const isLocal = apiKeys.customEndpoint?.url &&
-        /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|::1|.*\.local)(:\d+)?/i.test(apiKeys.customEndpoint.url);
+        /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|::1|.*\.local|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?/i.test(apiKeys.customEndpoint.url);
 
       let response: Response;
 
