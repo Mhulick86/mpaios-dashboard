@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { BrandLogoMark, BrandWordmark } from "./BrandLogo";
-import { useAuth } from "@/lib/supabase/auth-context";
 import {
   LayoutDashboard,
   Bot,
@@ -23,8 +22,6 @@ import {
   Wrench,
   Activity,
   Workflow,
-  LogOut,
-  User,
   MapPin,
   Database,
 } from "lucide-react";
@@ -71,7 +68,6 @@ export function Sidebar() {
   const pathname = usePathname();
   const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { user, signOut } = useAuth();
 
   useEffect(() => {
     getConversations({ limit: 5 })
@@ -168,32 +164,6 @@ export function Sidebar() {
       )}
       </div>
 
-      {/* User Profile & Sign Out */}
-      {user && (
-        <div
-          className="p-3 border-t border-border-dark"
-          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
-        >
-          <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-8 h-8 rounded-full bg-brand-blue/20 flex items-center justify-center shrink-0">
-              <User className="w-4 h-4 text-brand-blue" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-medium text-white truncate">
-                {user.user_metadata?.full_name || user.email?.split("@")[0]}
-              </p>
-              <p className="text-[10px] text-text-muted truncate">{user.email}</p>
-            </div>
-            <button
-              onClick={() => signOut()}
-              className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-colors"
-              title="Sign out"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
     </>
   );
 
