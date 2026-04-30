@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mpaios-v1';
+const CACHE_NAME = 'mpaios-v2';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
