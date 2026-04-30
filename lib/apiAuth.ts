@@ -1,5 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import type { User } from "@supabase/supabase-js";
+
+const ANONYMOUS_USER: User = {
+  id: "00000000-0000-0000-0000-000000000000",
+  app_metadata: {},
+  user_metadata: { full_name: "Anonymous" },
+  aud: "authenticated",
+  created_at: new Date(0).toISOString(),
+  email: "anonymous@local",
+  role: "authenticated",
+} as User;
 
 export async function requireAuth() {
   const cookieStore = await cookies();
@@ -8,21 +19,21 @@ export async function requireAuth() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() { return cookieStore.getAll(); },
-        setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
-          try { cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options as never)); } catch {}
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(
+          cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]
+        ) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options as never)
+            );
+          } catch {}
         },
       },
     }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    throw new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" }
-    });
-  }
-
-  return { supabase, user };
+  return { supabase, user: ANONYMOUS_USER };
 }

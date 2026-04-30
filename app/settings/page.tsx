@@ -584,7 +584,7 @@ export default function SettingsPage() {
     try {
       // Detect local endpoints — call directly from browser instead of
       // routing through Vercel (which can't reach localhost)
-      const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|::1|.*\.local)(:\d+)?/i.test(ep.url);
+      const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|::1|.*\.local|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?/i.test(ep.url);
 
       let modelIds: string[] = [];
 
