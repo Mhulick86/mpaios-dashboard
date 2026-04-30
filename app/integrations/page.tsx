@@ -854,6 +854,56 @@ export default function IntegrationsPage() {
             <p className="text-[11px] text-text-muted text-center">
               We&apos;ll auto-detect your GA4 property. Read-only access to analytics data.
             </p>
+            <details className="border border-border rounded-lg">
+              <summary className="cursor-pointer px-3 py-2 text-[12px] font-medium text-text-secondary hover:bg-gray-50">
+                Or paste an access token manually
+              </summary>
+              <div className="p-3 pt-1 space-y-2">
+                <div>
+                  <label className="block text-[11px] font-medium text-text-muted mb-1">OAuth Access Token</label>
+                  <div className="relative">
+                    <input
+                      type={showGaToken ? "text" : "password"}
+                      value={gaToken}
+                      onChange={(e) => setGaToken(e.target.value)}
+                      placeholder="ya29...."
+                      className="w-full px-3 py-2 pr-9 border border-border rounded-lg text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowGaToken(!showGaToken)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                    >
+                      {showGaToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-text-muted mb-1">GA4 Property ID</label>
+                  <input
+                    type="text"
+                    value={gaPropertyId}
+                    onChange={(e) => setGaPropertyId(e.target.value)}
+                    placeholder="e.g. 123456789"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue"
+                  />
+                </div>
+                <button
+                  onClick={handleGATest}
+                  disabled={!gaToken.trim() || !gaPropertyId.trim() || gaTesting}
+                  className="w-full px-3 py-2 rounded-lg bg-brand-blue text-white text-[12px] font-medium hover:bg-brand-blue-dark transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  {gaTesting ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Testing...</> : "Test Connection"}
+                </button>
+                <p className="text-[10px] text-text-muted">
+                  Get a token at the{" "}
+                  <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="text-brand-blue hover:underline">
+                    OAuth Playground
+                  </a>{" "}
+                  with scope <code className="bg-gray-100 px-1 py-0.5 rounded">analytics.readonly</code>.
+                </p>
+              </div>
+            </details>
             {gaError && (
               <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
                 <AlertCircle className="w-4 h-4 shrink-0" /> {gaError}
@@ -925,6 +975,56 @@ export default function IntegrationsPage() {
             <p className="text-[11px] text-text-muted text-center">
               We&apos;ll auto-detect your verified sites. Read-only access to search data.
             </p>
+            <details className="border border-border rounded-lg">
+              <summary className="cursor-pointer px-3 py-2 text-[12px] font-medium text-text-secondary hover:bg-gray-50">
+                Or paste an access token manually
+              </summary>
+              <div className="p-3 pt-1 space-y-2">
+                <div>
+                  <label className="block text-[11px] font-medium text-text-muted mb-1">OAuth Access Token</label>
+                  <div className="relative">
+                    <input
+                      type={showGscToken ? "text" : "password"}
+                      value={gscToken}
+                      onChange={(e) => setGscToken(e.target.value)}
+                      placeholder="ya29...."
+                      className="w-full px-3 py-2 pr-9 border border-border rounded-lg text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowGscToken(!showGscToken)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                    >
+                      {showGscToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-text-muted mb-1">Site URL (optional — leave blank to list all sites)</label>
+                  <input
+                    type="text"
+                    value={gscSiteUrl}
+                    onChange={(e) => setGscSiteUrl(e.target.value)}
+                    placeholder="e.g. https://example.com or sc-domain:example.com"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue"
+                  />
+                </div>
+                <button
+                  onClick={handleGSCTest}
+                  disabled={!gscToken.trim() || gscTesting}
+                  className="w-full px-3 py-2 rounded-lg bg-brand-blue text-white text-[12px] font-medium hover:bg-brand-blue-dark transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  {gscTesting ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Testing...</> : "Test Connection"}
+                </button>
+                <p className="text-[10px] text-text-muted">
+                  Get a token at the{" "}
+                  <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="text-brand-blue hover:underline">
+                    OAuth Playground
+                  </a>{" "}
+                  with scope <code className="bg-gray-100 px-1 py-0.5 rounded">webmasters.readonly</code>.
+                </p>
+              </div>
+            </details>
             {gscError && (
               <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
                 <AlertCircle className="w-4 h-4 shrink-0" /> {gscError}
@@ -1024,6 +1124,46 @@ export default function IntegrationsPage() {
                 Set a folder ID to organize pipeline outputs. Find it in the Drive URL after <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">folders/</code>.
               </p>
             </div>
+            <details className="border border-border rounded-lg">
+              <summary className="cursor-pointer px-3 py-2 text-[12px] font-medium text-text-secondary hover:bg-gray-50">
+                Or paste an access token manually
+              </summary>
+              <div className="p-3 pt-1 space-y-2">
+                <div>
+                  <label className="block text-[11px] font-medium text-text-muted mb-1">OAuth Access Token</label>
+                  <div className="relative">
+                    <input
+                      type={showDriveToken ? "text" : "password"}
+                      value={driveToken}
+                      onChange={(e) => setDriveToken(e.target.value)}
+                      placeholder="ya29...."
+                      className="w-full px-3 py-2 pr-9 border border-border rounded-lg text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowDriveToken(!showDriveToken)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                    >
+                      {showDriveToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <button
+                  onClick={handleDriveTest}
+                  disabled={!driveToken.trim() || driveTesting}
+                  className="w-full px-3 py-2 rounded-lg bg-brand-blue text-white text-[12px] font-medium hover:bg-brand-blue-dark transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  {driveTesting ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Testing...</> : "Test Connection"}
+                </button>
+                <p className="text-[10px] text-text-muted">
+                  Get a token at the{" "}
+                  <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="text-brand-blue hover:underline">
+                    OAuth Playground
+                  </a>{" "}
+                  with scope <code className="bg-gray-100 px-1 py-0.5 rounded">drive</code>.
+                </p>
+              </div>
+            </details>
             {driveError && (
               <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
                 <AlertCircle className="w-4 h-4 shrink-0" /> {driveError}
