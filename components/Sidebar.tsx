@@ -43,6 +43,7 @@ const navItems = [
   { href: "/pipelines", label: "Pipelines", icon: GitBranch },
   { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/knowledge", label: "Knowledge Base", icon: Brain },
+  { href: "/data", label: "Data & ETL", icon: Database },
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/tools", label: "Tools", icon: Wrench },
   { href: "/local-seo", label: "Local SEO", icon: MapPin },

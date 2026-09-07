@@ -1,4 +1,6 @@
-import { streamText } from "ai";
+import { streamText, tool, stepCountIs } from "ai";
+import { z } from "zod";
+import { searchKnowledge as maiosSearch } from "@/lib/maios";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -66,6 +68,36 @@ async function buildMemoryRAGContext(query: string, userId: string): Promise<str
 }
 
 import { SYSTEM_PROMPT } from "@/lib/systemPrompt";
+
+/* ---------- MAIOS knowledge base (TNAS: PostgreSQL + pgvector, access-controlled collections) ---------- */
+async function buildKnowledgeContext(query: string, userId: string | null): Promise<string> {
+  try {
+    const { hits, citations } = await maiosSearch(query, { userId, limit: 6, includeRecords: true });
+    if (!hits.length) return "";
+    return `\n\n## Company knowledge base (retrieved for this message; cite as [n])\n${citations}\n\nOnly the collections this user may read were searched. Prefer these sources over general knowledge when they apply.\n`;
+  } catch (err) {
+    console.warn("[chat] knowledge search unavailable:", err instanceof Error ? err.message : err);
+    return "";
+  }
+}
+
+function knowledgeTools(userId: string | null) {
+  return {
+    search_knowledge: tool({
+      description: "Search Marketing Powered's private knowledge base (company playbooks, agent definitions, client intelligence, uploaded documents and structured records). Returns cited passages. Use it whenever a question concerns company process, clients, past campaigns, or uploaded material.",
+      inputSchema: z.object({
+        query: z.string().describe("Natural-language search query"),
+        collections: z.array(z.string()).optional().describe("Collection slugs to restrict to, e.g. company-kb, client-intel"),
+        limit: z.number().int().min(1).max(20).optional(),
+      }),
+      execute: async ({ query, collections, limit }) => {
+        const { hits, citations } = await maiosSearch(query, { userId, collections, limit: limit ?? 6, includeRecords: true });
+        return { count: hits.length, citations, sources: hits.map((h, i) => ({ n: i + 1, title: h.document_title, heading: h.heading, collection: h.collection_id, kind: h.kind })) };
+      },
+    }),
+  };
+}
+
 
 /* ---------- Asana task execution engine ---------- */
 
@@ -391,6 +423,8 @@ export async function POST(req: Request) {
       if (lastUserMsg) {
         const memoryContext = await buildMemoryRAGContext(lastUserMsg.content, user.id);
         if (memoryContext) systemPrompt += memoryContext;
+        const kbContext = await buildKnowledgeContext(lastUserMsg.content, user.id);
+        if (kbContext) systemPrompt += kbContext;
       }
     }
 
@@ -485,6 +519,8 @@ export async function POST(req: Request) {
       model: modelInstance,
       system: systemPrompt,
       messages: convertedMessages,
+      tools: knowledgeTools(user?.id ?? null),
+      stopWhen: stepCountIs(4),
     });
 
     // Stream chunks to the client while buffering full text for post-processing
