@@ -1,5 +1,5 @@
 import { driveFetch, type DriveFolder } from "@/lib/googleDrive";
-import { requireAuth } from "@/lib/apiAuth";
+import { requireRole } from "@/lib/apiAuth";
 
 interface DriveCreateResponse {
   id: string;
@@ -9,7 +9,7 @@ interface DriveCreateResponse {
 
 export async function POST(req: Request) {
   try {
-    const { user } = await requireAuth();
+    await requireRole("admin");
     const { accessToken, folderName, parentFolderId } = (await req.json()) as {
       accessToken?: string;
       folderName?: string;

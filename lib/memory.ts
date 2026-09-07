@@ -213,7 +213,7 @@ export async function extractAndStorelearnings(
   agentId: number,
   conversationId?: string
 ): Promise<number> {
-  const pattern = /\[LEARNING:(\w+):(\d+(?:\.\d+)?)\]\s*(.+?)(?=\[LEARNING:|$)/gs;
+  const pattern = /\[LEARNING:(\w+):(\d+(?:\.\d+)?)\]\s*([\s\S]+?)(?=\[LEARNING:|$)/g;
   let match;
   let count = 0;
 

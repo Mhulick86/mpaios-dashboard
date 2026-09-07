@@ -4,11 +4,11 @@
  */
 
 import { asanaFetch } from "@/lib/asana";
-import { requireAuth } from "@/lib/apiAuth";
+import { requireRole } from "@/lib/apiAuth";
 
 export async function POST(req: Request) {
   try {
-    const { user } = await requireAuth();
+    await requireRole("admin");
   } catch (e) {
     if (e instanceof Response) return e;
     throw e;

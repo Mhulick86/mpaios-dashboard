@@ -1,18 +1,26 @@
 /**
  * Exchanges a Google authorization code for access + refresh tokens.
+ * Admin-only: tokens returned here are integration credentials.
  */
 
-import { requireAuth } from "@/lib/apiAuth";
+import { requireRole } from "@/lib/apiAuth";
 
 export async function POST(req: Request) {
   try {
-    const { user } = await requireAuth();
+    await requireRole("admin");
   } catch (e) {
     if (e instanceof Response) return e;
     throw e;
   }
 
-  const { code, redirectUri } = await req.json();
+  const { code, redirectUri } = (await req.json()) as {
+    code?: unknown;
+    redirectUri?: unknown;
+  };
+
+  if (typeof code !== "string" || !code || typeof redirectUri !== "string" || !redirectUri) {
+    return Response.json({ error: "code and redirectUri are required" }, { status: 400 });
+  }
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;

@@ -1,5 +1,6 @@
 "use client";
 
+import { RequireRole } from "@/components/RequireRole";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { maios, type MaiosCollection, type MaiosEtlJob, type MaiosDocument, type MaiosHit } from "@/lib/maiosClient";
 import { Database, Upload, Link2, FileText, HardDrive, Loader2, CheckCircle, XCircle, Clock, Search, Plus, Lock, Globe, RefreshCw } from "lucide-react";
@@ -8,7 +9,7 @@ const inputCls = "w-full rounded-lg border border-border bg-surface px-3 py-2 te
 const labelCls = "block text-[11px] font-medium text-text-secondary mb-1";
 const ROLE = ["", "viewer", "member", "admin", "owner"];
 
-export default function DataPage() {
+function DataPageInner() {
   const [collections, setCollections] = useState<MaiosCollection[]>([]);
   const [jobs, setJobs] = useState<MaiosEtlJob[]>([]);
   const [docs, setDocs] = useState<MaiosDocument[]>([]);
@@ -119,5 +120,13 @@ export default function DataPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function DataPage() {
+  return (
+    <RequireRole min="admin">
+      <DataPageInner />
+    </RequireRole>
   );
 }

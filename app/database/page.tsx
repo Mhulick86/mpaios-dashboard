@@ -1,5 +1,6 @@
 "use client";
 
+import { RequireRole } from "@/components/RequireRole";
 import { useState, useEffect, useCallback } from "react";
 import {
   Database,
@@ -157,7 +158,7 @@ function formatCell(value: unknown, column: string): string {
   return String(value);
 }
 
-export default function DatabasePage() {
+function DatabasePageInner() {
   const { user } = useAuth();
   const [supabase] = useState(() => createClient());
   const [authReady, setAuthReady] = useState(false);
@@ -484,5 +485,13 @@ export default function DatabasePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function DatabasePage() {
+  return (
+    <RequireRole min="admin">
+      <DatabasePageInner />
+    </RequireRole>
   );
 }

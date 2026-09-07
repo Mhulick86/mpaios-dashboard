@@ -18,9 +18,17 @@ export async function buildServer() {
   await app.register(multipart, { limits: { fileSize: 512 * 1024 * 1024 } });
 
   // Service auth: dashboard/API calls carry the internal key plus the acting user id.
+  if (config.isProduction && (config.internalApiKey === 'change-me' || config.internalApiKey.length < 24)) {
+    throw new Error('INTERNAL_API_KEY must be set to a long random value in production (see .env.example)');
+  }
   app.addHook('onRequest', async (req, reply) => {
     if (req.url.startsWith('/health') || req.url.startsWith('/webhooks/')) return;
     if (req.headers['x-internal-key'] !== config.internalApiKey) return reply.code(401).send({ error: { code: 'UNAUTHORIZED', message: 'missing or invalid x-internal-key' } });
+    // A request without an acting user would run as service_role (bypassing the
+    // knowledge ACL). Only explicitly-marked service calls may omit x-user-id.
+    if (req.url.startsWith('/v1/') && !req.headers['x-user-id'] && req.headers['x-service-call'] !== '1') {
+      return reply.code(401).send({ error: { code: 'NO_ACTING_USER', message: 'x-user-id is required (or x-service-call: 1 for trusted service jobs)' } });
+    }
   });
   const actor = (req: any): string | null => (req.headers['x-user-id'] as string) || null;
 

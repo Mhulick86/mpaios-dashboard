@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
+import { AuthProvider } from "@/lib/supabase/auth-context";
 
 export const metadata: Metadata = {
   title: "Marketing Powered | AI Operating System",
@@ -26,7 +27,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="flex h-screen overflow-hidden">
         <ServiceWorkerRegistration />
-        <AppShell>{children}</AppShell>
+        <AuthProvider>
+          <AppShell>{children}</AppShell>
+        </AuthProvider>
       </body>
     </html>
   );

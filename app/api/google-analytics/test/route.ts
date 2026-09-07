@@ -1,5 +1,5 @@
 import { gaFetch } from "@/lib/googleAnalytics";
-import { requireAuth } from "@/lib/apiAuth";
+import { requireRole } from "@/lib/apiAuth";
 
 interface GAPropertyListResponse {
   properties?: Array<{
@@ -11,7 +11,7 @@ interface GAPropertyListResponse {
 
 export async function POST(req: Request) {
   try {
-    const { user } = await requireAuth();
+    await requireRole("admin");
     const { accessToken, propertyId } = (await req.json()) as {
       accessToken?: string;
       propertyId?: string;

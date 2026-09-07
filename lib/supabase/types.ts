@@ -234,3 +234,65 @@ export interface Campaign {
   created_at: string;
   updated_at: string;
 }
+
+// ── Added by supabase/migrations/0005_auth_roles_and_access.sql ──────────────
+
+/** JSON value as stored in jsonb columns. */
+export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
+
+/** Keys seeded by 0005; the table accepts arbitrary keys. */
+export type AppSettingKey = "allowed_email_domain" | "owner_email" | (string & {});
+
+/** public.app_settings — readable by admins (level >= 3), writable by the owner (level 4). */
+export interface AppSetting {
+  key: AppSettingKey;
+  value: Json;
+  updated_at: string;
+}
+
+export type InvitationRole = "admin" | "member" | "viewer";
+export type InvitationStatus = "pending" | "accepted" | "revoked" | "expired";
+
+/** public.invitations — admin-only (RLS); emails must be on the allowed domain. */
+export interface Invitation {
+  id: string;
+  email: string;
+  role: InvitationRole;
+  status: InvitationStatus;
+  token: string;
+  invited_by: string | null;
+  expires_at: string;
+  created_at: string;
+}
+
+/** One cell of a local SEO ranking grid scan. */
+export interface LocalSeoScanPoint {
+  row: number;
+  col: number;
+  rank: number | null;
+  lat: number;
+  lng: number;
+}
+
+/** public.local_seo_scans — visible to the row owner or an admin (RLS). */
+export interface LocalSeoScan {
+  id: string;
+  /** Defaults to auth.uid() on insert. */
+  user_id: string | null;
+  business_name: string | null;
+  location: string | null;
+  query: string | null;
+  keyword: string | null;
+  grid_size: number | null;
+  center_lat: number | null;
+  center_lng: number | null;
+  avg_rank: number | null;
+  top_rank: number | null;
+  visibility: number | null;
+  total_points: number | null;
+  ranking_points: number | null;
+  points: LocalSeoScanPoint[];
+  results: Record<string, Json>;
+  score: number | null;
+  created_at: string;
+}

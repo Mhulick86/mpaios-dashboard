@@ -1,5 +1,6 @@
 "use client";
 
+import { RequireRole } from "@/components/RequireRole";
 import { useState, useEffect } from "react";
 import {
   getTokenUsageSummary,
@@ -18,7 +19,7 @@ import {
   BarChart3,
 } from "lucide-react";
 
-export default function ObservabilityPage() {
+function ObservabilityPageInner() {
   const [usage, setUsage] = useState<Awaited<ReturnType<typeof getTokenUsageSummary>> | null>(null);
   const [agentPerf, setAgentPerf] = useState<Awaited<ReturnType<typeof getAgentPerformance>>>([]);
   const [auditLog, setAuditLog] = useState<Awaited<ReturnType<typeof getRecentAuditLog>>>([]);
@@ -225,5 +226,13 @@ export default function ObservabilityPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ObservabilityPage() {
+  return (
+    <RequireRole min="admin">
+      <ObservabilityPageInner />
+    </RequireRole>
   );
 }

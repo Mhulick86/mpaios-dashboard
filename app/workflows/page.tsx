@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { agents } from "@/lib/agents";
 import { maios, STEP_TYPES, type MaiosStep, type MaiosWorkflow, type MaiosRun, type MaiosCollection, type StepType } from "@/lib/maiosClient";
+import { RequireRole } from "@/components/RequireRole";
 import { Workflow as WorkflowIcon, Play, Trash2, Clock, CheckCircle, XCircle, Loader2, Plus, ChevronDown, ChevronUp, Pencil, Copy, Webhook, CalendarClock, Radio, ShieldCheck, ArrowUp, ArrowDown, X } from "lucide-react";
 
 const ACTIVE = new Set(["queued", "running", "waiting_approval", "paused"]);
@@ -19,7 +20,19 @@ function StatusIcon({ status }: { status: string }) {
 const inputCls = "w-full rounded-lg border border-border bg-surface px-3 py-2 text-[12px] focus:outline-none focus:border-brand-blue";
 const labelCls = "block text-[11px] font-medium text-text-secondary mb-1";
 
+/**
+ * Workflows, runs, approvals and collections are admin-only on the MAIOS proxy
+ * (see MEMBER_MAIOS_PATHS in lib/access.ts), so the page is gated the same way.
+ */
 export default function WorkflowsPage() {
+  return (
+    <RequireRole min="admin">
+      <WorkflowsContent />
+    </RequireRole>
+  );
+}
+
+function WorkflowsContent() {
   const [workflows, setWorkflows] = useState<MaiosWorkflow[]>([]);
   const [runs, setRuns] = useState<MaiosRun[]>([]);
   const [approvals, setApprovals] = useState<Array<{ id: string; workflow_name: string; risk_class: string; proposed_action: unknown; created_at: string }>>([]);

@@ -8,9 +8,14 @@ export const MAIOS_WORKER_URL = (process.env.MAIOS_WORKER_URL || "http://localho
 const INTERNAL_KEY = process.env.MAIOS_INTERNAL_KEY || "dev-key";
 const ANON = "00000000-0000-0000-0000-000000000000";
 
-/** Which user the worker should evaluate collection access for. Anonymous sessions map to MAIOS_DEFAULT_USER_ID (dev) or nobody. */
+/**
+ * Which user the worker should evaluate collection access for. Every dashboard
+ * request now carries a real session user; MAIOS_DEFAULT_USER_ID is only a
+ * development convenience and is never applied in production.
+ */
 export function actingUserId(userId?: string | null): string | null {
   if (userId && userId !== ANON) return userId;
+  if (process.env.NODE_ENV === "production") return null;
   return process.env.MAIOS_DEFAULT_USER_ID || null;
 }
 

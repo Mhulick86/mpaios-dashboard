@@ -118,6 +118,12 @@ mpaios/
 - **API Execution** - Routes to Claude Opus 4.6 via Anthropic API. Best for complex strategy and creative work.
 - **Hybrid** - Sensitive data local, creative work via API. Recommended default.
 
+## Access & Deployment
+
+- Sign-in is Google SSO restricted to `@marketingpowered.ai`; `mhulick@marketingpowered.ai` is the sole owner and every other sign-in starts as a standard member with no access to clients, campaigns, financials, integrations or team admin. Details: [docs/adr/0005-google-sso-and-roles.md](docs/adr/0005-google-sso-and-roles.md).
+- The access model (allowed domain, owner, role levels, admin-only paths, prompt policy) is defined once in `lib/access.ts` and enforced by middleware, `lib/apiAuth.ts`, `<RequireRole>` and the RLS policies in `supabase/migrations/`.
+- Production runs on Vercel at https://maios.marketingpowered.ai with hosted Supabase; the cut-over steps are in [docs/runbooks/deploy-maios-subdomain.md](docs/runbooks/deploy-maios-subdomain.md). Copy `.env.example` to `.env.local` for development.
+
 ## Key Design Principles
 
 - Every agent is defined by a markdown skill file with plain-text instructions

@@ -7,32 +7,18 @@
  * system prompt separately.
  */
 
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { requireAuth } from "@/lib/apiAuth";
+import { buildAccessPolicyPrompt } from "@/lib/access";
 import { asanaFetch, AsanaProject, AsanaTask } from "@/lib/asana";
 import { fetchGAOverview } from "@/lib/googleAnalytics";
 import { fetchGSCOverview } from "@/lib/googleSearchConsole";
 
 export const maxDuration = 30;
 
-async function getSupabase() {
-  const cookieStore = await cookies();
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll(); },
-        setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
-          try { cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options as never)); } catch {}
-        },
-      },
-    }
-  );
-}
+type AuthContext = Awaited<ReturnType<typeof requireAuth>>;
+type SupabaseClient = AuthContext["supabase"];
 
-async function buildMemoryRAGContext(query: string, userId: string): Promise<string> {
-  const supabase = await getSupabase();
+async function buildMemoryRAGContext(supabase: SupabaseClient, query: string, userId: string): Promise<string> {
   const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 5);
   if (!words.length) return "";
 
@@ -108,20 +94,34 @@ async function buildAsanaContext(pat: string, workspaceGid: string): Promise<str
 }
 
 export async function POST(req: Request) {
-  const body = await req.json();
-  const {
-    asanaPat,
-    asanaWorkspace,
-    gaAccessToken,
-    gaPropertyId,
-    gscAccessToken,
-    gscSiteUrl,
-    knowledgeContext,
-    driveAccessToken,
-    driveFolderId,
-    selectedTool,
-    lastUserMessage,
-  } = body as Record<string, string | undefined>;
+  // ── Auth: same rules as /api/chat — a signed-in staff account is required. ──
+  let auth: AuthContext;
+  try {
+    auth = await requireAuth();
+  } catch (e) {
+    if (e instanceof Response) return e;
+    throw e;
+  }
+  const { supabase, user, role, isAdmin } = auth;
+
+  let body: Record<string, string | undefined>;
+  try {
+    body = (await req.json()) as Record<string, string | undefined>;
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const { knowledgeContext, selectedTool, lastUserMessage } = body;
+
+  // ── Integration credentials: admins only. Members' requests never carry
+  //    Asana / GA / GSC / Drive tokens, whatever the browser sent. ──
+  const asanaPat = isAdmin ? body.asanaPat : undefined;
+  const asanaWorkspace = isAdmin ? body.asanaWorkspace : undefined;
+  const gaAccessToken = isAdmin ? body.gaAccessToken : undefined;
+  const gaPropertyId = isAdmin ? body.gaPropertyId : undefined;
+  const gscAccessToken = isAdmin ? body.gscAccessToken : undefined;
+  const gscSiteUrl = isAdmin ? body.gscSiteUrl : undefined;
+  const driveAccessToken = isAdmin ? body.driveAccessToken : undefined;
+  const driveFolderId = isAdmin ? body.driveFolderId : undefined;
 
   const { SYSTEM_PROMPT } = await import("@/lib/systemPrompt");
 
@@ -131,11 +131,8 @@ export async function POST(req: Request) {
     systemPrompt += `\n\n--- ACTIVE TOOL ---\nThe user has selected a specific tool to focus on: "${selectedTool}". Focus your response on this tool's capabilities and domain.\n--- END TOOL CONTEXT ---\n`;
   }
 
-  const supabase = await getSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (user && lastUserMessage) {
-    const memoryContext = await buildMemoryRAGContext(lastUserMessage, user.id);
+  if (lastUserMessage) {
+    const memoryContext = await buildMemoryRAGContext(supabase, lastUserMessage, user.id);
     if (memoryContext) systemPrompt += memoryContext;
   }
 
@@ -161,6 +158,9 @@ export async function POST(req: Request) {
   if (driveAccessToken && driveFolderId) {
     systemPrompt += `\n\n## Google Drive Context\nGoogle Drive is connected. Agent outputs can be saved to Drive folder (ID: ${driveFolderId}).`;
   }
+
+  // Access policy goes LAST so it is the final instruction the model reads.
+  systemPrompt += buildAccessPolicyPrompt(role, user.email);
 
   return new Response(JSON.stringify({ systemPrompt }), {
     headers: { "Content-Type": "application/json" },

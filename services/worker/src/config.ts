@@ -28,6 +28,7 @@ export const config = {
   orgSlug: env('ORG_SLUG', 'marketing-powered'),
   httpPort: Number(env('WORKER_HTTP_PORT', '8787')),
   internalApiKey: env('INTERNAL_API_KEY', 'change-me'),
+  isProduction: (process.env.NODE_ENV || '').toLowerCase() === 'production',
   publicBaseUrl: process.env.PUBLIC_BASE_URL || 'http://localhost:8787',
   asana: { pat: process.env.ASANA_PAT || '', workspaceGid: process.env.ASANA_WORKSPACE_GID || '' },
   slackWebhookUrl: process.env.SLACK_WEBHOOK_URL || '',

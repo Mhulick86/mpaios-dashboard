@@ -4,35 +4,30 @@ import { searchKnowledge as maiosSearch } from "@/lib/maios";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { requireAuth } from "@/lib/apiAuth";
+import { buildAccessPolicyPrompt } from "@/lib/access";
+import {
+  DEFAULT_MODELS,
+  NO_PROVIDER_MESSAGE,
+  allowCustomEndpoint,
+  firstConfiguredProvider,
+  normalizeProvider,
+  resolveProviderKey,
+} from "@/lib/providerKeys";
 import { asanaFetch, AsanaProject, AsanaTask } from "@/lib/asana";
 import { fetchGAOverview } from "@/lib/googleAnalytics";
 import { fetchGSCOverview } from "@/lib/googleSearchConsole";
 import { calculateCost } from "@/lib/observability";
+import { SYSTEM_PROMPT } from "@/lib/systemPrompt";
 
 export const maxDuration = 120;
 
-async function getSupabase() {
-  const cookieStore = await cookies();
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll(); },
-        setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
-          try { cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options as never)); } catch {}
-        },
-      },
-    }
-  );
-}
+type AuthContext = Awaited<ReturnType<typeof requireAuth>>;
+type SupabaseClient = AuthContext["supabase"];
 
-// Search memory for relevant context (server-side)
-async function buildMemoryRAGContext(query: string, userId: string): Promise<string> {
-  const supabase = await getSupabase();
-
+// Search memory for relevant context (server-side). The memory table is scoped
+// to the caller's own user_id, so members only ever see their own learnings.
+async function buildMemoryRAGContext(supabase: SupabaseClient, query: string, userId: string): Promise<string> {
   // Text-based fallback search (vector search requires embedding generation)
   const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 5);
   if (!words.length) return "";
@@ -67,8 +62,6 @@ async function buildMemoryRAGContext(query: string, userId: string): Promise<str
   return ctx;
 }
 
-import { SYSTEM_PROMPT } from "@/lib/systemPrompt";
-
 /* ---------- MAIOS knowledge base (TNAS: PostgreSQL + pgvector, access-controlled collections) ---------- */
 async function buildKnowledgeContext(query: string, userId: string | null): Promise<string> {
   try {
@@ -81,7 +74,12 @@ async function buildKnowledgeContext(query: string, userId: string | null): Prom
   }
 }
 
-function knowledgeTools(userId: string | null) {
+/**
+ * search_knowledge tool. The MAIOS worker enforces collection access per user
+ * (x-user-id), so the tool stays available to everyone; non-admins additionally
+ * never get to pass an explicit collections override.
+ */
+function knowledgeTools(userId: string | null, isAdmin: boolean) {
   return {
     search_knowledge: tool({
       description: "Search Marketing Powered's private knowledge base (company playbooks, agent definitions, client intelligence, uploaded documents and structured records). Returns cited passages. Use it whenever a question concerns company process, clients, past campaigns, or uploaded material.",
@@ -91,7 +89,12 @@ function knowledgeTools(userId: string | null) {
         limit: z.number().int().min(1).max(20).optional(),
       }),
       execute: async ({ query, collections, limit }) => {
-        const { hits, citations } = await maiosSearch(query, { userId, collections, limit: limit ?? 6, includeRecords: true });
+        const { hits, citations } = await maiosSearch(query, {
+          userId,
+          collections: isAdmin ? collections : undefined,
+          limit: limit ?? 6,
+          includeRecords: true,
+        });
         return { count: hits.length, citations, sources: hits.map((h, i) => ({ n: i + 1, title: h.document_title, heading: h.heading, collection: h.collection_id, kind: h.kind })) };
       },
     }),
@@ -224,6 +227,22 @@ function parseAndExecuteAsanaMarkers(
   return { cleanText, executions };
 }
 
+/** Runs every [ASANA_CREATE] marker in a finished response. Admin-only: callers gate on `asanaPat`. */
+async function runAsanaMarkers(fullText: string, pat: string, workspaceGid: string): Promise<string> {
+  if (!/\[ASANA_CREATE\]/.test(fullText)) return "";
+  let teamGid: string | undefined;
+  try {
+    const teamsRes = await asanaFetch<Array<{ gid: string }>>(pat, `/workspaces/${workspaceGid}/teams?limit=1`);
+    teamGid = teamsRes.data?.[0]?.gid;
+  } catch {
+    // Personal workspace — no team needed
+  }
+  const { executions } = parseAndExecuteAsanaMarkers(fullText, pat, workspaceGid, teamGid);
+  if (!executions.length) return "";
+  const results = await Promise.all(executions);
+  return "\n\n---\n" + results.join("\n\n");
+}
+
 /* ---------- Asana context builder ---------- */
 async function buildAsanaContext(
   pat: string,
@@ -279,49 +298,107 @@ async function buildAsanaContext(
   }
 }
 
+function jsonError(message: string, status: number): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+interface ChatRequestBody {
+  messages: Array<{ role: string; content: string }>;
+  anthropicKey?: string;
+  openaiKey?: string;
+  googleKey?: string;
+  perplexityKey?: string;
+  provider?: string;
+  model?: string;
+  asanaPat?: string;
+  asanaWorkspace?: string;
+  gaAccessToken?: string;
+  gaPropertyId?: string;
+  gscAccessToken?: string;
+  gscSiteUrl?: string;
+  knowledgeContext?: string;
+  customEndpoint?: { url: string; apiKey: string; model: string };
+  driveAccessToken?: string;
+  driveFolderId?: string;
+  selectedTool?: string;
+}
+
 export async function POST(req: Request) {
-  const body = await req.json();
-  const {
-    messages,
-    anthropicKey,
-    openaiKey,
-    googleKey,
-    perplexityKey,
-    provider = "anthropic",
-    model = "claude-sonnet-4-20250514",
-    asanaPat,
-    asanaWorkspace,
-    gaAccessToken,
-    gaPropertyId,
-    gscAccessToken,
-    gscSiteUrl,
-    knowledgeContext,
-    customEndpoint,
-    driveAccessToken,
-    driveFolderId,
-    selectedTool,
-  } = body as {
-    messages: Array<{ role: string; content: string }>;
-    anthropicKey?: string;
-    openaiKey?: string;
-    googleKey?: string;
-    perplexityKey?: string;
-    provider?: string;
-    model?: string;
-    asanaPat?: string;
-    asanaWorkspace?: string;
-    gaAccessToken?: string;
-    gaPropertyId?: string;
-    gscAccessToken?: string;
-    gscSiteUrl?: string;
-    knowledgeContext?: string;
-    customEndpoint?: { url: string; apiKey: string; model: string };
-    driveAccessToken?: string;
-    driveFolderId?: string;
-    selectedTool?: string;
+  // ── Auth: every chat request needs a signed-in @marketingpowered.ai account ──
+  let auth: AuthContext;
+  try {
+    auth = await requireAuth();
+  } catch (e) {
+    if (e instanceof Response) return e;
+    throw e;
+  }
+  const { supabase, user, role, isAdmin } = auth;
+
+  let body: ChatRequestBody;
+  try {
+    body = (await req.json()) as ChatRequestBody;
+  } catch {
+    return jsonError("Invalid JSON body", 400);
+  }
+
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  if (!messages.length) return jsonError("messages is required", 400);
+
+  const { knowledgeContext, selectedTool } = body;
+
+  // ── Integration credentials: admins only. Members' requests never carry
+  //    Asana / GA / GSC / Drive tokens, whatever the browser sent. ──
+  const asanaPat = isAdmin ? body.asanaPat : undefined;
+  const asanaWorkspace = isAdmin ? body.asanaWorkspace : undefined;
+  const gaAccessToken = isAdmin ? body.gaAccessToken : undefined;
+  const gaPropertyId = isAdmin ? body.gaPropertyId : undefined;
+  const gscAccessToken = isAdmin ? body.gscAccessToken : undefined;
+  const gscSiteUrl = isAdmin ? body.gscSiteUrl : undefined;
+  const driveAccessToken = isAdmin ? body.driveAccessToken : undefined;
+  const driveFolderId = isAdmin ? body.driveFolderId : undefined;
+
+  // ── Provider selection ──
+  let provider = normalizeProvider(body.provider);
+  let model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : "";
+  const customEndpoint = provider === "custom" && allowCustomEndpoint(isAdmin) && body.customEndpoint?.url ? body.customEndpoint : undefined;
+
+  if (provider === "custom" && !customEndpoint) {
+    // Non-admins (or a custom selection with no endpoint) are re-routed to the
+    // first cloud provider the server can serve. The model name belonged to the
+    // local endpoint, so it is replaced with that provider's default.
+    const fallback = firstConfiguredProvider();
+    if (!fallback) return jsonError(NO_PROVIDER_MESSAGE, 400);
+    provider = fallback.provider;
+    model = fallback.model;
+  }
+
+  const clientKeys: Record<string, string | undefined> = {
+    anthropic: body.anthropicKey,
+    openai: body.openaiKey,
+    google: body.googleKey,
+    perplexity: body.perplexityKey,
   };
 
-  console.log(`[chat] provider=${provider} model=${model} customEndpoint=${customEndpoint ? JSON.stringify(customEndpoint) : "none"}`);
+  let apiKey: string | undefined;
+  if (provider !== "custom") {
+    apiKey = resolveProviderKey(provider, clientKeys[provider], isAdmin);
+    if (!apiKey && !isAdmin) {
+      // A member picked a provider the server has no key for — use whatever is configured.
+      const fallback = firstConfiguredProvider();
+      if (fallback) {
+        provider = fallback.provider;
+        model = fallback.model;
+        apiKey = resolveProviderKey(provider, undefined, false);
+      }
+    }
+    if (!apiKey) return jsonError(NO_PROVIDER_MESSAGE, 400);
+    if (!model) model = DEFAULT_MODELS[provider];
+  }
+
+  console.log(`[chat] user=${user.id} role=${role} provider=${provider} model=${model || "(endpoint default)"} customEndpoint=${customEndpoint ? customEndpoint.url : "none"}`);
 
   // Convert to the format streamText expects
   const convertedMessages = messages.map((m) => ({
@@ -333,7 +410,7 @@ export async function POST(req: Request) {
   let modelInstance;
 
   if (provider === "custom" && customEndpoint) {
-    // Custom OpenAI-compatible endpoint (LM Studio, Ollama, vLLM, etc.)
+    // Custom OpenAI-compatible endpoint (LM Studio, Ollama, vLLM, etc.) — admins only.
     // Ensure baseURL ends with /v1 — createOpenAI appends /chat/completions to it
     let baseURL = customEndpoint.url.replace(/\/+$/, "");
     if (!baseURL.endsWith("/v1")) {
@@ -345,71 +422,32 @@ export async function POST(req: Request) {
       apiKey: customEndpoint.apiKey || "lm-studio",
     });
     modelInstance = customOpenAI(customEndpoint.model || model || "local-model");
-  } else if (provider === "anthropic" || provider === "Anthropic") {
-    const key = anthropicKey;
-    if (!key) {
-      return new Response(
-        JSON.stringify({
-          error:
-            "Anthropic API key not configured. Go to Settings → API Keys to add it.",
-        }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
+  } else if (provider === "anthropic") {
     const anthropic = createAnthropic({
-      apiKey: key,
+      apiKey,
       baseURL: "https://api.anthropic.com/v1",
     });
-    modelInstance = anthropic(model || "claude-sonnet-4-20250514");
+    modelInstance = anthropic(model);
   } else if (provider === "google") {
-    const key = googleKey;
-    if (!key) {
-      return new Response(
-        JSON.stringify({
-          error: "Google AI API key not configured. Go to Settings → API Keys to add it.",
-        }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-    const google = createGoogleGenerativeAI({ apiKey: key });
-    modelInstance = google(model || "gemini-2.5-flash");
+    const google = createGoogleGenerativeAI({ apiKey });
+    modelInstance = google(model);
   } else if (provider === "perplexity") {
-    const key = perplexityKey;
-    if (!key) {
-      return new Response(
-        JSON.stringify({
-          error: "Perplexity API key not configured. Go to Settings → API Keys to add it.",
-        }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
     // Perplexity uses OpenAI-compatible API
     const perplexity = createOpenAI({
-      apiKey: key,
+      apiKey,
       baseURL: "https://api.perplexity.ai",
     });
-    modelInstance = perplexity(model || "sonar-pro");
+    modelInstance = perplexity(model);
   } else {
-    // Default to OpenAI for any unrecognized provider with gpt/o1/o3 models
-    const key = openaiKey;
-    if (!key) {
-      return new Response(
-        JSON.stringify({
-          error: "OpenAI API key not configured. Go to Settings → API Keys to add it.",
-        }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-    const openai = createOpenAI({ apiKey: key });
-    modelInstance = openai(model || "gpt-4o");
+    // OpenAI (also the default for any unrecognized provider with gpt/o1/o3 models)
+    const openai = createOpenAI({ apiKey });
+    modelInstance = openai(model);
   }
 
   try {
     const startTime = Date.now();
-    const supabase = await getSupabase();
-    const { data: { user } } = await supabase.auth.getUser();
 
-    // Build system prompt with optional Asana context
+    // Build system prompt with optional integration context
     let systemPrompt = SYSTEM_PROMPT;
 
     // Inject selected tool context
@@ -417,15 +455,14 @@ export async function POST(req: Request) {
       systemPrompt += `\n\n--- ACTIVE TOOL ---\nThe user has selected a specific tool to focus on: "${selectedTool}". Focus your response on this tool's capabilities and domain. Respond as the specialized agent for this tool rather than the full orchestrator. Keep responses focused and actionable for this specific tool's purpose.\n--- END TOOL CONTEXT ---\n`;
     }
 
-    // Inject persistent memory (RAG from Supabase)
-    if (user) {
-      const lastUserMsg = messages.filter(m => m.role === "user").pop();
-      if (lastUserMsg) {
-        const memoryContext = await buildMemoryRAGContext(lastUserMsg.content, user.id);
-        if (memoryContext) systemPrompt += memoryContext;
-        const kbContext = await buildKnowledgeContext(lastUserMsg.content, user.id);
-        if (kbContext) systemPrompt += kbContext;
-      }
+    // Inject persistent memory (RAG from Supabase, scoped to this user) and the
+    // MAIOS knowledge base (the worker filters collections per user).
+    const lastUserMsg = messages.filter(m => m.role === "user").pop();
+    if (lastUserMsg) {
+      const memoryContext = await buildMemoryRAGContext(supabase, lastUserMsg.content, user.id);
+      if (memoryContext) systemPrompt += memoryContext;
+      const kbContext = await buildKnowledgeContext(lastUserMsg.content, user.id);
+      if (kbContext) systemPrompt += kbContext;
     }
 
     // Inject knowledge base context (from client-side localStorage - legacy fallback)
@@ -433,6 +470,7 @@ export async function POST(req: Request) {
       systemPrompt += knowledgeContext;
     }
 
+    // Live integration context — only ever reached for admins (see credential gating above)
     if (asanaPat && asanaWorkspace) {
       const asanaContext = await buildAsanaContext(asanaPat, asanaWorkspace);
       systemPrompt += asanaContext;
@@ -452,6 +490,9 @@ export async function POST(req: Request) {
     if (driveAccessToken && driveFolderId) {
       systemPrompt += `\n\n## Google Drive Context\nGoogle Drive is connected. Files and folders created by the orchestrator will be uploaded to the configured Drive folder (ID: ${driveFolderId}). Agent outputs can be saved as .md files in organized project folders within Drive.`;
     }
+
+    // Access policy goes LAST so it is the final instruction the model reads.
+    systemPrompt += buildAccessPolicyPrompt(role, user.email);
 
     // For custom/local endpoints, use streamText for better compatibility
     // LM Studio, Ollama, vLLM handle streaming more reliably than non-streaming
@@ -473,26 +514,10 @@ export async function POST(req: Request) {
               controller.enqueue(encoder.encode(chunk));
             }
 
-            // After stream completes, execute any Asana markers
-            if (asanaPat && asanaWorkspace && /\[ASANA_CREATE\]/.test(fullText)) {
-              let teamGid: string | undefined;
-              try {
-                const teamsRes = await asanaFetch<Array<{ gid: string }>>(
-                  asanaPat,
-                  `/workspaces/${asanaWorkspace}/teams?limit=1`
-                );
-                teamGid = teamsRes.data?.[0]?.gid;
-              } catch {}
-
-              const { executions } = parseAndExecuteAsanaMarkers(
-                fullText, asanaPat, asanaWorkspace, teamGid
-              );
-              if (executions.length > 0) {
-                const results = await Promise.all(executions);
-                // Append Asana execution results to the stream
-                const summary = "\n\n---\n" + results.join("\n\n");
-                controller.enqueue(encoder.encode(summary));
-              }
+            // After stream completes, execute any Asana markers (admins only)
+            if (asanaPat && asanaWorkspace) {
+              const summary = await runAsanaMarkers(fullText, asanaPat, asanaWorkspace);
+              if (summary) controller.enqueue(encoder.encode(summary));
             }
 
             controller.close();
@@ -519,7 +544,7 @@ export async function POST(req: Request) {
       model: modelInstance,
       system: systemPrompt,
       messages: convertedMessages,
-      tools: knowledgeTools(user?.id ?? null),
+      tools: knowledgeTools(user.id, isAdmin),
       stopWhen: stepCountIs(4),
     });
 
@@ -536,115 +561,97 @@ export async function POST(req: Request) {
 
           const latencyMs = Date.now() - startTime;
 
-          // ── Post-stream: Execute Asana markers (REAL API calls) ──
-          if (asanaPat && asanaWorkspace && /\[ASANA_CREATE\]/.test(fullText)) {
-            let teamGid: string | undefined;
-            try {
-              const teamsRes = await asanaFetch<Array<{ gid: string }>>(
-                asanaPat,
-                `/workspaces/${asanaWorkspace}/teams?limit=1`
-              );
-              teamGid = teamsRes.data?.[0]?.gid;
-            } catch {
-              // Personal workspace — no team needed
-            }
-
-            const { executions } = parseAndExecuteAsanaMarkers(
-              fullText, asanaPat, asanaWorkspace, teamGid
-            );
-            if (executions.length > 0) {
-              const results = await Promise.all(executions);
-              const summary = "\n\n---\n" + results.join("\n\n");
-              controller.enqueue(encoder.encode(summary));
-            }
+          // ── Post-stream: Execute Asana markers (REAL API calls, admins only) ──
+          if (asanaPat && asanaWorkspace) {
+            const summary = await runAsanaMarkers(fullText, asanaPat, asanaWorkspace);
+            if (summary) controller.enqueue(encoder.encode(summary));
           }
 
           // ── Post-stream: Observability (fire-and-forget) ──
-          if (user) {
-            // streamText usage resolves after the stream completes
-            let usage: Record<string, number> | undefined;
-            try { usage = await result.usage as Record<string, number> | undefined; } catch {};
-            const tokensInput = usage?.promptTokens ?? usage?.inputTokens ?? Math.ceil(systemPrompt.length / 4);
-            const tokensOutput = usage?.completionTokens ?? usage?.outputTokens ?? Math.ceil(fullText.length / 4);
+          // streamText usage resolves after the stream completes
+          let usage: { inputTokens?: number; outputTokens?: number } | undefined;
+          try { usage = await result.usage; } catch {}
+          const tokensInput = usage?.inputTokens ?? Math.ceil(systemPrompt.length / 4);
+          const tokensOutput = usage?.outputTokens ?? Math.ceil(fullText.length / 4);
 
-            const cost = calculateCost(model || "unknown", tokensInput, tokensOutput);
+          const cost = calculateCost(model || "unknown", tokensInput, tokensOutput);
 
-            // Token usage tracking
-            supabase.from("token_usage").insert({
-              user_id: user.id,
-              model: model || "unknown",
-              provider: provider || "unknown",
-              tokens_input: tokensInput,
-              tokens_output: tokensOutput,
-              cost,
-              endpoint: "chat",
-            }).then(() => {});
+          // Token usage tracking
+          supabase.from("token_usage").insert({
+            user_id: user.id,
+            model: model || "unknown",
+            provider: provider || "unknown",
+            tokens_input: tokensInput,
+            tokens_output: tokensOutput,
+            cost,
+            endpoint: "chat",
+          }).then(() => {});
 
-            // Audit log
-            supabase.from("audit_log").insert({
-              user_id: user.id,
-              event_type: "chat.completion",
-              resource_type: "message",
-              details: { model, provider, messageCount: messages.length },
-              tokens_used: tokensInput + tokensOutput,
-              cost,
-              model: model || "unknown",
-              latency_ms: latencyMs,
-            }).then(() => {});
+          // Audit log
+          supabase.from("audit_log").insert({
+            user_id: user.id,
+            event_type: "chat.completion",
+            resource_type: "message",
+            details: { model, provider, role, messageCount: messages.length },
+            tokens_used: tokensInput + tokensOutput,
+            cost,
+            model: model || "unknown",
+            latency_ms: latencyMs,
+          }).then(() => {});
 
-            // Extract and log agent executions from response markers
-            const agentPattern = /\[AGENT:(\d{1,2}):(activated|executing|thinking|responding|handoff|complete)\]\s*([^\[]*?)\s*\[\/AGENT\]/g;
-            let agentMatch;
-            const seenAgents = new Set<number>();
-            while ((agentMatch = agentPattern.exec(fullText)) !== null) {
-              const agentId = parseInt(agentMatch[1]);
-              const action = agentMatch[2];
-              const message = agentMatch[3].trim();
-              if (!seenAgents.has(agentId)) {
-                seenAgents.add(agentId);
-                const agentNames: Record<number, string> = {
-                  1:"Competitive Intel",2:"Head of Strategy",3:"Content Strategist",4:"Copywriter",5:"Creative Director",
-                  6:"Landing Pages",7:"Meta Ads",8:"Google Ads",9:"Social Ads",10:"SEO Manager",11:"Social Organic",
-                  12:"Brand Monitor",13:"Performance Analyst",14:"CRO Specialist",15:"Workflow Orchestrator",
-                  16:"Client Reporting",17:"Budget Manager",18:"System Intelligence",19:"Client Onboarding",
-                  20:"Video Producer",21:"LLMO Specialist",22:"Brand QA",23:"PR Manager",24:"Email Automation",
-                  25:"Client Success",26:"Proposal Strategist",27:"Revenue Intel",28:"Data Engineer",
-                  29:"Predictive Analytics",30:"Market Research",31:"Local SEO",32:"GBP Manager",33:"Community Growth",
-                };
-                supabase.from("agent_executions").insert({
-                  agent_id: agentId,
-                  agent_name: agentNames[agentId] || `Agent ${agentId}`,
-                  division: agentId <= 2 || agentId === 19 ? "Strategy" : agentId <= 6 || agentId === 20 ? "Content" : agentId <= 9 ? "Paid Media" : agentId <= 12 || agentId === 21 || agentId === 23 ? "Organic" : agentId <= 14 || agentId === 22 ? "Analytics" : agentId <= 18 || agentId === 24 ? "Operations" : agentId <= 27 ? "Client Success" : agentId <= 30 ? "Data Engineering" : "Local",
-                  action: message || action,
-                  status: "completed",
-                  tokens_used: Math.ceil((tokensInput + tokensOutput) / Math.max(seenAgents.size, 1)),
-                  cost: cost / Math.max(seenAgents.size, 1),
-                  latency_ms: latencyMs,
-                  completed_at: new Date().toISOString(),
-                }).then(() => {});
-              }
+          // Extract and log agent executions from response markers
+          const agentPattern = /\[AGENT:(\d{1,2}):(activated|executing|thinking|responding|handoff|complete)\]\s*([^\[]*?)\s*\[\/AGENT\]/g;
+          let agentMatch;
+          const seenAgents = new Set<number>();
+          while ((agentMatch = agentPattern.exec(fullText)) !== null) {
+            const agentId = parseInt(agentMatch[1]);
+            const action = agentMatch[2];
+            const message = agentMatch[3].trim();
+            if (!seenAgents.has(agentId)) {
+              seenAgents.add(agentId);
+              const agentNames: Record<number, string> = {
+                1:"Competitive Intel",2:"Head of Strategy",3:"Content Strategist",4:"Copywriter",5:"Creative Director",
+                6:"Landing Pages",7:"Meta Ads",8:"Google Ads",9:"Social Ads",10:"SEO Manager",11:"Social Organic",
+                12:"Brand Monitor",13:"Performance Analyst",14:"CRO Specialist",15:"Workflow Orchestrator",
+                16:"Client Reporting",17:"Budget Manager",18:"System Intelligence",19:"Client Onboarding",
+                20:"Video Producer",21:"LLMO Specialist",22:"Brand QA",23:"PR Manager",24:"Email Automation",
+                25:"Client Success",26:"Proposal Strategist",27:"Revenue Intel",28:"Data Engineer",
+                29:"Predictive Analytics",30:"Market Research",31:"Local SEO",32:"GBP Manager",33:"Community Growth",
+              };
+              supabase.from("agent_executions").insert({
+                agent_id: agentId,
+                agent_name: agentNames[agentId] || `Agent ${agentId}`,
+                division: agentId <= 2 || agentId === 19 ? "Strategy" : agentId <= 6 || agentId === 20 ? "Content" : agentId <= 9 ? "Paid Media" : agentId <= 12 || agentId === 21 || agentId === 23 ? "Organic" : agentId <= 14 || agentId === 22 ? "Analytics" : agentId <= 18 || agentId === 24 ? "Operations" : agentId <= 27 ? "Client Success" : agentId <= 30 ? "Data Engineering" : "Local",
+                action: message || action,
+                status: "completed",
+                tokens_used: Math.ceil((tokensInput + tokensOutput) / Math.max(seenAgents.size, 1)),
+                cost: cost / Math.max(seenAgents.size, 1),
+                latency_ms: latencyMs,
+                completed_at: new Date().toISOString(),
+              }).then(() => {});
             }
+          }
 
-            // Extract and store learning markers from response
-            const learningPattern = /\[LEARNING:(\w+):(\w+)\]\s*(.+?)\s*\[\/LEARNING\]/gs;
-            let match;
-            while ((match = learningPattern.exec(fullText)) !== null) {
-              const category = match[1];
-              const confidence = match[2] === "high" ? 0.9 : match[2] === "medium" ? 0.7 : 0.5;
-              const parts = match[3].split("|").map(s => s.trim());
-              const content = parts.length > 1 ? `${parts[0]}: ${parts[1]}` : parts[0];
+          // Extract and store learning markers from response.
+          // [\s\S] instead of the `s` flag: the repo targets ES2017.
+          const learningPattern = /\[LEARNING:(\w+):(\w+)\]\s*([\s\S]+?)\s*\[\/LEARNING\]/g;
+          let match;
+          while ((match = learningPattern.exec(fullText)) !== null) {
+            const category = match[1];
+            const confidence = match[2] === "high" ? 0.9 : match[2] === "medium" ? 0.7 : 0.5;
+            const parts = match[3].split("|").map(s => s.trim());
+            const content = parts.length > 1 ? `${parts[0]}: ${parts[1]}` : parts[0];
 
-              supabase.from("memory").insert({
-                user_id: user.id,
-                category,
-                content,
-                confidence,
-                source_agent: 18,
-                metadata: { tags: parts[2]?.split(",").map(t => t.trim()) || [] },
-              }).then(({ error: memErr }) => {
-                if (memErr) console.error("[chat] Failed to save learning to memory:", memErr.message, "category:", category);
-              });
-            }
+            supabase.from("memory").insert({
+              user_id: user.id,
+              category,
+              content,
+              confidence,
+              source_agent: 18,
+              metadata: { tags: parts[2]?.split(",").map(t => t.trim()) || [] },
+            }).then(({ error: memErr }) => {
+              if (memErr) console.error("[chat] Failed to save learning to memory:", memErr.message, "category:", category);
+            });
           }
 
           controller.close();
@@ -672,20 +679,13 @@ export async function POST(req: Request) {
 
     // Log errors to audit
     try {
-      const supabase = await getSupabase();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        supabase.from("audit_log").insert({
-          user_id: user.id,
-          event_type: "chat.error",
-          details: { error: msg, model, provider },
-        }).then(() => {});
-      }
+      supabase.from("audit_log").insert({
+        user_id: user.id,
+        event_type: "chat.error",
+        details: { error: msg, model, provider },
+      }).then(() => {});
     } catch {}
 
-    return new Response(JSON.stringify({ error: msg }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(msg, 500);
   }
 }

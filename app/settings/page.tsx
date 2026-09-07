@@ -1,5 +1,6 @@
 "use client";
 
+import { RequireRole } from "@/components/RequireRole";
 import { useState, useEffect } from "react";
 import {
   Key,
@@ -412,7 +413,7 @@ const agentRoles: { role: AgentRole; label: string; description: string }[] = [
   { role: "local_community", label: "Local & Community Growth", description: "Agents 31-33" },
 ];
 
-export default function SettingsPage() {
+function SettingsPageInner() {
   const [keys, setKeys] = useState<ApiKeyConfig[]>(defaultKeys);
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
   const [saved, setSaved] = useState(false);
@@ -746,6 +747,9 @@ export default function SettingsPage() {
       {/* API Keys Tab */}
       {activeTab === "keys" && (
         <div className="space-y-4">
+          <p className="text-[12px] text-text-muted leading-relaxed">
+            Server-side keys for standard members are configured in the environment (ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_AI_API_KEY, PERPLEXITY_API_KEY).
+          </p>
           {keys.map((keyConfig) => (
             <div
               key={keyConfig.id}
@@ -1042,5 +1046,13 @@ export default function SettingsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <RequireRole min="admin">
+      <SettingsPageInner />
+    </RequireRole>
   );
 }
