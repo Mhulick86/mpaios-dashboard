@@ -22,6 +22,7 @@ create table if not exists public.knowledge_collections (
   updated_at timestamptz not null default now(),
   unique (organization_id, slug)
 );
+drop trigger if exists knowledge_collections_updated on public.knowledge_collections;
 create trigger knowledge_collections_updated before update on public.knowledge_collections for each row execute function public.set_updated_at();
 
 create table if not exists public.collection_members (
@@ -35,7 +36,7 @@ create table if not exists public.collection_members (
 
 -- Can the current user read a collection? (used by RLS and by the search RPCs)
 create or replace function public.can_read_collection(cid uuid) returns boolean
-language sql stable security definer set search_path = public as $$
+language sql stable security definer set search_path = public, extensions as $$
   select exists (
     select 1 from public.knowledge_collections c
     where c.id = cid and (
@@ -46,7 +47,7 @@ language sql stable security definer set search_path = public as $$
     )) $$;
 
 create or replace function public.can_write_collection(cid uuid) returns boolean
-language sql stable security definer set search_path = public as $$
+language sql stable security definer set search_path = public, extensions as $$
   select exists (
     select 1 from public.knowledge_collections c
     where c.id = cid and (
@@ -75,6 +76,7 @@ create table if not exists public.documents (
 );
 create index if not exists documents_collection_idx on public.documents (collection_id, status);
 create unique index if not exists documents_checksum_idx on public.documents (collection_id, checksum) where checksum is not null;
+drop trigger if exists documents_updated on public.documents;
 create trigger documents_updated before update on public.documents for each row execute function public.set_updated_at();
 
 create table if not exists public.document_versions (
@@ -127,6 +129,7 @@ create index if not exists records_collection_idx on public.records (collection_
 create index if not exists records_data_idx on public.records using gin (data jsonb_path_ops);
 create unique index if not exists records_key_idx on public.records (collection_id, record_key) where record_key is not null;
 create index if not exists records_embedding_idx on public.records using hnsw (embedding vector_cosine_ops);
+drop trigger if exists records_updated on public.records;
 create trigger records_updated before update on public.records for each row execute function public.set_updated_at();
 
 -- ── ETL jobs ─────────────────────────────────────────────────────────────────
@@ -159,7 +162,7 @@ create or replace function public.match_chunks(
   query_embedding vector(768), match_count int default 8,
   collection_ids uuid[] default null, min_similarity real default 0.2, query_text text default null)
 returns table (id uuid, collection_id uuid, document_id uuid, document_title text, source_uri text, heading text, content text, chunk_index int, similarity real, metadata jsonb)
-language sql stable security definer set search_path = public as $$
+language sql stable security definer set search_path = public, extensions as $$
   select c.id, c.collection_id, c.document_id, d.title, d.source_uri, c.heading, c.content, c.chunk_index,
          (1 - (c.embedding <=> query_embedding))::real as similarity, c.metadata
   from public.chunks c
@@ -174,7 +177,7 @@ language sql stable security definer set search_path = public as $$
 
 create or replace function public.search_chunks_text(query_text text, match_count int default 8, collection_ids uuid[] default null)
 returns table (id uuid, collection_id uuid, document_id uuid, document_title text, heading text, content text, rank real)
-language sql stable security definer set search_path = public as $$
+language sql stable security definer set search_path = public, extensions as $$
   select c.id, c.collection_id, c.document_id, d.title, c.heading, c.content,
          ts_rank(c.tsv, websearch_to_tsquery('english', query_text))::real as rank
   from public.chunks c join public.documents d on d.id = c.document_id
@@ -186,7 +189,7 @@ language sql stable security definer set search_path = public as $$
 
 create or replace function public.match_records(query_embedding vector(768), match_count int default 8, collection_ids uuid[] default null, min_similarity real default 0.2)
 returns table (id uuid, collection_id uuid, record_key text, data jsonb, summary text, similarity real)
-language sql stable security definer set search_path = public as $$
+language sql stable security definer set search_path = public, extensions as $$
   select r.id, r.collection_id, r.record_key, r.data, r.summary, (1 - (r.embedding <=> query_embedding))::real
   from public.records r
   where r.embedding is not null
@@ -204,17 +207,29 @@ alter table public.chunks enable row level security;
 alter table public.records enable row level security;
 alter table public.etl_jobs enable row level security;
 
+drop policy if exists collections_read on public.knowledge_collections;
 create policy collections_read on public.knowledge_collections for select using (public.can_read_collection(id));
+drop policy if exists collections_manage on public.knowledge_collections;
 create policy collections_manage on public.knowledge_collections for all using (public.current_role_level() >= 3) with check (public.current_role_level() >= 3);
+drop policy if exists members_read on public.collection_members;
 create policy members_read on public.collection_members for select using (user_id = auth.uid() or public.current_role_level() >= 3);
+drop policy if exists members_manage on public.collection_members;
 create policy members_manage on public.collection_members for all using (public.current_role_level() >= 3 or exists (select 1 from public.collection_members m where m.collection_id = collection_id and m.user_id = auth.uid() and m.role = 'manager'));
+drop policy if exists documents_read on public.documents;
 create policy documents_read on public.documents for select using (public.can_read_collection(collection_id));
+drop policy if exists documents_write on public.documents;
 create policy documents_write on public.documents for all using (public.can_write_collection(collection_id)) with check (public.can_write_collection(collection_id));
+drop policy if exists versions_read on public.document_versions;
 create policy versions_read on public.document_versions for select using (exists (select 1 from public.documents d where d.id = document_id and public.can_read_collection(d.collection_id)));
+drop policy if exists chunks_read on public.chunks;
 create policy chunks_read on public.chunks for select using (public.can_read_collection(collection_id));
+drop policy if exists records_read on public.records;
 create policy records_read on public.records for select using (public.can_read_collection(collection_id));
+drop policy if exists records_write on public.records;
 create policy records_write on public.records for all using (public.can_write_collection(collection_id)) with check (public.can_write_collection(collection_id));
+drop policy if exists etl_read on public.etl_jobs;
 create policy etl_read on public.etl_jobs for select using (requested_by = auth.uid() or public.can_write_collection(collection_id));
+drop policy if exists etl_insert on public.etl_jobs;
 create policy etl_insert on public.etl_jobs for insert with check (public.can_write_collection(collection_id));
 
 -- Default collections for Marketing Powered.
