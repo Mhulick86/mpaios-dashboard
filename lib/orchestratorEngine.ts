@@ -456,6 +456,32 @@ async function callLocalEndpoint(
   return data.choices?.[0]?.message?.content || "[No response from local model]";
 }
 
+/* ─── Knowledge from the MAIOS databases (per-agent allow-list, ADR-0006) ─── */
+
+// Retrieves passages the given agent is allowed to see: the worker intersects the
+// agent's collection grants with the signed-in user's own access (proxy sets the
+// acting user). Any failure (worker down, migration missing, 403) is skipped silently.
+async function fetchAgentKnowledge(agentId: number, task: string): Promise<{ block: string; count: number }> {
+  const none = { block: "", count: 0 };
+  try {
+    const res = await fetch("/api/maios/v1/knowledge/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: task.slice(0, 1500), agent_id: agentId, limit: 5, include_records: true }),
+    });
+    if (!res.ok) return none;
+    const data = (await res.json()) as { hits?: unknown[]; citations?: string };
+    const count = Array.isArray(data.hits) ? data.hits.length : 0;
+    if (!count || !data.citations) return none;
+    return {
+      count,
+      block: `## Knowledge from your databases\nThese passages come from the knowledge collections this agent is allowed to search. Ground your deliverable in them where they apply and cite them as [n].\n\n${data.citations.slice(0, 6000)}\n\n`,
+    };
+  } catch {
+    return none;
+  }
+}
+
 // Calls the real chat API with agent-specific context
 async function callAgentLLM(params: {
   agentId: number;
@@ -466,6 +492,8 @@ async function callAgentLLM(params: {
   totalSteps: number;
   previousOutputs: string[];
   integrationContext: string;
+  /** "Knowledge from your databases" block from fetchAgentKnowledge (prepended to the user message). */
+  knowledgeContext?: string;
   userPrompt?: string;
 }): Promise<string> {
   const settings = getApiSettings();
@@ -533,6 +561,10 @@ You are executing step ${params.stepIndex + 1} of ${params.totalSteps} in the "$
 
   let userMessage = "";
 
+  if (params.knowledgeContext) {
+    userMessage += params.knowledgeContext;
+  }
+
   if (params.previousOutputs.length > 0) {
     userMessage += `## Previous Pipeline Outputs\nThe following agents have already completed their steps. Use their outputs as context and build upon their work:\n\n${params.previousOutputs.slice(-3).join("\n\n---\n\n").slice(0, 4000)}\n\n`;
   }
@@ -558,6 +590,8 @@ You are executing step ${params.stepIndex + 1} of ${params.totalSteps} in the "$
       ],
       provider: settings.provider,
       model: settings.model,
+      // Scopes the route's search_knowledge tool to this agent's database grants.
+      agentId: params.agentId,
     };
 
     if (settings.provider === "anthropic") {
@@ -659,6 +693,12 @@ export async function executeSimulation(
     if (insights.gscOverview) integrationCtx += `\n${insights.gscOverview}`;
     if (ahrefsContext) integrationCtx += `\n${ahrefsContext}`;
 
+    // Knowledge from the MAIOS databases this agent has been granted (silent on error)
+    const knowledge = await fetchAgentKnowledge(step.agentId, step.action);
+    if (knowledge.count) {
+      onLog(makeLogEntry("data", `${step.agentShortName}: ${knowledge.count} knowledge passage${knowledge.count === 1 ? "" : "s"} loaded from granted databases`));
+    }
+
     // ── REAL LLM Agent Call ──
     const agentOutput = await callAgentLLM({
       agentId: step.agentId,
@@ -669,6 +709,7 @@ export async function executeSimulation(
       totalSteps: plan.steps.length,
       previousOutputs: stepOutputs,
       integrationContext: integrationCtx,
+      knowledgeContext: knowledge.block,
     });
 
     stepOutputs.push(`## Step ${i + 1}: ${step.agentShortName}\n${agentOutput.slice(0, 2000)}`);

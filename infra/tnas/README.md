@@ -42,6 +42,28 @@ Adjust `MAIOS_DATA_ROOT` / `MAIOS_DOCKER_ROOT` in `.env.maios` to the real mount
   cloud storage or a second NAS); a backup that only lives on the same box is not disaster recovery.
 - Health: `curl -H "x-internal-key: $INTERNAL_API_KEY" https://api.marketingpowered.ai/health`.
 
+## 2b. Worker only, against hosted Supabase (the September 2026 path)
+Auth and data stay on the hosted project `mpaios-platform`; the NAS runs the worker, Redis and the
+knowledge folders. Migrations 0001–0009 are already applied there.
+
+1. TOS 7 App Center → **Docker**; `tailscale up` on the NAS (so it can reach LM Studio on the Mac Studio
+   at `100.116.63.45`). Create a share for `${MAIOS_DATA_ROOT}` on the HDD pool and a folder on the NVMe
+   pool for `${MAIOS_DOCKER_ROOT}`.
+2. `git clone https://github.com/Mhulick86/mpaios-dashboard.git /VolumeX/maios/mpaios` (branch `main`
+   once PR #2/#3 are merged) and `cp infra/tnas/.env.worker.example .env.worker`; fill in
+   `DATABASE_URL` (Supabase → Connect → *Session pooler*, port 5432), the Tailscale IP of the LM Studio
+   host, and a long random `INTERNAL_API_KEY`.
+3. `docker compose -f infra/tnas/docker-compose.worker.yml --env-file .env.worker up -d --build`
+   then `curl -H "x-internal-key: $INTERNAL_API_KEY" http://localhost:8787/health`.
+4. Expose it: in Cloudflare Zero Trust → Networks → Tunnels open the existing **mp-n8n-tnas** tunnel and
+   add a public hostname `api.marketingpowered.ai` → `http://<tnas-lan-ip>:8787` (or run the
+   `cloudflared` service here with `--profile tunnel` and a new tunnel token).
+5. Vercel project `mpaios` → Environment Variables: `MAIOS_WORKER_URL=https://api.marketingpowered.ai`,
+   `MAIOS_INTERNAL_KEY=<same value>`, `NEXT_PUBLIC_MAIOS_PUBLIC_URL=https://api.marketingpowered.ai`.
+   Redeploy; the Data & ETL page now creates collections whose files live on the NAS.
+6. Drop documents into `${MAIOS_DATA_ROOT}/tenants/marketing-powered/kb/<collection-slug>/` or use the
+   page's upload; grant agents access per collection (Data & ETL → Agents) so the orchestrator can use it.
+
 ## 3. Dev on a Mac
 `docker compose -f infra/dev/docker-compose.yml up -d` (Postgres 5433, Redis 6380), apply migrations,
 `cd services/worker && cp .env.example .env && pnpm install && pnpm dev`. LM Studio server on :1234.

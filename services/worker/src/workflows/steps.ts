@@ -3,7 +3,8 @@
  * dashboard's shape { index, agent_id, action, description, config, depends_on } and adds
  * `config.type` to select the executor:
  *   agent (default)      run an MPAIOS agent prompt through the model gateway
- *   search_knowledge     retrieve from the knowledge base with access control
+ *   search_knowledge     retrieve from the knowledge base with access control (per user, and per
+ *                        agent when the step carries agent_id / config.agent_id — ADR-0006)
  *   etl.ingest           deposit a source into a collection
  *   asana.create_task    TaskProvider write
  *   asana.create_project TaskProvider write
@@ -53,7 +54,8 @@ export async function executeStep(step: StepDef, ctx: StepContext): Promise<Step
       let knowledge = '';
       if (cfg.use_knowledge !== false) {
         try {
-          const hits = await searchKnowledge({ query: `${step.action} ${step.description || ''} ${JSON.stringify(ctx.input).slice(0, 500)}`, userId: ctx.userId, collectionIds: ctx.collectionIds, limit: 6 });
+          // agentId applies the step agent's collection allow-list (0009) on top of the run user's access.
+          const hits = await searchKnowledge({ query: `${step.action} ${step.description || ''} ${JSON.stringify(ctx.input).slice(0, 500)}`, userId: ctx.userId, collectionIds: ctx.collectionIds, agentId: step.agent_id, limit: 6 });
           if (hits.length) knowledge = `\n\n## Company knowledge (cite by [n])\n${formatCitations(hits)}`;
         } catch (e) { knowledge = `\n\n(knowledge search unavailable: ${(e as Error).message})`; }
       }
@@ -62,7 +64,7 @@ export async function executeStep(step: StepDef, ctx: StepContext): Promise<Step
       return { output: { text: r.text, agentId: step.agent_id, agentName: agent?.shortName || agent?.name, action: step.action }, tokensInput: r.tokensInput, tokensOutput: r.tokensOutput, model: r.model };
     }
     case 'search_knowledge': {
-      const hits = await searchKnowledge({ query: cfg.query || String(ctx.input.query || ''), userId: ctx.userId, collectionIds: cfg.collection_ids || ctx.collectionIds, limit: cfg.limit || 8, includeRecords: !!cfg.include_records });
+      const hits = await searchKnowledge({ query: cfg.query || String(ctx.input.query || ''), userId: ctx.userId, collectionIds: cfg.collection_ids || ctx.collectionIds, agentId: cfg.agent_id ?? step.agent_id, limit: cfg.limit || 8, includeRecords: !!cfg.include_records });
       return { output: { hits, citations: formatCitations(hits) } };
     }
     case 'etl.ingest': {

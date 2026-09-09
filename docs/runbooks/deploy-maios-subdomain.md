@@ -50,6 +50,8 @@ Project → Settings → Environment Variables (Production + Preview):
 | `NEXT_PUBLIC_OWNER_EMAIL` | `mhulick@marketingpowered.ai` |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `PERPLEXITY_API_KEY` | server-side model keys used for standard members |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | integrations OAuth client (Analytics / Drive / GSC) |
+| `INTEGRATIONS_ENCRYPTION_KEY` | 32-byte key (base64) that encrypts platform tokens stored in `integration_connections`; generate with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. Required before anything on the Platforms grid can be connected (see docs/integrations.md) |
+| `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_LOGIN_CUSTOMER_ID`, `LINKEDIN_CLIENT_ID`/`_SECRET`, `TIKTOK_APP_ID`/`_SECRET`, `PINTEREST_APP_ID`/`_SECRET`, `HUBSPOT_CLIENT_ID`/`_SECRET`, `SLACK_CLIENT_ID`/`_SECRET`, `SEMRUSH_API_KEY` | platform OAuth client ids/secrets (see docs/integrations.md). Google Ads and Google Business Profile reuse `GOOGLE_CLIENT_ID`/`_SECRET`; add the `/api/integrations/<id>/callback` redirect URIs from that doc to the Google client. Any pair left unset shows as "Setup needed" on the grid |
 | `MAIOS_WORKER_URL`, `MAIOS_INTERNAL_KEY`, `NEXT_PUBLIC_MAIOS_PUBLIC_URL` | worker on the TNAS (via Cloudflare Tunnel / Tailscale); leave unset until the worker is reachable |
 
 Settings → Git: production branch `main`. Then delete the duplicate Vercel project `ui` (it builds the

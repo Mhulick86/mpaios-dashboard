@@ -1,6 +1,7 @@
 "use client";
 
 import { RequireRole } from "@/components/RequireRole";
+import PlatformGrid from "@/components/integrations/PlatformGrid";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
@@ -12,8 +13,6 @@ import {
   Loader2,
   ExternalLink,
   Unplug,
-  MessageSquare as SlackIcon,
-  Users,
   Search,
   HardDrive,
   Facebook,
@@ -1322,31 +1321,15 @@ function IntegrationsPageInner() {
         )}
       </div>
 
-      {/* Coming Soon cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 mt-6">
-        {[
-          { name: "Slack", desc: "Notifications & team updates", icon: SlackIcon },
-          { name: "HubSpot", desc: "CRM & lead management", icon: Users },
-        ].map((item) => {
-          const Icon = item.icon;
-          return (
-            <div key={item.name} className="bg-surface-raised rounded-xl border border-border p-5 opacity-50">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                  <Icon className="w-5 h-5 text-gray-400" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-[14px] font-semibold text-gray-500">{item.name}</h3>
-                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 text-gray-400">Coming Soon</span>
-                  </div>
-                  <p className="text-[11px] text-gray-400">{item.desc}</p>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+      {/* ─── Platforms (server-side integrations framework) ─── */}
+      <div className="mt-8 mb-4">
+        <h2 className="text-[16px] md:text-[18px] font-semibold">Platforms</h2>
+        <p className="text-[12px] text-text-secondary mt-0.5">
+          Ad, local, CRM and messaging platforms connected server-side. Tokens are encrypted and shared by every admin;
+          setup steps are in <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">docs/integrations.md</code>.
+        </p>
       </div>
+      <PlatformGrid />
     </div>
   );
 }

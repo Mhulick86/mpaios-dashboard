@@ -63,9 +63,9 @@ async function buildMemoryRAGContext(supabase: SupabaseClient, query: string, us
 }
 
 /* ---------- MAIOS knowledge base (TNAS: PostgreSQL + pgvector, access-controlled collections) ---------- */
-async function buildKnowledgeContext(query: string, userId: string | null): Promise<string> {
+async function buildKnowledgeContext(query: string, userId: string | null, agentId?: number): Promise<string> {
   try {
-    const { hits, citations } = await maiosSearch(query, { userId, limit: 6, includeRecords: true });
+    const { hits, citations } = await maiosSearch(query, { userId, limit: 6, includeRecords: true, agentId });
     if (!hits.length) return "";
     return `\n\n## Company knowledge base (retrieved for this message; cite as [n])\n${citations}\n\nOnly the collections this user may read were searched. Prefer these sources over general knowledge when they apply.\n`;
   } catch (err) {
@@ -77,12 +77,14 @@ async function buildKnowledgeContext(query: string, userId: string | null): Prom
 /**
  * search_knowledge tool. The MAIOS worker enforces collection access per user
  * (x-user-id), so the tool stays available to everyone; non-admins additionally
- * never get to pass an explicit collections override.
+ * never get to pass an explicit collections override. When the request runs as a
+ * specific agent (`agentId`, e.g. an orchestrator pipeline step), the worker also
+ * applies that agent's collection allow-list (ADR-0006).
  */
-function knowledgeTools(userId: string | null, isAdmin: boolean) {
+function knowledgeTools(userId: string | null, isAdmin: boolean, agentId?: number) {
   return {
     search_knowledge: tool({
-      description: "Search Marketing Powered's private knowledge base (company playbooks, agent definitions, client intelligence, uploaded documents and structured records). Returns cited passages. Use it whenever a question concerns company process, clients, past campaigns, or uploaded material.",
+      description: "Search Marketing Powered's private knowledge base (company playbooks, agent definitions, client intelligence, uploaded documents and structured records). Returns cited passages. Use it whenever a question concerns company process, clients, past campaigns, or uploaded material. Only the databases the current user (and, when acting as a specific agent, that agent) may read are searched.",
       inputSchema: z.object({
         query: z.string().describe("Natural-language search query"),
         collections: z.array(z.string()).optional().describe("Collection slugs to restrict to, e.g. company-kb, client-intel"),
@@ -92,6 +94,7 @@ function knowledgeTools(userId: string | null, isAdmin: boolean) {
         const { hits, citations } = await maiosSearch(query, {
           userId,
           collections: isAdmin ? collections : undefined,
+          agentId,
           limit: limit ?? 6,
           includeRecords: true,
         });
@@ -324,6 +327,8 @@ interface ChatRequestBody {
   driveAccessToken?: string;
   driveFolderId?: string;
   selectedTool?: string;
+  /** Agent (lib/agents.ts id) this request runs as, e.g. an orchestrator pipeline step; scopes search_knowledge to that agent's database grants. */
+  agentId?: number;
 }
 
 export async function POST(req: Request) {
@@ -348,6 +353,8 @@ export async function POST(req: Request) {
   if (!messages.length) return jsonError("messages is required", 400);
 
   const { knowledgeContext, selectedTool } = body;
+  // Active agent for knowledge scoping (the worker intersects its grants with this user's access).
+  const agentId = typeof body.agentId === "number" && Number.isInteger(body.agentId) && body.agentId > 0 ? body.agentId : undefined;
 
   // ── Integration credentials: admins only. Members' requests never carry
   //    Asana / GA / GSC / Drive tokens, whatever the browser sent. ──
@@ -461,7 +468,7 @@ export async function POST(req: Request) {
     if (lastUserMsg) {
       const memoryContext = await buildMemoryRAGContext(supabase, lastUserMsg.content, user.id);
       if (memoryContext) systemPrompt += memoryContext;
-      const kbContext = await buildKnowledgeContext(lastUserMsg.content, user.id);
+      const kbContext = await buildKnowledgeContext(lastUserMsg.content, user.id, agentId);
       if (kbContext) systemPrompt += kbContext;
     }
 
@@ -544,7 +551,7 @@ export async function POST(req: Request) {
       model: modelInstance,
       system: systemPrompt,
       messages: convertedMessages,
-      tools: knowledgeTools(user.id, isAdmin),
+      tools: knowledgeTools(user.id, isAdmin, agentId),
       stopWhen: stepCountIs(4),
     });
 

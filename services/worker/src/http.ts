@@ -6,8 +6,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { config } from './config.ts';
-import { query, one, orgId } from './db.ts';
+import { query, one, orgId, asUser, audit } from './db.ts';
 import { etlQueue, workflowQueue } from './queues.ts';
+import { agents } from '../../../lib/agents.ts';
 import { createEtlJob } from './etl/pipeline.ts';
 import { searchKnowledge, formatCitations } from './knowledge/search.ts';
 import { enqueueRun } from './workflows/runner.ts';
@@ -39,9 +40,13 @@ export async function buildServer() {
   });
 
   // ── Collections ────────────────────────────────────────────────────────────
-  app.get('/v1/collections', async (req) => {
+  // agent_collection_access arrives with migration 0009; keep the list usable until it is applied.
+  let agentAccessReady = false;
+  const hasAgentAccess = async () => agentAccessReady || (agentAccessReady = !!(await one<{ ok: boolean }>(`select to_regclass('public.agent_collection_access') is not null as ok`))?.ok);
+  app.get('/v1/collections', async () => {
     const org = await orgId();
-    return query(`select c.*, (select count(*) from documents d where d.collection_id = c.id and d.status = 'active') as document_count from knowledge_collections c where c.organization_id = $1 order by c.name`, [org]);
+    const agentIds = (await hasAgentAccess()) ? `coalesce((select array_agg(a.agent_id order by a.agent_id) from agent_collection_access a where a.collection_id = c.id), '{}'::int[])` : `'{}'::int[]`;
+    return query(`select c.*, (select count(*) from documents d where d.collection_id = c.id and d.status = 'active') as document_count, ${agentIds} as agent_ids from knowledge_collections c where c.organization_id = $1 order by c.name`, [org]);
   });
   app.post('/v1/collections', async (req, reply) => {
     const body = z.object({ slug: z.string().regex(/^[a-z0-9-]+$/), name: z.string(), description: z.string().optional(), kind: z.enum(['documents', 'records', 'mixed']).default('documents'), classification: z.string().default('internal'), visibility: z.enum(['org', 'members']).default('members'), min_role_level: z.number().int().min(1).max(4).default(2), record_schema: z.record(z.any()).optional() }).parse(req.body);
@@ -61,6 +66,46 @@ export async function buildServer() {
     await query('delete from collection_members where collection_id = $1 and user_id = $2', [id, userId]);
     return { ok: true };
   });
+
+  // ── Agent ↔ collection grants (migration 0009, ADR-0006) ───────────────────
+  // Effective access for an agent = its grants ∩ what the acting user can read
+  // (knowledge/search.ts). Reads run under the acting user so RLS applies; writes
+  // are admin-only: current_role_level() >= 3 is checked inside the impersonated
+  // transaction, so a member can never grant an agent anything.
+  const KNOWN_AGENT_IDS = new Set<number>(agents.map((a) => a.id));
+  const AGENT_ROWS = 'select agent_id, granted_by, note, created_at from agent_collection_access where collection_id = $1 order by agent_id';
+  app.get('/v1/collections/:id/agents', async (req) => {
+    const id = z.string().uuid().parse((req.params as any).id);
+    return asUser(actor(req), async (c) => (await c.query(AGENT_ROWS, [id])).rows);
+  });
+  const replaceAgents = async (req: any, reply: any) => {
+    const id = z.string().uuid().parse(req.params.id);
+    const b = z.object({ agent_ids: z.array(z.number().int().positive()).max(200), note: z.string().max(500).optional() }).parse(req.body ?? {});
+    const ids = [...new Set(b.agent_ids)].sort((x, y) => x - y);
+    const unknown = ids.filter((a) => !KNOWN_AGENT_IDS.has(a));
+    if (unknown.length) return reply.code(400).send({ error: { code: 'UNKNOWN_AGENT', message: `unknown agent ids: ${unknown.join(', ')} (see lib/agents.ts)` } });
+    const userId = actor(req);
+    const out = await asUser(userId, async (c) => {
+      const level = Number((await c.query('select public.current_role_level() as level')).rows[0]?.level ?? 0);
+      if (level < 3) return { status: 403 as const, rows: [] as any[] };
+      if (!(await c.query('select 1 from knowledge_collections where id = $1', [id])).rowCount) return { status: 404 as const, rows: [] as any[] };
+      await c.query('delete from agent_collection_access where collection_id = $1 and not (agent_id = any($2::int[]))', [id, ids]);
+      if (ids.length) {
+        await c.query(
+          `insert into agent_collection_access (organization_id, agent_id, collection_id, granted_by, note)
+           select k.organization_id, a.agent_id, k.id, (select u.id from auth.users u where u.id = $3::uuid), $4
+           from knowledge_collections k, unnest($2::int[]) as a(agent_id) where k.id = $1
+           on conflict (collection_id, agent_id) do nothing`, [id, ids, userId, b.note ?? null]);
+      }
+      return { status: 200 as const, rows: (await c.query(AGENT_ROWS, [id])).rows };
+    });
+    if (out.status === 403) return reply.code(403).send({ error: { code: 'FORBIDDEN', message: 'admin (role level >= 3) required to change agent access' } });
+    if (out.status === 404) return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'collection' } });
+    await audit('collection.agents_updated', { collection_id: id, agent_ids: ids }, { resourceType: 'knowledge_collection', resourceId: id, userId });
+    return { ok: true, collection_id: id, agents: out.rows };
+  };
+  app.put('/v1/collections/:id/agents', replaceAgents);
+  app.post('/v1/collections/:id/agents', replaceAgents); // alias: the dashboard proxy (app/api/maios) forwards GET/POST/DELETE only
 
   // ── ETL ────────────────────────────────────────────────────────────────────
   const etlSchema = z.object({ collection: z.string(), source_type: z.enum(['file', 'url', 'text', 'api', 'transcript']).optional(), source_uri: z.string().optional(), url: z.string().url().optional(), text: z.string().optional(), title: z.string().optional(), profile: z.string().optional(), tags: z.array(z.string()).optional(), route: z.literal('auto').optional(), force: z.boolean().optional(), record_key: z.string().optional(), run_inline: z.boolean().optional() });
@@ -105,10 +150,11 @@ export async function buildServer() {
 
   // ── Knowledge search (what the orchestrator's search_knowledge tool calls) ──
   app.post('/v1/knowledge/search', async (req) => {
-    const b = z.object({ query: z.string().min(1), collections: z.array(z.string()).optional(), limit: z.number().int().min(1).max(50).default(8), include_records: z.boolean().default(false), min_similarity: z.number().min(0).max(1).optional() }).parse(req.body);
+    // agent_id (lib/agents.ts id) applies that agent's collection allow-list on top of the acting user's access.
+    const b = z.object({ query: z.string().min(1), collections: z.array(z.string()).optional(), agent_id: z.number().int().positive().optional(), limit: z.number().int().min(1).max(50).default(8), include_records: z.boolean().default(false), min_similarity: z.number().min(0).max(1).optional() }).parse(req.body);
     let collectionIds: string[] | undefined;
     if (b.collections?.length) collectionIds = (await query<{ id: string }>('select id from knowledge_collections where slug = any($1) or id::text = any($1)', [b.collections])).map((r) => r.id);
-    const hits = await searchKnowledge({ query: b.query, userId: actor(req), collectionIds, limit: b.limit, includeRecords: b.include_records, minSimilarity: b.min_similarity });
+    const hits = await searchKnowledge({ query: b.query, userId: actor(req), collectionIds, agentId: b.agent_id, limit: b.limit, includeRecords: b.include_records, minSimilarity: b.min_similarity });
     return { hits, citations: formatCitations(hits) };
   });
 

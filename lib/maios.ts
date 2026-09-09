@@ -38,6 +38,12 @@ export async function maiosFetch<T = unknown>(path: string, init: RequestInit & 
 
 export interface KnowledgeHit { id: string; collection_id: string; document_id: string; document_title: string; source_uri?: string | null; heading: string | null; content: string; score: number; kind: "chunk" | "record"; data?: unknown }
 
-export async function searchKnowledge(query: string, opts: { userId?: string | null; collections?: string[]; limit?: number; includeRecords?: boolean } = {}): Promise<{ hits: KnowledgeHit[]; citations: string }> {
-  return maiosFetch("/v1/knowledge/search", { method: "POST", userId: opts.userId, body: JSON.stringify({ query, collections: opts.collections, limit: opts.limit ?? 6, include_records: opts.includeRecords ?? true }) });
+/**
+ * Knowledge search. `agentId` (a lib/agents.ts id) makes the worker apply that agent's
+ * collection allow-list (migration 0009 / ADR-0006) on top of the acting user's own
+ * access: an agent with no grants gets nothing, admins fall back to what they can read.
+ */
+export async function searchKnowledge(query: string, opts: { userId?: string | null; collections?: string[]; limit?: number; includeRecords?: boolean; agentId?: number | null } = {}): Promise<{ hits: KnowledgeHit[]; citations: string }> {
+  const agentId = typeof opts.agentId === "number" && Number.isInteger(opts.agentId) && opts.agentId > 0 ? opts.agentId : undefined;
+  return maiosFetch("/v1/knowledge/search", { method: "POST", userId: opts.userId, body: JSON.stringify({ query, collections: opts.collections, agent_id: agentId, limit: opts.limit ?? 6, include_records: opts.includeRecords ?? true }) });
 }

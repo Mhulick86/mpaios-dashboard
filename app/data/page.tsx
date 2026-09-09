@@ -3,11 +3,14 @@
 import { RequireRole } from "@/components/RequireRole";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { maios, type MaiosCollection, type MaiosEtlJob, type MaiosDocument, type MaiosHit } from "@/lib/maiosClient";
-import { Database, Upload, Link2, FileText, HardDrive, Loader2, CheckCircle, XCircle, Clock, Search, Plus, Lock, Globe, RefreshCw } from "lucide-react";
+import { agents } from "@/lib/agents";
+import { Database, Upload, Link2, FileText, HardDrive, Loader2, CheckCircle, XCircle, Clock, Search, Plus, Lock, Globe, RefreshCw, Bot } from "lucide-react";
 
 const inputCls = "w-full rounded-lg border border-border bg-surface px-3 py-2 text-[12px] focus:outline-none focus:border-brand-blue";
 const labelCls = "block text-[11px] font-medium text-text-secondary mb-1";
 const ROLE = ["", "viewer", "member", "admin", "owner"];
+const pad = (id: number) => String(id).padStart(2, "0");
+const AGENT_NAME: Record<number, string> = Object.fromEntries(agents.map((a) => [a.id, a.name]));
 
 function DataPageInner() {
   const [collections, setCollections] = useState<MaiosCollection[]>([]);
@@ -22,8 +25,12 @@ function DataPageInner() {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<MaiosHit[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [searchAgent, setSearchAgent] = useState<number | "">("");
   const [showNew, setShowNew] = useState(false);
   const [newCol, setNewCol] = useState({ slug: "", name: "", description: "", kind: "documents", classification: "internal", visibility: "members", min_role_level: 2 });
+  // Inline "Agents" editor: which collection is open and the agent ids ticked so far.
+  const [agentEditor, setAgentEditor] = useState<{ id: string; selected: number[] } | null>(null);
+  const [savingAgents, setSavingAgents] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -51,15 +58,27 @@ function DataPageInner() {
       setForm((f) => ({ ...f, url: "", text: "", title: "", source_uri: "" })); setFile(null); await load();
     } catch (e) { alert((e as Error).message); } finally { setSubmitting(false); }
   };
-  const search = async () => { if (!q.trim()) return; setSearching(true); try { const r = await maios<{ hits: MaiosHit[] }>("/v1/knowledge/search", { method: "POST", body: JSON.stringify({ query: q, limit: 8, include_records: true }) }); setHits(r.hits); } catch (e) { alert((e as Error).message); } finally { setSearching(false); } };
+  // agent_id makes the worker apply that agent's grants on top of my own access — handy to check what an agent will see.
+  const search = async () => { if (!q.trim()) return; setSearching(true); try { const r = await maios<{ hits: MaiosHit[] }>("/v1/knowledge/search", { method: "POST", body: JSON.stringify({ query: q, limit: 8, include_records: true, agent_id: searchAgent === "" ? undefined : searchAgent }) }); setHits(r.hits); } catch (e) { alert((e as Error).message); } finally { setSearching(false); } };
   const createCollection = async () => { try { await maios("/v1/collections", { method: "POST", body: JSON.stringify(newCol) }); setShowNew(false); setNewCol({ slug: "", name: "", description: "", kind: "documents", classification: "internal", visibility: "members", min_role_level: 2 }); await load(); } catch (e) { alert((e as Error).message); } };
+
+  const toggleAgent = (id: number) => setAgentEditor((ed) => ed && { ...ed, selected: ed.selected.includes(id) ? ed.selected.filter((x) => x !== id) : [...ed.selected, id].sort((a, b) => a - b) });
+  const saveAgents = async () => {
+    if (!agentEditor) return;
+    setSavingAgents(true);
+    try {
+      // Replaces the collection's agent allow-list. POST is the worker's alias for PUT (the /api/maios proxy forwards GET/POST/DELETE only).
+      await maios(`/v1/collections/${agentEditor.id}/agents`, { method: "POST", body: JSON.stringify({ agent_ids: agentEditor.selected }) });
+      setAgentEditor(null); await load();
+    } catch (e) { alert((e as Error).message); } finally { setSavingAgents(false); }
+  };
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-brand-blue border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <div><h1 className="text-[20px] md:text-[24px] font-semibold">Data &amp; ETL</h1><p className="text-[12px] md:text-[14px] text-text-secondary mt-1">Throw anything at the ETL agent and choose which database it lands in. Access follows each collection&apos;s membership.</p></div>
+        <div><h1 className="text-[20px] md:text-[24px] font-semibold">Data &amp; ETL</h1><p className="text-[12px] md:text-[14px] text-text-secondary mt-1">Throw anything at the ETL agent and choose which database it lands in. Access follows each collection&apos;s membership; agents only search the databases granted to them below.</p></div>
         <div className="flex gap-2"><button onClick={() => maios("/v1/etl/scan", { method: "POST" }).then(load)} className="flex items-center gap-1 px-3 py-2 rounded-lg border border-border text-[12px] hover:border-brand-blue"><RefreshCw className="w-3.5 h-3.5" /> Scan NAS folders</button><button onClick={() => setShowNew((v) => !v)} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-brand-blue text-white text-[12px] font-medium"><Plus className="w-4 h-4" /> New collection</button></div>
       </div>
       {error && <div className="mb-4 p-3 rounded-lg bg-red-500/5 border border-red-200 text-[12px] text-red-600">{error}. Is the worker running (MAIOS_WORKER_URL)?</div>}
@@ -75,11 +94,27 @@ function DataPageInner() {
       </div>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
-        {collections.map((c) => <div key={c.id} className="bg-surface-raised rounded-xl border border-border p-4">
+        {collections.map((c) => { const granted = c.agent_ids ?? []; const editing = agentEditor?.id === c.id; return <div key={c.id} className="bg-surface-raised rounded-xl border border-border p-4">
           <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="text-[13px] font-semibold truncate">{c.name}</h3><p className="text-[10px] text-text-muted font-mono">{c.slug}</p></div><Database className="w-4 h-4 text-brand-blue shrink-0" /></div>
           {c.description && <p className="text-[11px] text-text-secondary mt-2 line-clamp-2">{c.description}</p>}
           <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px]"><span className="px-2 py-0.5 rounded-full bg-gray-100 text-text-secondary">{c.document_count} docs</span><span className="px-2 py-0.5 rounded-full bg-gray-100 text-text-secondary">{c.classification}</span><span className="px-2 py-0.5 rounded-full bg-gray-100 text-text-secondary inline-flex items-center gap-1">{c.visibility === "members" ? <><Lock className="w-3 h-3" /> members only</> : <><Globe className="w-3 h-3" /> org · {ROLE[c.min_role_level]}+</>}</span></div>
-        </div>)}
+          {/* Agent allow-list (migration 0009 / ADR-0006) */}
+          <div className="mt-2 flex flex-wrap items-center gap-1 text-[10px]">
+            <span className="inline-flex items-center gap-1 text-text-muted"><Bot className="w-3 h-3" /> Agents:</span>
+            {granted.length ? granted.map((a) => <span key={a} title={AGENT_NAME[a] || `Agent ${a}`} className="px-1.5 py-0.5 rounded-full bg-brand-blue/10 text-brand-blue font-mono">{pad(a)}</span>) : <span className="text-text-muted italic">none granted</span>}
+            <button onClick={() => setAgentEditor(editing ? null : { id: c.id, selected: granted })} className={`ml-auto px-2 py-0.5 rounded-md border text-[10px] ${editing ? "border-brand-blue text-brand-blue bg-brand-blue/5" : "border-border text-text-secondary hover:border-brand-blue hover:text-brand-blue"}`}>Agents</button>
+          </div>
+          {editing && agentEditor && <div className="mt-3 pt-3 border-t border-border">
+            <p className="text-[10px] text-text-muted mb-2">Ticked agents may search this database. An agent never sees more than the person running it can read; an agent with no grants sees nothing (admins fall back to their own access).</p>
+            <div className="max-h-44 overflow-auto pr-1 space-y-0.5">
+              {agents.map((a) => <label key={a.id} className="flex items-center gap-2 text-[11px] cursor-pointer rounded px-1 py-0.5 hover:bg-surface"><input type="checkbox" checked={agentEditor.selected.includes(a.id)} onChange={() => toggleAgent(a.id)} /><span className="font-mono text-text-muted">{pad(a.id)}</span><span className="truncate">{a.name}</span></label>)}
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
+              <div className="flex gap-3"><button onClick={() => setAgentEditor({ id: c.id, selected: agents.map((a) => a.id) })} className="text-text-secondary hover:text-brand-blue">All</button><button onClick={() => setAgentEditor({ id: c.id, selected: [] })} className="text-text-secondary hover:text-brand-blue">None</button><span className="text-text-muted">{agentEditor.selected.length} selected</span></div>
+              <div className="flex gap-2"><button onClick={() => setAgentEditor(null)} className="px-2 py-1 text-text-secondary">Cancel</button><button onClick={saveAgents} disabled={savingAgents} className="px-3 py-1 rounded-lg bg-brand-blue text-white font-medium disabled:opacity-50">{savingAgents ? "Saving…" : "Save"}</button></div>
+            </div>
+          </div>}
+        </div>; })}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
@@ -100,9 +135,9 @@ function DataPageInner() {
         </div>
         <div className="bg-surface-raised rounded-xl border border-border p-4">
           <h2 className="text-[14px] font-semibold mb-3">Ask the knowledge base</h2>
-          <div className="flex gap-2 mb-3"><input className={inputCls} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()} placeholder="What is our LegitScript process?" /><button onClick={search} disabled={searching} className="px-3 py-2 rounded-lg bg-brand-blue/10 text-brand-blue">{searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}</button></div>
-          {hits && (hits.length ? <div className="space-y-2 max-h-80 overflow-auto">{hits.map((h, i) => <div key={h.id} className="p-2 rounded-lg bg-surface text-[11px]"><p className="font-medium">[{i + 1}] {h.document_title}{h.heading ? ` › ${h.heading}` : ""} <span className="text-text-muted">· {h.kind} · {h.score.toFixed(3)}</span></p><p className="text-text-secondary mt-1 line-clamp-4">{h.content}</p></div>)}</div> : <p className="text-[12px] text-text-muted">No results in the collections you can read.</p>)}
-          <p className="text-[10px] text-text-muted mt-3">Same retrieval the orchestrator uses through its <code>search_knowledge</code> tool.</p>
+          <div className="flex gap-2 mb-3"><input className={inputCls} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()} placeholder="What is our LegitScript process?" /><select className="rounded-lg border border-border bg-surface px-2 text-[11px] max-w-[160px]" value={searchAgent} onChange={(e) => setSearchAgent(e.target.value === "" ? "" : Number(e.target.value))} title="Search as an agent to see exactly what its database grants allow"><option value="">as me</option>{agents.map((a) => <option key={a.id} value={a.id}>as {pad(a.id)} {a.shortName}</option>)}</select><button onClick={search} disabled={searching} className="px-3 py-2 rounded-lg bg-brand-blue/10 text-brand-blue">{searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}</button></div>
+          {hits && (hits.length ? <div className="space-y-2 max-h-80 overflow-auto">{hits.map((h, i) => <div key={h.id} className="p-2 rounded-lg bg-surface text-[11px]"><p className="font-medium">[{i + 1}] {h.document_title}{h.heading ? ` › ${h.heading}` : ""} <span className="text-text-muted">· {h.kind} · {h.score.toFixed(3)}</span></p><p className="text-text-secondary mt-1 line-clamp-4">{h.content}</p></div>)}</div> : <p className="text-[12px] text-text-muted">{searchAgent === "" ? "No results in the collections you can read." : `No results: agent ${pad(searchAgent)} has no granted databases you can read, or nothing matched.`}</p>)}
+          <p className="text-[10px] text-text-muted mt-3">Same retrieval the orchestrator uses through its <code>search_knowledge</code> tool; pipeline steps search as their agent.</p>
         </div>
       </div>
 
