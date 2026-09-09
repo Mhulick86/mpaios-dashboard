@@ -1,8 +1,13 @@
 # Runbook: put MAIOS on https://maios.marketingpowered.ai
 
-Owner: Mike Hulick. Hosting stays on Vercel (project `mpaios`, team `mhulick-marketingpows-projects`);
-DNS is on Cloudflare; auth and data are the hosted Supabase project `mpaios-platform`
-(`rxbgikvmussdstsjciwt`). Do the steps in order; each one is a few minutes.
+Owner: Mike Hulick. Hosting stays on Vercel (project `mpaios` in the **MP** team, slug `mp-a681d317`;
+the `mhulick-marketingpows-projects` team is empty); DNS is on Cloudflare (zone `marketingpowered.ai`
+sits in the Jmartinez@marketingpowered.ai account); auth and data are the hosted Supabase project
+`mpaios-platform` (`rxbgikvmussdstsjciwt`). Do the steps in order; each one is a few minutes.
+
+**Status 2026-09-09:** steps 1, 2, 3 (domain + model keys) and 4 are done; the CNAME Vercel asked for
+was `maios → 0cfe213f312fb1d2.vercel-dns-016.com` (DNS only) and HTTPS is live. Remaining: merge
+PR #2, the integrations Google client in Vercel, and the worker variables.
 
 ## 1. Google Cloud: OAuth client for sign-in
 Google Cloud Console → APIs & Services → Credentials → the OAuth 2.0 client used for MPAIOS (or create a
