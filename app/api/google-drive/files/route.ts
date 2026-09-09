@@ -1,4 +1,5 @@
 import { driveFetch, type DriveFile } from "@/lib/googleDrive";
+import { requireRole } from "@/lib/apiAuth";
 
 interface DriveFileList {
   files: DriveFile[];
@@ -7,6 +8,7 @@ interface DriveFileList {
 
 export async function POST(req: Request) {
   try {
+    await requireRole("admin");
     const { accessToken, folderId, pageToken } = (await req.json()) as {
       accessToken?: string;
       folderId?: string;
@@ -21,7 +23,7 @@ export async function POST(req: Request) {
     }
 
     const parentQuery = folderId
-      ? `'${folderId}' in parents and `
+      ? `'${folderId.replace(/['\\]/g, "")}' in parents and `
       : "";
     const q = encodeURIComponent(
       `${parentQuery}trashed = false`
@@ -42,6 +44,7 @@ export async function POST(req: Request) {
       nextPageToken: result.nextPageToken || null,
     });
   } catch (error: unknown) {
+    if (error instanceof Response) return error;
     const msg =
       error instanceof Error
         ? error.message

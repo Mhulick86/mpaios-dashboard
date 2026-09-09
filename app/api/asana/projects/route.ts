@@ -1,9 +1,9 @@
 import { asanaFetch, AsanaProject } from "@/lib/asana";
-import { requireAuth } from "@/lib/apiAuth";
+import { requireRole } from "@/lib/apiAuth";
 
 export async function POST(req: Request) {
   try {
-    const { user } = await requireAuth();
+    await requireRole("admin");
     const { pat, workspaceGid } = (await req.json()) as {
       pat?: string;
       workspaceGid?: string;

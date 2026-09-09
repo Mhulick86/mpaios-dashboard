@@ -1,5 +1,6 @@
 "use client";
 
+import { RequireRole } from "@/components/RequireRole";
 import { useState } from "react";
 import { Users, Plus, X, Building2 } from "lucide-react";
 
@@ -11,7 +12,7 @@ interface Client {
   status: "onboarding" | "active" | "paused";
 }
 
-export default function ClientsPage() {
+function ClientsPageInner() {
   const [clients, setClients] = useState<Client[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
@@ -215,5 +216,13 @@ export default function ClientsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ClientsPage() {
+  return (
+    <RequireRole min="admin">
+      <ClientsPageInner />
+    </RequireRole>
   );
 }

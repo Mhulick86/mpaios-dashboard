@@ -1,18 +1,23 @@
 /**
  * Refreshes an expired Google access token using a refresh token.
+ * Admin-only: refresh tokens are integration credentials.
  */
 
-import { requireAuth } from "@/lib/apiAuth";
+import { requireRole } from "@/lib/apiAuth";
 
 export async function POST(req: Request) {
   try {
-    const { user } = await requireAuth();
+    await requireRole("admin");
   } catch (e) {
     if (e instanceof Response) return e;
     throw e;
   }
 
-  const { refreshToken } = await req.json();
+  const { refreshToken } = (await req.json()) as { refreshToken?: unknown };
+
+  if (typeof refreshToken !== "string" || !refreshToken) {
+    return Response.json({ error: "refreshToken is required" }, { status: 400 });
+  }
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;

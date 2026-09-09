@@ -19,6 +19,7 @@ import type { DriveProvisionResult } from "@/lib/orchestratorEngine";
 import type { IntegrationsConfig } from "@/lib/asana";
 import { INTEGRATIONS_STORAGE_KEY, defaultIntegrations } from "@/lib/asana";
 import { agents, divisions } from "@/lib/agents";
+import { useAuth } from "@/lib/supabase/auth-context";
 
 import { RequestInputBar } from "@/components/orchestrator/RequestInputBar";
 import { OrchestratorStatus } from "@/components/orchestrator/OrchestratorStatus";
@@ -49,6 +50,8 @@ import {
   FileText,
   Printer,
   FileCode,
+  ShieldAlert,
+  X,
 } from "lucide-react";
 import {
   generateHTMLReport,
@@ -95,15 +98,32 @@ function useAnimatedCount(target: number, duration: number = 1200) {
 }
 
 export default function DashboardPage() {
-  /* ── Asana config ── */
+  const { isAdmin } = useAuth();
+
+  /* ── Access-denied banner (middleware redirects here with ?denied=<path>) ── */
+  const [deniedPath, setDeniedPath] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const denied = params.get("denied");
+      if (!denied) return;
+      setDeniedPath(denied);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("denied");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    } catch { /* ignore */ }
+  }, []);
+
+  /* ── Asana config (integrations are admin-only; members always run in simulation mode) ── */
   const [integrations, setIntegrations] = useState<IntegrationsConfig>(defaultIntegrations());
 
   useEffect(() => {
+    if (!isAdmin) return;
     try {
       const raw = localStorage.getItem(INTEGRATIONS_STORAGE_KEY);
       if (raw) setIntegrations(JSON.parse(raw));
     } catch { /* ignore */ }
-  }, []);
+  }, [isAdmin]);
 
   const asanaConnected = integrations.asana.connected && !!integrations.asana.pat;
   const pat = integrations.asana.pat;
@@ -245,6 +265,24 @@ export default function DashboardPage() {
 
   return (
     <div>
+      {/* ── Access denied notice ── */}
+      {deniedPath && (
+        <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#F59E0B]/30 bg-[#F59E0B]/10 px-4 py-3">
+          <ShieldAlert className="w-4 h-4 text-[#F59E0B] mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-semibold text-[#F59E0B]">That page is restricted to administrators</p>
+            <p className="text-[11px] text-text-muted truncate">{deniedPath}</p>
+          </div>
+          <button
+            onClick={() => setDeniedPath(null)}
+            className="p-1 rounded hover:bg-[#F59E0B]/10 transition-colors"
+            aria-label="Dismiss"
+          >
+            <X className="w-4 h-4 text-text-muted" />
+          </button>
+        </div>
+      )}
+
       {/* ── Hero Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-3">
         <div>
@@ -342,10 +380,12 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Asana Banner */}
-      <div className="mb-5">
-        <AsanaBanner connected={asanaConnected} projectGid={asanaResult?.projectGid} projectName={asanaResult?.projectName} />
-      </div>
+      {/* Asana Banner (integrations are admin-only) */}
+      {isAdmin && (
+        <div className="mb-5">
+          <AsanaBanner connected={asanaConnected} projectGid={asanaResult?.projectGid} projectName={asanaResult?.projectName} />
+        </div>
+      )}
 
       {/* Request Input */}
       <div className="mb-6">
@@ -366,8 +406,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Live Integration Data */}
-      {(insights.gaOverview || insights.gscOverview) && (
+      {/* Live Integration Data (admin-only: depends on GA4/GSC integrations) */}
+      {isAdmin && (insights.gaOverview || insights.gscOverview) && (
         <div className="mb-5">
           <DataInsightsPanel insights={insights} />
         </div>

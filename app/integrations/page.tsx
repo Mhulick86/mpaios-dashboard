@@ -1,5 +1,6 @@
 "use client";
 
+import { RequireRole } from "@/components/RequireRole";
 import { useState, useEffect } from "react";
 import {
   Plug,
@@ -47,7 +48,7 @@ interface GSCTestResult {
   needsSiteSelection: boolean;
 }
 
-export default function IntegrationsPage() {
+function IntegrationsPageInner() {
   const [config, setConfig] = useState<IntegrationsConfig>(defaultIntegrations());
   const [saved, setSaved] = useState(false);
 
@@ -1289,5 +1290,13 @@ export default function IntegrationsPage() {
         })}
       </div>
     </div>
+  );
+}
+
+export default function IntegrationsPage() {
+  return (
+    <RequireRole min="admin">
+      <IntegrationsPageInner />
+    </RequireRole>
   );
 }
