@@ -80,6 +80,7 @@ export const ADMIN_ONLY_PATHS: readonly string[] = [
   "/data",
   "/local-seo",
   "/workflows",
+  "/meta-ads",
 ];
 
 /** Routes reachable without a session. Everything else requires sign-in. */
