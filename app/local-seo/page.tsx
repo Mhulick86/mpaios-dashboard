@@ -1,5 +1,6 @@
 "use client";
 
+import { RequireRole } from "@/components/RequireRole";
 import { useState, useEffect } from "react";
 import {
   MapPin, Search, Globe, Star, AlertTriangle, CheckCircle2,
@@ -104,7 +105,7 @@ function generateScan(keyword: string, businessName: string, gridSize: number): 
   };
 }
 
-export default function LocalSEOPage() {
+function LocalSEOPageInner() {
   const [keyword, setKeyword] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [gridSize, setGridSize] = useState(7);
@@ -605,5 +606,13 @@ export default function LocalSEOPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function LocalSEOPage() {
+  return (
+    <RequireRole min="admin">
+      <LocalSEOPageInner />
+    </RequireRole>
   );
 }

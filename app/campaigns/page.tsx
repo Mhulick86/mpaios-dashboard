@@ -1,5 +1,6 @@
 "use client";
 
+import { RequireRole } from "@/components/RequireRole";
 import { useState } from "react";
 import {
   Megaphone,
@@ -206,7 +207,7 @@ const statusConfig: Record<CampaignStatus, { color: string; bg: string; icon: Re
   completed: { color: "text-gray-400", bg: "bg-gray-100", icon: CheckCircle2, label: "Completed" },
 };
 
-export default function CampaignsPage() {
+function CampaignsPageInner() {
   const [activeTab, setActiveTab] = useState<ServiceCategory>("all");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -381,5 +382,13 @@ export default function CampaignsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function CampaignsPage() {
+  return (
+    <RequireRole min="admin">
+      <CampaignsPageInner />
+    </RequireRole>
   );
 }

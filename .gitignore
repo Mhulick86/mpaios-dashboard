@@ -44,3 +44,8 @@ logs/
 # Temporary files
 tmp/
 temp/
+
+# Claude Code worktrees
+.claude/worktrees/
+.env.worker
+.env.maios

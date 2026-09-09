@@ -24,8 +24,11 @@ import {
   Workflow,
   MapPin,
   Database,
+  Facebook,
 } from "lucide-react";
 import { getConversations } from "@/lib/conversations";
+import { useAuth } from "@/lib/supabase/auth-context";
+import { isAdminOnlyPath } from "@/lib/access";
 
 interface RecentChat {
   id: string;
@@ -37,12 +40,14 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/campaigns", label: "Campaigns", icon: Megaphone },
+  { href: "/meta-ads", label: "Meta Ads", icon: Facebook },
   { href: "/agents", label: "Agents", icon: Bot },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/alerts", label: "Alerts", icon: Bell },
   { href: "/pipelines", label: "Pipelines", icon: GitBranch },
   { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/knowledge", label: "Knowledge Base", icon: Brain },
+  { href: "/data", label: "Data & ETL", icon: Database },
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/tools", label: "Tools", icon: Wrench },
   { href: "/local-seo", label: "Local SEO", icon: MapPin },
@@ -66,8 +71,14 @@ function timeAgo(timestamp: number): string {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { isAdmin, loading: authLoading } = useAuth();
   const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Admin-only destinations (ADMIN_ONLY_PATHS) are hidden from members once the
+  // role is known; middleware and <RequireRole> still enforce it server/client-side.
+  const visibleNavItems =
+    authLoading || isAdmin ? navItems : navItems.filter((item) => !isAdminOnlyPath(item.href));
 
   useEffect(() => {
     getConversations({ limit: 5 })
@@ -113,8 +124,8 @@ export function Sidebar() {
       <div className="flex-1 overflow-y-auto min-h-0">
       {/* Navigation */}
       <nav className="px-3 space-y-0.5 pb-4">
-        {navItems.map((item) => {
-          const isActive =
+        {visibleNavItems.map((item) => {
+          const isActive=
             item.href === "/"
               ? pathname === "/"
               : pathname.startsWith(item.href);

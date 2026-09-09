@@ -1,5 +1,6 @@
 "use client";
 
+import { RequireRole } from "@/components/RequireRole";
 import { useState } from "react";
 import {
   channelPerformance,
@@ -25,7 +26,7 @@ import {
 
 type Tab = "overview" | "channels" | "funnel" | "sentiment";
 
-export default function AnalyticsPage() {
+function AnalyticsPageInner() {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
 
   const tabs: { id: Tab; label: string }[] = [
@@ -319,5 +320,13 @@ function SentimentTab() {
         ))}
       </div>
     </div>
+  );
+}
+
+export default function AnalyticsPage() {
+  return (
+    <RequireRole min="admin">
+      <AnalyticsPageInner />
+    </RequireRole>
   );
 }

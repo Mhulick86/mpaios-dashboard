@@ -1,7 +1,11 @@
 import { driveFetch, type DrivePermission } from "@/lib/googleDrive";
+import { requireRole } from "@/lib/apiAuth";
+
+const SHARE_ROLES = new Set(["reader", "writer", "commenter"]);
 
 export async function POST(req: Request) {
   try {
+    await requireRole("admin");
     const { accessToken, fileId, email, role } = (await req.json()) as {
       accessToken?: string;
       fileId?: string;
@@ -21,10 +25,16 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    if (role && !SHARE_ROLES.has(role)) {
+      return Response.json(
+        { error: "role must be one of reader, writer, commenter" },
+        { status: 400 }
+      );
+    }
 
     const permission = await driveFetch<DrivePermission>(
       accessToken,
-      `/files/${fileId}/permissions?fields=id,type,role,emailAddress`,
+      `/files/${encodeURIComponent(fileId)}/permissions?fields=id,type,role,emailAddress`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -41,6 +51,7 @@ export async function POST(req: Request) {
       permission,
     });
   } catch (error: unknown) {
+    if (error instanceof Response) return error;
     const msg =
       error instanceof Error
         ? error.message

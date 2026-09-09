@@ -1,0 +1,27 @@
+# Local development stack for MAIOS backend services (Mac).
+# Production runs on the TNAS via infra/tnas (self-hosted Supabase + this overlay).
+name: maios-dev
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: maios
+      POSTGRES_PASSWORD: maios
+      POSTGRES_DB: maios
+    ports: ["5433:5432"]
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      - ../../supabase/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maios -d maios"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["6380:6379"]
+    volumes: ["redisdata:/data"]
+volumes:
+  dbdata: {}
+  redisdata: {}

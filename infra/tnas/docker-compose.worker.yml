@@ -1,0 +1,54 @@
+# MAIOS worker on the TNAS against the HOSTED Supabase project (mpaios-platform).
+# Use this instead of docker-compose.maios.yml while Postgres stays at Supabase;
+# switch to the full stack (self-hosted Supabase, ADR-0001) later without
+# changing the worker image.
+#
+#   cd /VolumeX/maios/mpaios            # a clone of this repo on the NAS
+#   cp infra/tnas/.env.worker.example .env.worker && edit it
+#   docker compose -f infra/tnas/docker-compose.worker.yml --env-file .env.worker up -d --build
+#
+# Storage layout (see docs/adr/0001-tnas-data-node.md):
+#   ${MAIOS_DOCKER_ROOT}/redis                 -> Redis append-only file (NVMe pool)
+#   ${MAIOS_DATA_ROOT}/tenants/<org>/kb/<slug>  -> knowledge folders the watcher ingests (HDD pool)
+name: maios
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "1gb", "--maxmemory-policy", "noeviction"]
+    volumes: ["${MAIOS_DOCKER_ROOT:-/Volume2/maios/docker}/redis:/data"]
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: services/worker/Dockerfile
+    image: maios/worker:local
+    restart: unless-stopped
+    env_file: [../../.env.worker]
+    environment:
+      # Supabase SESSION pooler (port 5432): the worker uses LISTEN/NOTIFY and
+      # per-transaction settings, which the transaction pooler (6543) breaks.
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+      KB_ROOT: /maios/tenants/${ORG_SLUG:-marketing-powered}/kb
+      WORKER_HTTP_PORT: "8787"
+      NODE_ENV: production
+    volumes:
+      - "${MAIOS_DATA_ROOT:-/Volume1/maios}/tenants:/maios/tenants"
+    depends_on: [redis]
+    ports: ["8787:8787"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8787/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  # Public entry for api.marketingpowered.ai. Either give this container the
+  # token of a NEW tunnel, or leave it out and add the hostname to the existing
+  # "mp-n8n-tnas" tunnel pointing at http://<tnas-lan-ip>:8787 (see README).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on: [worker]
+    profiles: ["tunnel"]

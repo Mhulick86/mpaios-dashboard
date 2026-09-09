@@ -1,0 +1,63 @@
+# MAIOS overlay for the TNAS (TerraMaster T9-500 Pro, TOS 6 Docker).
+# Pair with the official self-hosted Supabase stack (infra/tnas/README.md) which provides
+# PostgreSQL+pgvector, Auth, PostgREST, Realtime, Storage and Studio on the same host.
+#
+#   docker compose -f supabase/docker/docker-compose.yml -f infra/tnas/docker-compose.maios.yml --env-file .env.maios up -d
+#
+# Storage layout on the NAS (see docs/adr/0001-tnas-data-node.md):
+#   /Volume2/maios/docker      -> container volumes (M.2 NVMe pool: "Volume2" here; adjust)
+#   /Volume1/maios/tenants     -> knowledge base folders, uploads, assets (24 TB HDD pool)
+#   /Volume1/maios/backups     -> nightly PostgreSQL dumps + offsite copy source
+name: maios
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "1gb", "--maxmemory-policy", "noeviction"]
+    volumes: ["${MAIOS_DOCKER_ROOT:-/Volume2/maios/docker}/redis:/data"]
+    networks: [default]
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: services/worker/Dockerfile
+    image: maios/worker:local
+    restart: unless-stopped
+    env_file: [../../.env.maios]
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
+      REDIS_URL: redis://redis:6379
+      KB_ROOT: /maios/tenants/${ORG_SLUG:-marketing-powered}/kb
+      WORKER_HTTP_PORT: "8787"
+    volumes:
+      - "${MAIOS_DATA_ROOT:-/Volume1/maios}/tenants:/maios/tenants"
+    depends_on: [redis]
+    ports: ["8787:8787"]
+    networks: [default]
+
+  # Public entry for api.marketingpowered.ai (webhooks + the Vercel app's server routes).
+  # Alternative: `tailscale funnel 8787` on the NAS instead of Cloudflare.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on: [worker]
+    networks: [default]
+
+  # Nightly logical backup of PostgreSQL to the HDD pool (copy offsite with your own job).
+  pg-backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          d=$$(date +%Y/%m/%d); mkdir -p /backups/postgres/$$d
+          pg_dump -h db -U postgres -d postgres -Fc -f /backups/postgres/$$d/maios-$$(date +%H%M).dump && echo "backup ok $$d"
+          find /backups/postgres -name '*.dump' -mtime +30 -delete
+          sleep 86400
+        done
+    volumes: ["${MAIOS_DATA_ROOT:-/Volume1/maios}/backups:/backups"]
+    networks: [default]

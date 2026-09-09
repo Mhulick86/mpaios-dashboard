@@ -664,7 +664,8 @@ registerTool({
     }
     // Fallback: use web research
     const result = await executeTool("web-research", { url: `https://www.google.com/search?q=${encodeURIComponent(params.brandName as string)}+reviews` });
-    return { success: true, data: { note: "Add SerpAPI key for full brand monitoring. Basic web check complete.", ...result.data } };
+    const extra = result.data && typeof result.data === "object" ? (result.data as Record<string, unknown>) : {};
+    return { success: true, data: { note: "Add SerpAPI key for full brand monitoring. Basic web check complete.", ...extra } };
   },
 });
 

@@ -1,9 +1,9 @@
 import { fetchGSCOverview } from "@/lib/googleSearchConsole";
-import { requireAuth } from "@/lib/apiAuth";
+import { requireRole } from "@/lib/apiAuth";
 
 export async function POST(req: Request) {
   try {
-    const { user } = await requireAuth();
+    await requireRole("admin");
     const { accessToken, siteUrl } = (await req.json()) as {
       accessToken?: string;
       siteUrl?: string;

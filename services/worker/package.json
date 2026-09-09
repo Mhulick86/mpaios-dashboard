@@ -1,0 +1,38 @@
+{
+  "name": "@maios/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MAIOS worker: ETL/ingestion pipeline, durable workflow engine (n8n replacement), scheduler, event bus, webhooks, knowledge search.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "etl": "tsx src/cli.ts etl",
+    "search": "tsx src/cli.ts search"
+  },
+  "dependencies": {
+    "@fastify/multipart": "^9.0.1",
+    "bullmq": "^5.34.0",
+    "cron-parser": "^4.9.0",
+    "dotenv": "^16.6.1",
+    "fastify": "^5.2.0",
+    "html-to-text": "^9.0.5",
+    "ioredis": "^5.4.2",
+    "mammoth": "^1.8.0",
+    "papaparse": "^5.4.1",
+    "pdf-parse": "^1.1.1",
+    "pg": "^8.13.1",
+    "xlsx": "^0.18.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/html-to-text": "^9.0.4",
+    "@types/node": "^22.10.2",
+    "@types/papaparse": "^5.3.15",
+    "@types/pdf-parse": "^1.1.4",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

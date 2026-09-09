@@ -1,6 +1,9 @@
 "use client";
 
+import { RequireRole } from "@/components/RequireRole";
+import PlatformGrid from "@/components/integrations/PlatformGrid";
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Plug,
   Eye,
@@ -10,10 +13,10 @@ import {
   Loader2,
   ExternalLink,
   Unplug,
-  MessageSquare as SlackIcon,
-  Users,
   Search,
   HardDrive,
+  Facebook,
+  ArrowRight,
 } from "lucide-react";
 
 import {
@@ -47,7 +50,7 @@ interface GSCTestResult {
   needsSiteSelection: boolean;
 }
 
-export default function IntegrationsPage() {
+function IntegrationsPageInner() {
   const [config, setConfig] = useState<IntegrationsConfig>(defaultIntegrations());
   const [saved, setSaved] = useState(false);
 
@@ -124,6 +127,7 @@ export default function IntegrationsPage() {
     config.googleSearchConsole?.connected,
     config.googleDrive?.connected,
     config.ahrefs?.connected,
+    config.metaAds?.connected,
   ].filter(Boolean).length;
 
   /* ─── Asana Handlers ─── */
@@ -647,6 +651,7 @@ export default function IntegrationsPage() {
   const gscConnected = config.googleSearchConsole?.connected;
   const driveConnected = config.googleDrive?.connected;
   const ahrefsConnected = config.ahrefs?.connected;
+  const metaConnected = config.metaAds?.connected;
 
   return (
     <div className="max-w-4xl">
@@ -1263,31 +1268,76 @@ export default function IntegrationsPage() {
         </div>
       </div>
 
-      {/* Coming Soon cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 mt-6">
-        {[
-          { name: "Slack", desc: "Notifications & team updates", icon: SlackIcon },
-          { name: "HubSpot", desc: "CRM & lead management", icon: Users },
-        ].map((item) => {
-          const Icon = item.icon;
-          return (
-            <div key={item.name} className="bg-surface-raised rounded-xl border border-border p-5 opacity-50">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                  <Icon className="w-5 h-5 text-gray-400" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-[14px] font-semibold text-gray-500">{item.name}</h3>
-                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 text-gray-400">Coming Soon</span>
-                  </div>
-                  <p className="text-[11px] text-gray-400">{item.desc}</p>
-                </div>
-              </div>
+      {/* ─── Meta Ads Card ─── */}
+      <div className="bg-surface-raised rounded-xl border border-border p-4 md:p-6 mt-4 mb-4">
+        <div className="flex items-start justify-between mb-4 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shrink-0 ${metaConnected ? "bg-[#1877F2]/10" : "bg-gray-100"}`}>
+              <Facebook className={`w-6 h-6 ${metaConnected ? "text-[#1877F2]" : "text-gray-500"}`} />
             </div>
-          );
-        })}
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-[16px] font-semibold">Meta Ads</h3>
+                {metaConnected && (
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-brand-green/10 text-brand-green">Connected</span>
+                )}
+              </div>
+              <p className="text-[12px] text-text-secondary mt-0.5">
+                Facebook &amp; Instagram — campaigns, ad sets, ads, insights, audiences (Agent 07)
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/meta-ads"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1877F2] hover:bg-[#166FE5] text-white text-[12px] font-medium shrink-0"
+          >
+            {metaConnected ? "Open" : "Connect"} <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+
+        {metaConnected ? (
+          <div className="bg-brand-green/5 border border-brand-green/20 rounded-lg p-4">
+            <p className="text-[13px] font-medium text-brand-green">
+              Connected to {config.metaAds.accountName || config.metaAds.accountId}
+            </p>
+            <p className="text-[11px] text-text-muted mt-0.5">
+              {config.metaAds.accountId} · {config.metaAds.currency} · Connected{" "}
+              {config.metaAds.connectedAt
+                ? new Date(config.metaAds.connectedAt).toLocaleDateString()
+                : ""}
+            </p>
+          </div>
+        ) : (
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-[11px] text-text-muted">
+              <span className="font-medium text-text-secondary">Full Marketing API:</span>{" "}
+              OAuth with Facebook Login, read/write campaigns (draft-only), pull insights at
+              account/campaign/ad-set/ad level, manage custom audiences. Requires{" "}
+              <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">META_APP_ID</code>{" "}
+              and <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">META_APP_SECRET</code>{" "}
+              environment variables.
+            </p>
+          </div>
+        )}
       </div>
+
+      {/* ─── Platforms (server-side integrations framework) ─── */}
+      <div className="mt-8 mb-4">
+        <h2 className="text-[16px] md:text-[18px] font-semibold">Platforms</h2>
+        <p className="text-[12px] text-text-secondary mt-0.5">
+          Ad, local, CRM and messaging platforms connected server-side. Tokens are encrypted and shared by every admin;
+          setup steps are in <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">docs/integrations.md</code>.
+        </p>
+      </div>
+      <PlatformGrid />
     </div>
+  );
+}
+
+export default function IntegrationsPage() {
+  return (
+    <RequireRole min="admin">
+      <IntegrationsPageInner />
+    </RequireRole>
   );
 }
