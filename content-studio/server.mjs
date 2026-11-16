@@ -5,6 +5,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { ROOT, DATA_DIR, VERSION } from './env.mjs';
 import { getDb } from './db.mjs';
 import { workerTick } from './agents.mjs';
+import { creditWatchTick } from './credit.mjs';
 import { initKnowledge } from './knowledge.mjs';
 import { subscribe, publish } from './events.mjs';
 import { ensureIntegrationSchema } from './integrations.mjs';
@@ -127,10 +128,13 @@ const tick = () => workerTick().catch((err) => console.error('Worker:', err));
 // Start work the moment a job is queued; the interval only picks up delayed retries and restarts.
 subscribe((type, data) => { if (type === 'job' && data.status === 'queued') setImmediate(tick); });
 const timer = setInterval(tick, 3000);
+// Credit cutoffs: the watch probes a paused provider every 6 hours; checking every 5 minutes whether one is due is free.
+const creditTimer = setInterval(() => creditWatchTick().then(tick).catch((err) => console.error('Credit watch:', err)), Number(process.env.CREDIT_TICK_MS) || 300000);
+creditTimer.unref?.();
 timer.unref();
 tick();
 function shutdown() {
-  clearInterval(timer);
+  clearInterval(timer); clearInterval(creditTimer);
   for (const res of streams) res.end();
   server.close(() => process.exit(0));
   server.closeAllConnections?.();

@@ -280,6 +280,12 @@ function renderMain() {
 function renderBoard() {
   // Never rebuild the board under a card that is being dragged; redraw once the drag ends.
   if (state.drag) { state.renderPending = true; return; }
+  // Work paused by a credit cutoff, and when MAIOS checks again.
+  const credit = state.data.credit || [], cb = $('#creditBanner');
+  if (cb) {
+    cb.hidden = !credit.length;
+    cb.innerHTML = credit.map((c) => `<strong>${html(c.label)} is out of credit.</strong> ${c.jobs} job${c.jobs === 1 ? '' : 's'}${c.images ? ` and ${c.images} image run${c.images === 1 ? '' : 's'}` : ''} paused. MAIOS checks every 6 hours and resumes them automatically (next check ${html(stampFmt(c.next_check))}). Add credit, or switch the stage's model in Settings, to resume sooner.`).join('<br>');
+  }
   const tasks = taskView();
   const scrolls = new Map($$('.kanban-column', $('#board')).map((col) => [col.dataset.laneId, $('.column-body', col)?.scrollTop || 0]));
   $('#board').innerHTML = lanes().map((l, i) => {

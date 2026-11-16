@@ -73,7 +73,9 @@ test('QA gate blocks unresolved [VERIFY] markers and a FAIL verdict; reasoning i
   await s.api(`/api/tasks/${bad.id}/pipeline`, 'POST', {});
   const failed = await waitFor(async () => { const x = await s.api(`/api/tasks/${bad.id}`); return x.artifacts.some((a) => a.kind === 'qa') && x.lane_id === 'mpfresh:final_approval' ? x : false; });
   assert.equal(failed.qa_status, 'blocked');
-  assert.match(failed.artifacts.find((a) => a.kind === 'qa').body, /BLOCK: The editorial QA model rated the draft FAIL/);
+  // Blocked by the model's FAIL, or (the mock repeats an earlier draft) by the automatic near-duplicate check, in which
+  // case QA does not pay for a model review at all.
+  assert.match(failed.artifacts.find((a) => a.kind === 'qa').body, /BLOCK: (The editorial QA model rated the draft FAIL|Near-duplicate)/);
   await assert.rejects(s.api(`/api/tasks/${bad.id}/approve`, 'POST', {}), /QA failed\. Approve anyway/);
   // A person can approve anyway: the card goes to Ship to dev and the override is recorded.
   const { tasks: [other] } = await s.api('/api/commission', 'POST', order({ topic: 'FAILCASE second unsupported story' }));

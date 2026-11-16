@@ -33,7 +33,9 @@ test('OpenAI: the writer and QA search the web, briefs do not, and the history r
   }
   const [brief, draft, qa] = o.calls;
   assert.equal(brief.tools, undefined, 'briefs do not search');
-  assert.deepEqual(draft.tools, [{ type: 'web_search' }]); assert.deepEqual(qa.tools, [{ type: 'web_search' }]);
+  // Fewer tokens: a small search context (results are billed as input) and reasoning effort set per stage.
+  assert.deepEqual(draft.tools, [{ type: 'web_search', search_context_size: 'low' }]); assert.deepEqual(qa.tools, [{ type: 'web_search', search_context_size: 'low' }]);
+  assert.deepEqual([brief.reasoning, draft.reasoning, qa.reasoning], [{ effort: 'low' }, { effort: 'medium' }, { effort: 'medium' }]);
   assert.match(draft.instructions, /You verify your own claims/); assert.match(draft.instructions, /APPROVED PROOF POINTS/);
   const d = await s.api(`/api/tasks/${task.id}`);
   assert.ok(d.events.some((e) => e.event_type === 'research' && /Claims verified with 2 web searches/.test(e.message)));

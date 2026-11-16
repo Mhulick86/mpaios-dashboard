@@ -9,6 +9,7 @@ import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { runtime } from './runtime.mjs';
 import { assets } from './assets.mjs';
 import { providerKey, saveAiSettings } from './providers.mjs';
+import { pauseProvider, onImageResume } from './credit.mjs';
 import { join } from 'node:path';
 import { getDb, getTask, event } from './db.mjs';
 import { clamp } from './env.mjs';
@@ -385,7 +386,7 @@ async function openaiImage(prompt, aspect) {
     if (unknownModel) err.message += ` Check the image model in Settings (tried ${chain.join(', ')}).`;
     const blockedPrompt = code === 'moderation_blocked' || /safety system|moderation/i.test(detail);
     if (!blockedPrompt && [400, 401, 403, 404].includes(r.status)) err.fatal = true;
-    if (r.status === 429 && /quota|billing|insufficient/i.test(detail)) { err.fatal = true; err.message += ' Add credit to the OpenAI account.'; }
+    if (r.status === 429 && /quota|billing|insufficient/i.test(detail)) { err.fatal = true; err.outOfCredit = 'openai'; err.message = 'The OpenAI account is out of credit. Image generation is paused: MAIOS checks every 6 hours and restarts it automatically once credit is back.'; }
     throw err;
   }
 }
@@ -426,6 +427,7 @@ export function recentImageRuns() {
   return out;
 }
 
+onImageResume((taskId, actor) => startImageGeneration(taskId, actor));
 /** Generate the brand graphic set for the latest draft and attach each image to the task. Runs in the background. */
 export function startImageGeneration(taskId, actor = 'MAIOS') {
   if (!imageReady()) throw new IntegrationError(keyHint());
@@ -462,6 +464,7 @@ export function startImageGeneration(taskId, actor = 'MAIOS') {
           run.failed++; run.error = scrub(e?.message || e);
           await runtime.commit(() => event(taskId, 'warning', `Image ${i + 1} of ${prompts.length} failed: ${run.error}`, 'MAIOS'));
           if (e?.fatal) stop = true; // a bad key, model or billing problem will fail every remaining image too
+          if (e?.outOfCredit) await runtime.commit(() => { pauseProvider(e.outOfCredit, { imagesFor: taskId }); event(taskId, 'paused', 'Image generation paused: the OpenAI account is out of credit. MAIOS checks every 6 hours and restarts it automatically.', 'MAIOS', { provider: e.outOfCredit }); });
         }
       }));
     }

@@ -1,3 +1,7 @@
+/* Work paused by a provider credit cutoff (board banner). */
+.credit-banner { margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; background: #fff7e6; color: #6b4200; border: 1px solid #f2c26b; font-size: 13px; line-height: 1.45; }
+.credit-banner[hidden] { display: none; }
+
 /* v0.4 interaction fixes. Loaded last so it overrides styles.css and v3.css.
    Goal: exactly one scroll area under the pointer at any time, and nothing that moves when hovered. */
 html,body{height:100%}

@@ -39,6 +39,9 @@ const ANTHROPIC_BASE = process.env.ANTHROPIC_BASE_URL || undefined;
 const LMSTUDIO_BASE = (process.env.LM_STUDIO_BASE_URL || 'http://127.0.0.1:1234/v1').replace(/\/+$/, '');
 
 export class ModelUnavailable extends Error { constructor(message) { super(message); this.transient = true; } }
+/** The provider account has no credit left. The job is paused (not failed) and resumes when credit is back (credit.mjs). */
+export class OutOfCredit extends Error { constructor(provider, message) { super(message); this.provider = provider; this.outOfCredit = true; } }
+const creditMessage = (label, where) => `The ${label} account is out of credit. This work is paused: MAIOS checks every 6 hours and resumes it automatically once credit is back. To resume sooner, add credit at ${where}, or pick another provider for this stage in Settings > AI models & API keys.`;
 
 // ---------- settings ----------
 const getSetting = (key) => getDb().prepare('SELECT value FROM settings WHERE key=?').get(key)?.value || '';
@@ -150,8 +153,9 @@ async function anthropicClient(apiKey) {
 const RESEARCH_STAGES = new Set(['draft', 'qa']);
 let researchOff = ''; // set when this Anthropic account cannot use the web tools; generation then continues without them
 const researchTools = () => [
-  { type: 'web_search_20260209', name: 'web_search', max_uses: clamp(process.env.STUDIO_MAX_SEARCHES, 1, 30, 10) },
-  { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: clamp(process.env.STUDIO_MAX_FETCHES, 1, 30, 8) }
+  // Each search or page read adds its results to the input, so keep the caps modest.
+  { type: 'web_search_20260209', name: 'web_search', max_uses: clamp(process.env.STUDIO_MAX_SEARCHES, 1, 30, 6) },
+  { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: clamp(process.env.STUDIO_MAX_FETCHES, 1, 30, 4) }
 ];
 /** The finished artifact: text after the last research step, or, if the model wrote around its searches, everything from the first page line. */
 function finalText(blocks, stage) {
@@ -165,7 +169,8 @@ function finalText(blocks, stage) {
 }
 async function callAnthropic({ model, apiKey, system, user, stage, t, onText }) {
   const client = await anthropicClient(apiKey);
-  const base = { model, max_tokens: MAX_OUTPUT, system, output_config: { effort: STAGE_EFFORT[stage] || 'medium' } };
+  // The system prompt (rules, proof points, specialist instructions) is the same for every task in a stage: cache it.
+  const base = { model, max_tokens: MAX_OUTPUT, system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }], output_config: { effort: STAGE_EFFORT[stage] || 'medium' } };
   // Server-side refusal fallback where the model supports it (not Haiku).
   if (!/haiku/.test(model)) { base.betas = ['server-side-fallback-2026-07-01']; base.fallbacks = 'default'; }
   const useResearch = RESEARCH_STAGES.has(stage) && !researchOff && process.env.STUDIO_WEB_RESEARCH !== '0';
@@ -200,7 +205,7 @@ async function callAnthropic({ model, apiKey, system, user, stage, t, onText }) 
       throw e;
     }
   } catch (e) {
-    if (/credit balance is too low|billing|insufficient.*(credit|quota)/i.test(String(e?.message))) throw new Error('The Anthropic account is out of API credit. Add credit at console.anthropic.com (Plans & Billing), or pick another provider for this stage in Settings > AI models & API keys, then press Retry.');
+    if (/credit balance is too low|billing|insufficient.*(credit|quota)/i.test(String(e?.message))) throw new OutOfCredit('anthropic', creditMessage('Anthropic', 'console.anthropic.com (Plans & Billing)'));
     if (e?.status === 401 || e?.status === 403) throw new Error(`Anthropic rejected the API key (HTTP ${e.status}). Check it in Settings.`);
     if (e?.status === 429 || e?.status >= 500 || e?.name === 'APIConnectionError') throw new ModelUnavailable(`Anthropic is unavailable right now: ${scrubKeys(e.message)}`);
     t.rethrow(e);
@@ -209,41 +214,60 @@ async function callAnthropic({ model, apiKey, system, user, stage, t, onText }) 
 export const researchStatus = () => ({ stages: [...RESEARCH_STAGES], enabled: process.env.STUDIO_WEB_RESEARCH !== '0', anthropicUnavailable: researchOff, openaiUnavailable: openaiResearchOff });
 // OpenAI's Responses API web_search tool: the writer and QA verify claims and cite sources (url_citation annotations).
 let openaiResearchOff = '';
+const OPENAI_EFFORT = { brief: 'low', draft: 'medium', graphics: 'low', qa: 'medium' };
+const openaiNoReasoning = new Set(); // models that rejected the reasoning parameter
+let openaiSearchSmall = true;        // false once the API rejects search_context_size
 async function callOpenAI({ model, apiKey, system, user, stage, t, onText }) {
   const useResearch = RESEARCH_STAGES.has(stage) && !openaiResearchOff && process.env.STUDIO_WEB_RESEARCH !== '0';
+  // Token savings: reasoning effort per stage (reasoning tokens are billed as output) and a small search context
+  // (search results are billed as input). A model that rejects either parameter is retried without it, once.
+  const effort = OPENAI_EFFORT[stage];
   const request = (withTools) => fetch(`${OPENAI_BASE}/responses`, {
     method: 'POST', signal: t.signal,
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model, instructions: system, input: user, max_output_tokens: MAX_OUTPUT, stream: true, ...(withTools ? { tools: [{ type: 'web_search' }] } : {}) })
+    body: JSON.stringify({
+      model, instructions: system, input: user, max_output_tokens: MAX_OUTPUT, stream: true,
+      ...(effort && !openaiNoReasoning.has(model) ? { reasoning: { effort } } : {}),
+      ...(withTools ? { tools: [openaiSearchSmall ? { type: 'web_search', search_context_size: 'low' } : { type: 'web_search' }] } : {})
+    })
   });
   let r, withTools = useResearch;
   try {
-    r = await request(withTools);
-    if (!r.ok && withTools && r.status === 400) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      r = await request(withTools);
+      if (r.ok || r.status !== 400) break;
       const body = await r.text();
-      if (/web_search|tool/i.test(body)) { openaiResearchOff = scrubKeys(body).slice(0, 200); console.error('OpenAI web search unavailable, continuing without it:', openaiResearchOff); withTools = false; r = await request(false); }
-      else r = new Response(body, { status: 400 });
+      if (/reasoning/i.test(body) && effort && !openaiNoReasoning.has(model)) { openaiNoReasoning.add(model); continue; }
+      if (withTools && /search_context_size/i.test(body) && openaiSearchSmall) { openaiSearchSmall = false; continue; }
+      if (withTools && /web_search|tool/i.test(body)) { openaiResearchOff = scrubKeys(body).slice(0, 200); console.error('OpenAI web search unavailable, continuing without it:', openaiResearchOff); withTools = false; continue; }
+      r = new Response(body, { status: 400 }); break;
     }
   } catch (e) { if (t.signal.aborted) t.rethrow(e); throw new ModelUnavailable(`Could not reach OpenAI (${e.cause?.code || e.message}).`); }
   if (!r.ok) {
     const err = await httpError(r, 'openai');
-    if (/insufficient_quota|exceeded your current quota|billing/i.test(err.message)) throw new Error('The OpenAI account is out of credit or over its quota. Add credit at platform.openai.com (Billing), or pick another provider for this stage in Settings, then press Retry.');
+    if (/insufficient_quota|exceeded your current quota|billing/i.test(err.message)) throw new OutOfCredit('openai', creditMessage('OpenAI', 'platform.openai.com (Billing)'));
     throw err;
   }
-  let text = '', truncated = false, served = model, searches = 0;
+  let text = '', truncated = false, served = model, searches = 0, usage = null;
   try {
     for await (const ev of sseEvents(r, t)) {
       if (ev.type === 'response.output_text.delta' && typeof ev.delta === 'string') { text += ev.delta; onText?.(text); }
       else if (ev.type === 'response.web_search_call.completed') searches++;
       else if (ev.type === 'response.completed' || ev.type === 'response.incomplete') {
         served = ev.response?.model || served; truncated = ev.type === 'response.incomplete';
+        const u = ev.response?.usage;
+        if (u) usage = { input_tokens: u.input_tokens, output_tokens: u.output_tokens, cached_input_tokens: u.input_tokens_details?.cached_tokens || 0, reasoning_tokens: u.output_tokens_details?.reasoning_tokens || 0 };
         const calls = (ev.response?.output || []).filter((o) => o.type === 'web_search_call').length;
         if (calls > searches) searches = calls;
       }
-      else if (ev.type === 'response.failed' || ev.type === 'error') throw new Error(`OpenAI error: ${scrubKeys(ev.response?.error?.message || ev.error?.message || ev.message || 'generation failed')}`);
+      else if (ev.type === 'response.failed' || ev.type === 'error') {
+        const why = scrubKeys(ev.response?.error?.message || ev.error?.message || ev.message || 'generation failed');
+        if (/insufficient_quota|exceeded your current quota|billing/i.test(why)) throw new OutOfCredit('openai', creditMessage('OpenAI', 'platform.openai.com (Billing)'));
+        throw new Error(`OpenAI error: ${why}`);
+      }
     }
   } catch (e) { t.rethrow(e); }
-  return { output: text, model: served, truncated, research: withTools ? { searches, fetches: 0 } : null };
+  return { output: text, model: served, truncated, usage, research: withTools ? { searches, fetches: 0 } : null };
 }
 async function callGemini({ model, apiKey, system, user, t, onText }) {
   let r;
@@ -310,6 +334,24 @@ export async function generate({ stage, system, user, signal, onText }) {
     const out = await call({ model, apiKey, system, user, stage, t, onText });
     return { ...out, research: out.research || null, model: `${provider === 'lmstudio' ? 'lmstudio' : provider}/${out.model}` };
   } finally { t.done(); }
+}
+/**
+ * Does the provider account have credit again? A request of a few tokens with the given model (the model the paused
+ * work uses). ok: false with the reason while the account is still out of credit or unreachable.
+ */
+export async function creditProbe(provider, model = '') {
+  const apiKey = providerKey(provider); if (!apiKey) return { ok: false, message: `No ${PROVIDERS[provider]?.label || provider} key.` };
+  const stageFor = Object.keys(STAGE_DEFAULTS).find((st) => parseModel(stageModel(st)).provider === provider);
+  const use = model || (stageFor ? parseModel(stageModel(stageFor)).model : '');
+  let r;
+  try {
+    if (provider === 'openai') r = await fetch(`${OPENAI_BASE}/responses`, { method: 'POST', signal: AbortSignal.timeout(60000), headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` }, body: JSON.stringify({ model: use || 'gpt-6.1-terra', input: 'Reply OK.', max_output_tokens: 16 }) });
+    else if (provider === 'anthropic') r = await fetch(`${ANTHROPIC_BASE || 'https://api.anthropic.com'}/v1/messages`, { method: 'POST', signal: AbortSignal.timeout(60000), headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: use || 'claude-haiku-5-5', max_tokens: 1, messages: [{ role: 'user', content: 'OK' }] }) });
+    else return { ok: true };
+  } catch (e) { return { ok: false, message: `Could not reach ${PROVIDERS[provider].label} (${e.cause?.code || e.message}).` }; }
+  if (r.ok) return { ok: true };
+  const detail = scrubKeys(await r.text().catch(() => '')).slice(0, 300);
+  return { ok: false, credit: /credit|quota|billing/i.test(detail), message: `HTTP ${r.status}: ${detail}` };
 }
 /** Cheap check that a provider key works. */
 export async function testProvider(provider) {

@@ -24,6 +24,7 @@ import {
 } from './integrations.mjs';
 import { aiStatus, saveAiSettings, testProvider } from './providers.mjs';
 import { shipQueue, shipPackage, shipClaim, shipDone, shipFailed, shipSummaries } from './ship.mjs';
+import { creditStatus } from './credit.mjs';
 import { searchConsoleStatus, saveSearchConsole, testSearchConsole, searchConsoleContext } from './searchconsole.mjs';
 import { runtime } from './runtime.mjs';
 import { assets } from './assets.mjs';
@@ -87,7 +88,7 @@ export async function handleApi(req, ctx = {}) {
   const { method, path, query } = req;
   const actor = actorFrom(req);
   if (method === 'GET' && path === '/api/health') return json(200, { ok: true, version: VERSION, stats: taskStats(), knowledge: knowledgeStats(), worker: workerInfo(), backend: runtime.hosted ? 'maios-hosted' : 'local-sqlite-fts5-and-node' });
-  if (method === 'GET' && path === '/api/bootstrap') return json(200, { ...getBootstrap(), docs: allDocs(), imageRuns: recentImageRuns(), ship: shipSummaries(), integrations: integrationStatus(), stats: taskStats(), ai: aiStatus(), searchConsole: searchConsoleStatus(), settings: settingsView() });
+  if (method === 'GET' && path === '/api/bootstrap') return json(200, { ...getBootstrap(), docs: allDocs(), imageRuns: recentImageRuns(), ship: shipSummaries(), integrations: integrationStatus(), stats: taskStats(), ai: aiStatus(), searchConsole: searchConsoleStatus(), settings: settingsView(), credit: creditStatus() });
   if (method === 'GET' && path === '/api/models') return json(200, await modelCatalog());
 
   // AI providers: keys are write-only from the browser's point of view. Status shows only whether one is set and its last 4 characters.

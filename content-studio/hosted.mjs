@@ -25,6 +25,7 @@ import { setKnowledgeSeed, resetKnowledge, initKnowledge } from './knowledge.mjs
 import { ensureIntegrationSchema } from './integrations.mjs';
 import { handleApi, errorReply, json, parseJson, HttpError } from './core.mjs';
 import { runOne, trackRunning } from './agents.mjs';
+import { creditWatchTick } from './credit.mjs';
 import { passcodeHash, passcodeMatches, signSession, verifySession } from './secrets.mjs';
 import { clamp } from './env.mjs';
 
@@ -236,6 +237,8 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
   /** Cron backstop: pick up the latest database first, then work. */
   async function tick({ deadline }) {
     await commit(() => null);
+    // Credit cutoffs: every 6 hours per paused provider, a few-token probe; when it answers, paused work is released.
+    try { await creditWatchTick(); } catch (e) { console.error('Credit watch:', e); }
     await background_({ deadline });
     return { ok: true, at: stamp() };
   }

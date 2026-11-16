@@ -403,12 +403,13 @@ export function nextJob() {
   publish('job', { jobId: job.id, taskId: job.task_id, kind: job.kind, status: 'running' });
   return jobRow({ ...job, status: 'running', attempts: job.attempts + 1 });
 }
-export function finishJob(id, status, error = '', model = '') {
+export function finishJob(id, status, error = '', model = '', usage = null) {
   const db = getDb(), job = db.prepare('SELECT * FROM jobs WHERE id=?').get(id); if (!job) return;
   const final = status === true ? 'done' : status === false ? 'failed' : status;
   db.prepare('UPDATE jobs SET status=?,error=?,model=?,finished_at=? WHERE id=?').run(final, String(error || '').slice(0, 1800), model, stamp(), id);
   const message = { done: `${job.kind} generation completed`, failed: `${job.kind} generation failed`, cancelled: `${job.kind} generation cancelled` }[final] || `${job.kind} ${final}`;
-  event(job.task_id, final === 'done' ? 'generated' : final, message, 'MAIOS', { jobId: id, error: final === 'done' ? '' : String(error || '').slice(0, 400) });
+  // Token usage is kept with the event, so spend per stage can be read back from the task history.
+  event(job.task_id, final === 'done' ? 'generated' : final, message, 'MAIOS', { jobId: id, error: final === 'done' ? '' : String(error || '').slice(0, 400), ...(usage ? { usage } : {}) });
   publish('job', { jobId: id, taskId: job.task_id, kind: job.kind, status: final });
 }
 /** Put a job back in the queue after a transient failure (model server offline) without losing it. */
