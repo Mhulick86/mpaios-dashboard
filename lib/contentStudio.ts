@@ -20,9 +20,12 @@ type Studio = {
 
 let studio: Studio | null = null;
 
+// Other Vercel projects build this same repository without the studio's storage; send people to the real one.
+const STUDIO_HOME = process.env.STUDIO_HOME_URL || "https://maios.marketingpowered.ai/content-studio";
+
 export function studioConfigError(): string | null {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) return "Content Studio storage is not set up: connect a private Vercel Blob store to this project (BLOB_READ_WRITE_TOKEN).";
-  if (!process.env.STUDIO_SECRET_KEY) return "Content Studio is missing STUDIO_SECRET_KEY (32 random bytes, base64) in the project environment.";
+  if (!process.env.BLOB_READ_WRITE_TOKEN) return `Content Studio is not set up on this copy of MAIOS. Open it at ${STUDIO_HOME}`;
+  if (!process.env.STUDIO_SECRET_KEY) return `Content Studio is missing STUDIO_SECRET_KEY on this deployment. Open it at ${STUDIO_HOME}`;
   return null;
 }
 
