@@ -206,26 +206,44 @@ async function callAnthropic({ model, apiKey, system, user, stage, t, onText }) 
     t.rethrow(e);
   }
 }
-export const researchStatus = () => ({ stages: [...RESEARCH_STAGES], enabled: process.env.STUDIO_WEB_RESEARCH !== '0' && !researchOff, unavailable: researchOff });
-async function callOpenAI({ model, apiKey, system, user, t, onText }) {
-  let r;
+export const researchStatus = () => ({ stages: [...RESEARCH_STAGES], enabled: process.env.STUDIO_WEB_RESEARCH !== '0', anthropicUnavailable: researchOff, openaiUnavailable: openaiResearchOff });
+// OpenAI's Responses API web_search tool: the writer and QA verify claims and cite sources (url_citation annotations).
+let openaiResearchOff = '';
+async function callOpenAI({ model, apiKey, system, user, stage, t, onText }) {
+  const useResearch = RESEARCH_STAGES.has(stage) && !openaiResearchOff && process.env.STUDIO_WEB_RESEARCH !== '0';
+  const request = (withTools) => fetch(`${OPENAI_BASE}/responses`, {
+    method: 'POST', signal: t.signal,
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model, instructions: system, input: user, max_output_tokens: MAX_OUTPUT, stream: true, ...(withTools ? { tools: [{ type: 'web_search' }] } : {}) })
+  });
+  let r, withTools = useResearch;
   try {
-    r = await fetch(`${OPENAI_BASE}/responses`, {
-      method: 'POST', signal: t.signal,
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, instructions: system, input: user, max_output_tokens: MAX_OUTPUT, stream: true })
-    });
+    r = await request(withTools);
+    if (!r.ok && withTools && r.status === 400) {
+      const body = await r.text();
+      if (/web_search|tool/i.test(body)) { openaiResearchOff = scrubKeys(body).slice(0, 200); console.error('OpenAI web search unavailable, continuing without it:', openaiResearchOff); withTools = false; r = await request(false); }
+      else r = new Response(body, { status: 400 });
+    }
   } catch (e) { if (t.signal.aborted) t.rethrow(e); throw new ModelUnavailable(`Could not reach OpenAI (${e.cause?.code || e.message}).`); }
-  if (!r.ok) throw await httpError(r, 'openai');
-  let text = '', truncated = false, served = model;
+  if (!r.ok) {
+    const err = await httpError(r, 'openai');
+    if (/insufficient_quota|exceeded your current quota|billing/i.test(err.message)) throw new Error('The OpenAI account is out of credit or over its quota. Add credit at platform.openai.com (Billing), or pick another provider for this stage in Settings, then press Retry.');
+    throw err;
+  }
+  let text = '', truncated = false, served = model, searches = 0;
   try {
     for await (const ev of sseEvents(r, t)) {
       if (ev.type === 'response.output_text.delta' && typeof ev.delta === 'string') { text += ev.delta; onText?.(text); }
-      else if (ev.type === 'response.completed' || ev.type === 'response.incomplete') { served = ev.response?.model || served; truncated = ev.type === 'response.incomplete'; }
-      else if (ev.type === 'response.failed' || ev.type === 'error') throw new Error(`OpenAI error: ${scrubKeys(ev.response?.error?.message || ev.message || 'generation failed')}`);
+      else if (ev.type === 'response.web_search_call.completed') searches++;
+      else if (ev.type === 'response.completed' || ev.type === 'response.incomplete') {
+        served = ev.response?.model || served; truncated = ev.type === 'response.incomplete';
+        const calls = (ev.response?.output || []).filter((o) => o.type === 'web_search_call').length;
+        if (calls > searches) searches = calls;
+      }
+      else if (ev.type === 'response.failed' || ev.type === 'error') throw new Error(`OpenAI error: ${scrubKeys(ev.response?.error?.message || ev.error?.message || ev.message || 'generation failed')}`);
     }
   } catch (e) { t.rethrow(e); }
-  return { output: text, model: served, truncated };
+  return { output: text, model: served, truncated, research: withTools ? { searches, fetches: 0 } : null };
 }
 async function callGemini({ model, apiKey, system, user, t, onText }) {
   let r;
@@ -304,5 +322,8 @@ export async function testProvider(provider) {
   if (!req) throw new Error('Unknown provider.');
   let r; try { r = await req(); } catch (e) { throw new Error(`Could not reach ${PROVIDERS[provider].label} (${e.cause?.code || e.message}).`); }
   if (!r.ok) throw await httpError(r, provider);
-  return { ok: true, provider };
+  // OpenAI: also say which text models this key can use, so a stage is never pointed at a model it lacks.
+  let models;
+  if (provider === 'openai') { try { models = ((await r.json()).data || []).map((m) => m.id).filter((id) => /^(gpt|o\d)/.test(id) && !/image|audio|realtime|transcribe|tts|embedding|search/.test(id)).sort(); } catch { /* list is optional */ } }
+  return { ok: true, provider, ...(models ? { models } : {}) };
 }
