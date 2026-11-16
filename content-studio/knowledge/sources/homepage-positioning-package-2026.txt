@@ -1,0 +1,998 @@
+<PARSED TEXT FOR PAGE: 1 / 35>
+MARKETING POWERED
+
+
+
+
+Homepage copy
+and implementation
+package
+Experience first. Technology with a purpose.
+Execution tied to measurable growth.
+November 6, 2026
+Prepared for Mike Hulick
+
+
+
+ HOMEPAGE                            LINK ARCHITECTURE               POSITIONING
+
+                                                                     Executive experience
+ 1,499 words                         20 planned placements
+                                                                     Owned technology
+ 10 sections                         17 distinct destinations
+                                                                     Measurable execution
+
+
+
+
+The copy is written. The release gates are explicit.
+The homepage leads with operating experience, connects services to business outcomes, and makes the
+infrastructure advantage understandable without turning the page into a technology pitch.
+This package includes the finished copy, metadata, exact anchor placements, a destination review, claims
+register, supporting-page plan, existing Asana references, and build acceptance tests.
+
+ Publication status Ready for editorial review. Do not publish until the claims, destination checks, and
+ staging tests marked open are completed.
+
+
+No website content, Asana task, or live configuration was changed.
+<PARSED TEXT FOR PAGE: 2 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+EXECUTIVE HANDOFF
+
+
+Read the copy first. Use the controls to ship it.
+The attached brief governs the positioning and founder facts. Public pages inform the audit, not approval
+of their claims. External guidance is identified separately in the implementation notes. [B1; W01-W17;
+R01-R10]
+
+ Part                      What it contains
+
+ 01 / Homepage             All ten sections in publication order, with button copy and contextual anchor
+ Pages 3-7                 placements.
+
+ 02 / Editorial controls   Measured counts, link map, destination decisions, and claims that require evidence
+ Pages 8-17                or approval.
+
+ 03 / Search and
+                           Metadata, heading hierarchy, schema changes, and supporting-page delivery
+ content
+                           requirements.
+ Pages 18-23
+
+ 04 / Implementation       Existing task references, component mapping, accessibility, forms, tracking, and
+ Pages 24-29               release testing.
+
+ 05 / Review and
+ sources                   Acceptance status, open decisions, change summary, and traceable references.
+ Pages 30-35
+
+
+
+What is complete
+The 1,499-word copy follows the requested ten-section structure. Every section is within its individual word
+range. The final text includes four uses of AI and three uses of behavioral health. The prohibited descriptor
+and em dash counts are zero.
+
+
+What is not a completed verification
+Twenty link placements are mapped. Fifteen point to thirteen existing candidate pages; five need four new
+destinations. Retrieved page text establishes topical relevance, not an HTTP 200, self-canonical, robots,
+or redirect-chain pass. No destination is labeled technically verified.
+A complete current-site export, page-level update dates, independent claim substantiation, an approved
+agency case, live form testing, and a 375-pixel staging review remain open. Cached retrieval is not a fresh
+server crawl.
+
+ Important The existing case-studies index provides aggregate assertions, not an approved case
+ suitable for the requested homepage metric. Section 7 uses correctly attributed founder history, but
+ that does not satisfy the separate agency-case acceptance item. [W03; B1]
+
+
+
+
+Marketing Powered | November 6, 2026                                                                          2 / 35
+<PARSED TEXT FOR PAGE: 3 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+01 / PUBLICATION COPY
+
+
+Homepage copy
+Only the section headings, body, and button labels below are homepage text. Section labels and word counts are editorial
+annotations. Existing candidate links are review pointers; unbuilt destinations remain plain text. Publication remains subject
+to the link map and claims register.
+SECTION 01 / HERO AND VALUE PROPOSITION / 83 WORDS
+
+
+Marketing leadership built for measurable growth
+Marketing Powered brings executive experience running marketing operations and managing substantial
+budgets to organizations ready to grow.
+We combine that experience with technology we own and customize, connecting strategy, execution, and
+measurement around your business priorities.
+For CEOs and CMOs, that means a partner who understands the decisions behind the campaigns: where
+to invest, what to improve, and how to judge performance. Our marketing leadership starts with operating
+experience, not a software pitch.
+Button: Request a strategy call
+SECTION 02 / EXPERIENCE AND LEADERSHIP / 151 WORDS
+
+
+Experience earned inside growing organizations
+Before founding Marketing Powered, Mike Hulick led marketing as CMO of a multi-state behavioral health
+operator. During his tenure, the organization expanded from 3 to 24 locations across 9 states. He
+managed about $1.5 million to $2 million per month in Google Ads spend.
+That responsibility extended beyond individual campaigns. Attribution, intake, conversion, reporting, and
+the systems supporting expansion had to work together. Marketing decisions needed to account for
+operating capacity, market differences, and revenue, not just activity inside an advertising account.
+Today, our experience shapes how Marketing Powered approaches an engagement. We examine the
+operation behind the marketing, identify where performance breaks down, and connect execution to the
+business objective.
+Prior executive experience is distinct from agency client work. That distinction matters when evaluating
+case studies, budgets managed, and the contribution marketing made to an organization's growth. You
+should know what the evidence actually represents.
+
+
+
+
+Marketing Powered | November 6, 2026                                                                                     3 / 35
+<PARSED TEXT FOR PAGE: 4 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+01 / PUBLICATION COPY / SERVICES AND INSTITUTIONAL FIT
+SECTION 03 / CORE MARKETING SERVICES / 229 WORDS
+
+
+Connected marketing, from acquisition to revenue
+Your marketing should operate as one system. We connect the work that attracts demand with the
+experience that converts it and the reporting that guides investment.
+Acquisition with financial visibility
+Our paid media work prioritizes qualified demand and conversion value per cost, where higher is better.
+We evaluate campaign economics alongside lead quality and available operating capacity.
+Visibility that supports long-term demand
+We combine technical SEO, local search, and content to help people find relevant services and locations.
+Content answers the questions buyers research and supports an informed next step.
+Websites built for conversion
+Our website development connects clear messaging, location structure, and intake paths. We preserve
+useful existing URLs and remove friction between interest and inquiry.
+Creative with a commercial purpose
+We develop messaging and creative that keep your offer consistent across channels and locations, then
+test what improves response.
+More value from existing traffic
+Multi variant optimization uses machine learning to route visitors among landing page variants, with
+conversion performance guiding the testing.
+Measurement beyond the lead
+Our analytics and attribution connect call tracking and CRM integration to admissions, patients, or
+revenue, where the available data supports it.
+Execution without repetitive handoffs
+We build automation for intake, follow-up, and reporting, reducing manual work while keeping people
+responsible for decisions. The objective is stronger patient or customer acquisition, not another
+disconnected tool.
+SECTION 04 / HOSPITALS AND HEALTH SYSTEMS / 151 WORDS
+
+
+Built for hospitals and health systems
+Marketing Powered is a healthcare marketing agency designed to serve hospitals and health systems
+across locations, service lines, and internal teams.
+A campaign can generate interest while scheduling, intake, or inconsistent location information prevents
+that interest from becoming patient acquisition. We approach those connections as part of the marketing
+operation, not someone else's problem.
+Our approach to hospital marketing brings acquisition strategy, website structure, and performance
+visibility into the same plan. For health system marketing teams, that means a clearer view of demand by
+service line and location.
+We design multi-location marketing around shared standards and local market needs. Your leadership
+team can compare performance without forcing every site into the same campaign.
+Data handling and governance belong in the planning discussion because they shape which information
+can move between systems. We work within your review process, with responsibilities and deployment
+boundaries defined before implementation.
+
+
+
+
+Marketing Powered | November 6, 2026                                                                   4 / 35
+<PARSED TEXT FOR PAGE: 5 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+01 / PUBLICATION COPY / INFRASTRUCTURE AND OPERATING CONTROL
+SECTION 05 / OWNED INFRASTRUCTURE / 177 WORDS
+
+
+Infrastructure we own, operated for your business
+Marketing Powered invests in and operates its own computing hardware and systems. Our owned
+infrastructure gives us direct control over supported deployments, customization, and capacity instead of
+relying entirely on rented access.
+That lets us choose how a workflow runs and adapt the environment to its requirements. The value is
+practical: more control over the systems supporting your marketing operation, not hardware for its own
+sake.
+Local processing
+Supported workloads run on infrastructure we control, giving us direct oversight of data handling during
+processing. Our local processing approach does not mean every integration runs offline or every external
+service disappears. Clients retain ownership of their data; our ownership of the hardware does not change
+that.
+AI governance
+Our AI governance approach combines access controls, testing before deployment, human review at
+defined decision points, and clear accountability. We decide where automation is appropriate and where a
+person must review the output or approve an action. Those controls support responsible execution without
+promising that technology alone resolves every security or compliance obligation.
+SECTION 06 / DATA SOVEREIGNTY, OPEN SOURCE, AND CUSTOMIZATION / 227 WORDS
+
+
+Technology shaped around the way your business operates
+The useful question is how technology improves control, fits your operation, and supports decisions your
+team needs to make. Our approach addresses each concern directly.
+Data sovereignty
+Our data sovereignty approach makes storage, processing, access, and outside services explicit. We
+define where information resides, how it moves, who can use it, and which providers participate in the
+workflow.
+You can see those choices rather than relying on a general assurance about privacy. The configuration
+follows the engagement and approved data uses, including any third-party connections needed to operate
+it.
+Open source
+Our open source approach uses adaptable software to select, configure, and integrate technology around
+the business. We distinguish software under OSI-approved licenses from open-weight models released
+under other terms.
+Licensing and permitted use inform selection, not simply whether something is available to download. This
+flexibility helps us avoid forcing an operational requirement into a product that was designed for a different
+purpose.
+Customizable AI
+Our customizable AI work connects model configuration, approved business data, and workflows for
+specific operational needs. Workflow integrations can support intake, attribution, reporting, or follow-up
+without adding another disconnected task for your team.
+We define the use case, available data, responsibilities, and limits before building. Clients retain their data
+ownership; access to our services does not automatically transfer our proprietary technology, workflows,
+or configurations.
+
+
+
+Marketing Powered | November 6, 2026                                                                      5 / 35
+<PARSED TEXT FOR PAGE: 6 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+01 / PUBLICATION COPY CONTINUED
+
+
+Measurement and specialty depth
+SECTION 07 / PERFORMANCE, ATTRIBUTION, AND RESULTS / 184 WORDS
+
+
+Measure what happens after the inquiry
+Marketing performance should connect investment to business outcomes, with the limits of the data made
+clear.
+We connect campaign information, call tracking, and CRM records to examine what happens after an
+inquiry. Qualified opportunities, admissions, patients, and revenue matter more than a dashboard filled
+with disconnected activity. Our intake attribution work helps identify where demand converts and where
+the handoff breaks.
+We propose weekly operating checks and a monthly executive review, with the cadence defined in your
+engagement. Reporting covers spend, acquisition quality, conversion, and the next decisions. We
+distinguish measured outcomes from estimates and explain gaps rather than presenting incomplete
+tracking as certainty.
+The operating perspective comes from experience: during our founder's prior CMO tenure, his employer
+grew from about $30 million to about $140 million in revenue. That is organizational growth during his
+tenure, not an agency result or a claim that marketing alone caused it.
+Evaluate client results against the starting point, measurement period, work performed, and business
+context. A useful result should help you make a decision, not simply give you a larger number.
+SECTION 08 / INDUSTRIES AND SPECIALTIES / 121 WORDS
+
+
+Specialty depth with a broader operating model
+Behavioral health and addiction treatment
+Our founder's operator experience informs behavioral health marketing and addiction treatment marketing.
+The focus includes admissions, intake, acquisition economics, and the constraints surrounding sensitive
+services.
+Mental health providers
+Our operating approach connects demand generation with appropriate service information, inquiry
+handling, and conversion measurement. The objective is qualified patient acquisition, not call volume
+without context.
+Hospitals and health systems
+Our model is built to support health system marketing across service lines and locations, with
+organizational review and data handling considered from the start.
+Other multi-location organizations
+The same operating disciplines apply where distributed teams need coordinated campaigns, consistent
+execution, and comparable reporting. We assess the fit before defining the engagement.
+
+
+
+
+Marketing Powered | November 6, 2026                                                                    6 / 35
+<PARSED TEXT FOR PAGE: 7 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+01 / PUBLICATION COPY CONTINUED
+
+
+The close and next step
+SECTION 09 / WHY MARKETING POWERED / 104 WORDS
+
+
+Why Marketing Powered
+Leadership that understands the operation
+You work with an agency shaped by executive responsibility for budgets, expansion, and the systems
+behind performance.
+Technology with room to adapt
+Our investment in systems we operate gives us options beyond whatever a standard subscription allows.
+Execution connected to the business
+We treat acquisition, conversion, and measurement as related responsibilities. The objective is progress
+you can evaluate, not a longer activity report.
+People accountable for the decisions
+Automation supports the work. Human judgment remains responsible for priorities, approvals, and the
+changes that affect your organization. You should know who is responsible and what happens next.
+SECTION 10 / FINAL CALL TO ACTION / 72 WORDS
+
+
+Start with the decisions your marketing needs to support
+Tell us where growth is getting stuck and what your leadership team needs to see. We will discuss your
+priorities, current measurement, and the operational gaps between investment and results.
+The next step is a focused conversation about fit and where a deeper review would be useful. Bring the
+business problem. We will start there.
+Button: Request a strategy call
+Prefer email? Contact info@marketingpowered.ai.
+
+CTA implementation, not additional homepage copy
+Use the same primary action in the hero and final section: Request a strategy call. Point both to the
+existing /company/contact route after the request form and destination copy are aligned. This asks for a
+conversation without implying that a calendar appointment is already booked. [W16]
+The secondary option is info@marketingpowered.ai, displayed in section 10 and linked with mailto:. Keep
+CTA, contact, navigation, footer, and legal links outside the contextual-link count. Do not add a homepage
+form unless section 10 is recounted. [B1; W01]
+
+
+
+
+Marketing Powered | November 6, 2026                                                                  7 / 35
+<PARSED TEXT FOR PAGE: 8 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+02 / COUNTS AND CONTROLS
+
+
+Editorial scorecard
+  Sec.   Content                                          Target      Allowed            Final       Result
+
+   1     Hero and value proposition                       80          64 to 96           83          Pass
+
+   2     Experience and leadership                        150         120 to 180         151         Pass
+
+   3     Core marketing services                          230         184 to 276         229         Pass
+
+   4     Hospitals and health systems                     150         120 to 180         151         Pass
+
+   5     Owned infrastructure                             180         144 to 216         177         Pass
+
+         Data sovereignty, open source, and
+   6                                                      240         192 to 288         227         Pass
+         customization
+
+   7     Performance, attribution, and results            180         144 to 216         184         Pass
+
+   8     Industries and specialties                       120         96 to 144          121         Pass
+
+   9     Why Marketing Powered                            100         80 to 120          104         Pass
+
+   10    Final call to action                             70          56 to 84           72          Pass
+
+
+
+  Total 1,499 words against a 1,500-word target. The allowed page range is 1,300 to 1,700 words.
+  Counts include publishable headings, body, and the two button labels; they exclude editorial
+  annotations, navigation, footer, metadata, and the separate contact-page form.
+
+
+ Check                                Measured result
+
+ Body sentence length                 1,352 body words / 93 sentences = 14.5 words per sentence.
+
+ Technology terminology               AI: 4. Prohibited descriptor: 0. All six concepts have one dedicated explanation.
+
+ Specialty terminology                Behavioral health: 3; one in experience, two in specialties.
+
+                                      No em dashes, exclamation points, rhetorical-question headings, or prohibited
+ Style exclusions
+                                      body-language matches.
+
+                                      20 planned anchors; all are 2 to 3 words. No repeated destination exceeds two
+ Anchor wording
+                                      placements.
+
+                                      One to three sentences each. Four-sentence concept explanations are split into
+ Paragraphs
+                                      two paragraphs.
+
+
+Method: whitespace-delimited word count after removing markup. Hyphenated expressions and email addresses count as
+one word. Sentence analysis covers body prose only. Word processors may count compound forms differently; the same
+script and rules were used for every section.
+The editorial length and link targets organize the page. They are not Google ranking thresholds. [R01; R02]
+
+
+
+
+Marketing Powered | November 6, 2026                                                                                8 / 35
+<PARSED TEXT FOR PAGE: 9 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+02 / CONTEXTUAL LINK MAP
+
+
+Acquisition and leadership
+Base domain for every path: https://marketingpowered.ai. Review date for every row: November 6, 2026. HTTP status,
+redirect chain, canonical, and indexability remain pending; technical verification date is not yet available.
+
+   Slot      Exact anchor           Destination path                                  Status and review
+
+    01                                                                                Existing; revise, then verify
+             marketing leadership   /company/about
+ Section 1                                                                            Reviewed 2026-11-06
+
+    02                                                                                Existing; revise, then verify
+             our experience         /company/about
+ Section 2                                                                            Reviewed 2026-11-06
+
+    03                                                                                Existing; revise, then verify
+             case studies           /results/case-studies
+ Section 2                                                                            Reviewed 2026-11-06
+
+    04                                                                                Existing; revise, then verify
+             paid media             /services/paid-media
+ Section 3                                                                            Reviewed 2026-11-06
+
+    05                              /services/web-development/technical-seo-and-      Existing; revise, then verify
+             technical SEO
+ Section 3                          performance                                       Reviewed 2026-11-06
+
+    06                                                                                Existing; revise, then verify
+             website development    /services/web-development
+ Section 3                                                                            Reviewed 2026-11-06
+
+    07       analytics and                                                            Existing; revise, then verify
+                                    /services/analytics-and-attribution
+ Section 3   attribution                                                              Reviewed 2026-11-06
+
+
+
+
+Destination choices
+Slot 5 uses technical SEO rather than SEO services because the located page specifically covers
+technical performance. It is not presented as proof of every organic-search capability. Slots 1 and 2 reuse
+the About page, with distinct anchors and a required H1/content revision. [W02; W05]
+
+
+
+
+Marketing Powered | November 6, 2026                                                                                  9 / 35
+<PARSED TEXT FOR PAGE: 10 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+02 / CONTEXTUAL LINK MAP
+
+
+Institutional fit and infrastructure
+Base domain for every path: https://marketingpowered.ai. Review date for every row: November 6, 2026. HTTP status,
+redirect chain, canonical, and indexability remain pending; technical verification date is not yet available.
+
+   Slot      Exact anchor           Destination path                                  Status and review
+
+    08                                                                                Create; leave unlinked
+             hospital marketing     /who-we-help/hospitals-and-health-systems
+ Section 4                                                                            Reviewed 2026-11-06
+
+    09       multi-location                                                           Existing; revise, then verify
+                                    /problems/scale-multi-location-campaigns
+ Section 4   marketing                                                                Reviewed 2026-11-06
+
+    10                                                                                Existing; revise, then verify
+             owned infrastructure   /ai-edge/owned-ai-systems
+ Section 5                                                                            Reviewed 2026-11-06
+
+    11                                                                                Create; leave unlinked
+             local processing       /ai-edge/local-processing
+ Section 5                                                                            Reviewed 2026-11-06
+
+    12                                                                                Existing; revise, then verify
+             AI governance          /ai-edge/ai-governance
+ Section 5                                                                            Reviewed 2026-11-06
+
+    13                                                                                Existing; revise, then verify
+             data sovereignty       /ai-edge/data-sovereignty
+ Section 6                                                                            Reviewed 2026-11-06
+
+    14                                                                                Create; leave unlinked
+             open source            /ai-edge/open-source
+ Section 6                                                                            Reviewed 2026-11-06
+
+
+
+
+Do not fill gaps with weak pages
+A hospital capability page, a local-processing page, and an evergreen open source approach page were
+not located in the reviewed material. Proposed paths are planning decisions, not discovered URLs. The
+model-ranking article does not qualify as the open source destination. [W12]
+
+
+
+
+Marketing Powered | November 6, 2026                                                                                  10 / 35
+<PARSED TEXT FOR PAGE: 11 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+02 / CONTEXTUAL LINK MAP
+
+
+Customization, proof, and specialties
+Base domain for every path: https://marketingpowered.ai. Review date for every row: November 6, 2026. HTTP status,
+redirect chain, canonical, and indexability remain pending; technical verification date is not yet available.
+
+   Slot      Exact anchor            Destination path                                 Status and review
+
+    15                                                                                Create; leave unlinked
+             customizable AI         /ai-edge/customizable-ai
+ Section 6                                                                            Reviewed 2026-11-06
+
+    16                               /services/web-development/integrations-and-      Existing; revise, then verify
+             Workflow integrations
+ Section 6                           tracking                                         Reviewed 2026-11-06
+
+    17                                                                                Existing; revise, then verify
+             intake attribution      /services/call-tracking-and-intake-attribution
+ Section 7                                                                            Reviewed 2026-11-06
+
+    18                                                                                Existing; revise, then verify
+             client results          /results/case-studies
+ Section 7                                                                            Reviewed 2026-11-06
+
+    19       behavioral health                                                        Existing; revise, then verify
+                                     /who-we-help/behavioral-health
+ Section 8   marketing                                                                Reviewed 2026-11-06
+
+    20       health system                                                            Create; leave unlinked
+                                     /who-we-help/hospitals-and-health-systems
+ Section 8   marketing                                                                Reviewed 2026-11-06
+
+
+
+
+Architecture total
+The plan has 20 contextual placements across 17 distinct destinations. Existing candidates account for 15
+placements and 13 pages. Four proposed pages account for five placements because the hospital page
+appears twice. None is fully technically verified.
+Slot 16 changes marketing automation to Workflow integrations to fit the existing integration destination.
+Slot 17 uses intake attribution and its dedicated page, preserving a separate destination from analytics
+and attribution. Expand both destinations before release. [W13; W14]
+
+
+
+
+Marketing Powered | November 6, 2026                                                                                  11 / 35
+<PARSED TEXT FOR PAGE: 12 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+02 / SOURCE-CONTENT AUDIT
+
+
+Existing destination review
+These are retrieved page titles and H1s, not a complete site crawl. Current main-content word counts and last-modified
+dates were not established. Those fields must be populated in the final crawl export rather than estimated.
+
+ Source /
+                Retrieved title and H1                              Editorial disposition
+ type
+
+                About Marketing Powered - AI Marketing
+                                                                    Separate founder experience from agency results.
+ W02            Agency
+                                                                    Remove the agency-since-2022 implication. Verify any
+ Company        H1: Discover Marketing Powered: Your AI
+                                                                    expert-witness wording before display.
+                Marketing Agency
+
+                                                                    Replace the aggregate claim panel with approved cases
+ W03
+                Case Studies & Results | Marketing Powered          showing scope, dates, baseline, method, and attribution.
+ Results
+                H1: Case studies & results                          Current page does not substantiate a homepage
+ index
+                                                                    agency-result metric.
+
+                                                                    Broaden positioning; correctly attribute historical spend;
+ W04            Top Paid Media Agency for Behavioral Health         use conversion value per cost; remove unqualified
+ Service        H1: Your Go-To Paid Media Agency for Results        assurance language and healthcare retargeting
+                                                                    implications.
+
+                                                                    Use for the narrower technical SEO anchor, not as a
+                Technical SEO and Performance Services
+ W05                                                                claim to cover every organic service. Align founder
+                H1: Technical SEO and Site Performance
+ Service                                                            attribution and add local/multi-location implementation
+                Optimization
+                                                                    context.
+
+                Web Development Agency for Healthcare               Keep the slug. Broaden the audience and correct
+ W06
+                H1: Expert Web Development for the                  attribution, compliance assurances, and dated agency-
+ Service hub
+                Healthcare Sector                                   technology claims.
+
+                Marketing Attribution Services - Marketing          Remove or evidence numerical anecdotes. Explain data
+ W07
+                Powered                                             limitations, matching logic, CRM handoffs, reporting
+ Service
+                H1: Advanced Marketing Attribution Services         cadence, and appropriate data handling.
+
+ W08            Solving Multi-Location Marketing Challenges         Broaden beyond treatment centers. Avoid universal
+ Problem/ca     H1: Overcoming Challenges in Multi-Location         account-structure prescriptions. Address local search,
+ pability       Marketing                                           rollout sequencing, and comparable reporting.
+
+
+Every listed destination requires revision or alignment. A successful text retrieval does not establish that the page satisfies
+the technical or claims criteria.
+
+
+
+
+Marketing Powered | November 6, 2026                                                                                      12 / 35
+<PARSED TEXT FOR PAGE: 13 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+02 / SOURCE-CONTENT AUDIT
+
+
+Existing destination review, continued
+These are retrieved page titles and H1s, not a complete site crawl. Current main-content word counts and last-modified
+dates were not established. Those fields must be populated in the final crawl export rather than estimated.
+
+ Source /
+                Retrieved title and H1                              Editorial disposition
+ type
+
+                                                                    Retain URL and change page framing to owned
+                Owned AI Systems | Marketing Powered
+ W09                                                                infrastructure. Replace blanket local-only/compliance
+                H1: Understanding the Benefits of Owned AI
+ Capability                                                         assertions and unverified performance claims; clarify
+                Systems
+                                                                    hardware versus data ownership.
+
+                AI Governance Strategies for Healthcare |           Focus on marketing operations rather than clinical
+ W10            Marketing Powered                                   deployment. Document actual controls, approval points,
+ Capability     H1: Understanding AI Governance in                  change owners, escalation, and limits without
+                Healthcare                                          compliance guarantees.
+
+                Data Sovereignty in AI | Marketing Powered          Replace general legal discussion with evidence of the
+ W11
+                H1: Navigating Data Sovereignty in AI               actual operating model: storage, processing, access,
+ Capability
+                Applications                                        outside providers, client visibility, and data ownership.
+
+                                                                    Use the accurate workflow integrations anchor. Add
+                Marketing Tracking Implementation Experts
+ W13                                                                intake/follow-up workflow examples and limits; do not
+                H1: Comprehensive Marketing Tracking
+ Service                                                            relabel a tracking page as a full automation service
+                Implementation for Growth
+                                                                    without expanding it.
+
+                Call Tracking for Treatment Centers | Marketing     Use intake attribution to match this distinct destination.
+ W14            Powered                                             Evidence or remove percentage claims and qualify
+ Service        H1: Optimize Call Tracking for Treatment            recording, transcription, data collection, and reporting
+                Centers with Proven Solutions                       limits.
+
+                Behavioral Health Marketing Services -              Retain specialty depth and the URL. Distinguish founder
+ W15            Marketing Powered                                   history from agency evidence; align platform language
+ Specialty      H1: Behavioral health specialty page; exact H1      with approved practices and remove unsupported
+                export pending                                      numerical claims.
+
+
+Every listed destination requires revision or alignment. A successful text retrieval does not establish that the page satisfies
+the technical or claims criteria.
+
+
+
+
+Marketing Powered | November 6, 2026                                                                                      13 / 35
+<PARSED TEXT FOR PAGE: 14 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+02 / TECHNICAL BOUNDARIES
+
+
+Audit limits and priority findings
+The current-site export remains a release requirement
+Public page text was retrieved and read for the homepage and sixteen related pages. XML sitemap and
+robots retrieval did not provide a usable current inventory. Direct server requests from the working
+environment could not resolve the domain. This is an access limitation, not evidence that the site is down.
+The delivery therefore does not certify an exhaustive URL inventory, current status codes, canonical tags,
+robots directives, redirects, last-updated fields, or live page word counts. Asana contains historical crawl
+lists, but they cannot be relabeled as a November crawl. [A08-A12]
+
+ Finding                 Required action
+
+                         Correct the founder/agency split on the homepage and linked service pages. Do not
+ Attribution drift
+                         carry historical budgets forward as current agency spend. [W01; W02; W04]
+
+                         Hold the current percentage reductions, zero-suspension assertions, and broad results
+ Unsupported proof
+                         panels until scoped evidence and approval exist. [W01; W03]
+
+                         Revise infrastructure and data-language assertions that suggest universal local
+ Overstated control
+                         processing or guaranteed compliance. [W09-W11]
+
+                         Create the four proposed capability destinations only after checking the current
+ Coverage gaps
+                         CMS/route inventory for an adequate existing page.
+
+                         Re-test the canonical and trailing-slash issues described in open June tasks. Open task
+ Technical debt
+                         status alone does not prove the defect remains live. [A08-A12]
+
+                         Align the contact route with a strategy-call request and confirm the form works. Do not
+ Conversion mismatch
+                         replace a request flow with a promised booked appointment. [W16; W17]
+
+
+
+Required crawl fields
+Export URL, final URL, response status, redirect hops, canonical URL, meta robots, X-Robots-Tag,
+robots.txt allowance, title, H1 count and text, main-content word count, sitemap lastmod, visible update
+date, page type, and verification timestamp. Distinguish missing update dates from old ones.
+
+
+
+
+Marketing Powered | November 6, 2026                                                                          14 / 35
+<PARSED TEXT FOR PAGE: 15 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+02 / CLAIM APPROVAL
+
+
+Claims register: leadership and experience
+Source and approval are different. The brief supplies the facts below, but also requires Mike to confirm
+final wording before publication. No independent documentary verification or final publication approval is
+implied. [B1, lines 60-89]
+
+ ID / location   Claim in the draft                   Source and approval state          Publication condition
+
+                 Mike Hulick founded Marketing                                           Use the anonymous operator
+                                                      B1, lines 62-64. Supplied by
+ C01 / 2         Powered and previously served as                                        descriptor. No former-employer
+                                                      Mike; final sign-off pending.
+                 CMO.                                                                    name appears.
+
+                                                                                         Keep the organizational subject
+                 The organization expanded from 3
+                                                      B1, line 65. Supplied by Mike;     and tenure attribution. Confirm
+ C02 / 2         to 24 locations across 9 states
+                                                      final sign-off pending.            definitions and period in the
+                 during his tenure.
+                                                                                         supporting evidence.
+
+                 He managed about $1.5 million to                                        Historical founder responsibility
+                                                      B1, line 66. Supplied by Mike;
+ C03 / 2         $2 million per month in Google                                          only. Do not label this current
+                                                      final sign-off pending.
+                 Ads spend.                                                              agency spend.
+
+                                                                                         Do not claim marketing alone
+                 Employer revenue grew from
+                                                                                         caused the growth. Keep
+                 about $30 million to about $140      B1, line 65. Supplied by Mike;
+ C04 / 7                                                                                 approximate qualifiers and
+                 million during his prior CMO         final sign-off pending.
+                                                                                         disclose the measurement basis
+                 tenure.
+                                                                                         in the case record.
+
+                 Experience covers acquisition,                                          Support with leadership history
+                                                      B1, lines 34-39 and 223-226.
+ C05 / 2, 8      intake, conversion, reporting, and                                      and clearly attributed operating
+                                                      User-provided positioning.
+                 expansion.                                                              examples.
+
+                 Weekly operating checks and a        New service-cadence proposal,      Mike and operations must
+ C06 / 7         monthly executive review are         not an established fact from the   approve the proposed cadence;
+                 proposed.                            brief.                             scope it in the engagement.
+
+                 Experienced leadership and                                              Positioning, not a guarantee of
+                                                      B1 positioning and this proposed
+ C07 / 1, 9      execution tied to measurable                                            growth, revenue, leads, or
+                                                      copy.
+                 growth.                                                                 rankings.
+
+
+The draft does not publish the employment start/end dates, lifetime ad-spend totals, a founding year, or an expert-witness
+credential. The brief provides some of those items, but they are unnecessary for this homepage and would create additional
+verification work.
+
+
+
+
+Marketing Powered | November 6, 2026                                                                                  15 / 35
+<PARSED TEXT FOR PAGE: 16 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+02 / CLAIM APPROVAL CONTINUED
+
+
+Claims register: technology, services, and fit
+ ID /
+              Claim or boundary                       Source / status                      Evidence to retain
+ location
+
+              Marketing Powered owns and                                                   Asset inventory and operating
+                                                      B1, lines 81-84 and 100-103. Final
+ C08 / 5      operates computing hardware and                                              responsibility; no specification or
+                                                      approval pending.
+              systems.                                                                     capacity claim is published.
+
+                                                                                           Workload list, processing map,
+              Supported workloads run on              B1, lines 112-118. Final approval
+ C09 / 5                                                                                   integration exceptions, and
+              infrastructure under agency control.    pending.
+                                                                                           responsible operator.
+
+              Access controls, testing, human         B1, lines 116-118. Control           Actual access rules, test records,
+ C10 / 5      review, and accountability guide        implementation confirmation          approval points, and escalation
+              deployment.                             needed.                              ownership.
+
+                                                                                           Client-facing data-flow
+              Clients can see storage, processing,    B1, lines 96-98. Final approval
+ C11 / 6                                                                                   documentation and change
+              access, and outside-provider choices.   pending.
+                                                                                           process.
+
+              Clients retain their data; agency                                            Applicable agreement language.
+                                                      B1, lines 81-84. Contract
+ C12 / 5, 6   technology and configurations do not                                         No claim of client ownership of
+                                                      alignment required.
+              automatically transfer.                                                      agency IP.
+
+                                                                                           License register, scoped
+              Adaptable software and approved
+                                                      B1, lines 104-110. Capability        examples, permitted data sources,
+ C13 / 6      model configuration support specific
+                                                      validation needed.                   and technical boundaries. [R09;
+              workflows.
+                                                                                           R10]
+
+              Paid media, search/content,                                                  Named service owners, delivery
+                                                      B1, lines 125-167. Service-scope
+ C14 / 3      websites, creative, optimization,                                            scope, and approved operational
+                                                      confirmation needed.
+              analytics, and automation connect.                                           examples.
+
+              Built for hospitals, health systems,                                         No existing hospital client,
+                                                      B1, lines 13-39. Capability
+ C15 / 4, 8   and other multi-location                                                     engagement, revenue result, or
+                                                      positioning only.
+              organizations.                                                               accreditation implied.
+
+              Behavioral health and addiction                                              Attributed founder history;
+                                                      B1, lines 62-72 and 253-257. Final
+ C16 / 8      treatment are specialties grounded in                                        approved agency cases required
+                                                      approval pending.
+              founder experience.                                                          for agency-result claims.
+
+
+
+
+Marketing Powered | November 6, 2026                                                                                      16 / 35
+<PARSED TEXT FOR PAGE: 17 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+02 / PROOF STANDARD
+
+
+Evidence held out of the homepage
+The live site is an audit source, not automatic approval to repeat its claims. The new copy excludes the
+following until an evidence record and public-use approval are available. [W01-W03; W07; W09; W14]
+
+ Held item                               Why it stays out
+
+ Agency-wide lifetime spend              The brief approves founder monthly spend, not an agency-wide lifetime total.
+
+ Percentage reductions in                The retrieved claim panels do not supply an approved case, scope, period, or
+ acquisition costs                       baseline.
+
+ Zero account suspensions or
+                                         No current verification or public-display approval was supplied.
+ blanket certification language
+
+ Agency operations dating to             The brief says the founder has worked with the technology since 2022; that is
+ 2022                                    not an agency founding date.
+
+                                         The brief explicitly leaves final wording open. Keep it off the homepage until
+ Expert-witness credential
+                                         the underlying record and approved wording are reviewed.
+
+                                         The audience expansion is a capability statement, not proof of existing
+ Hospital clients or results
+                                         engagements.
+
+ Universal security or local-only        Describe actual practices, supported workloads, and exceptions rather than
+ promises                                absolutes.
+
+
+
+Agency case required for full acceptance
+The requested agency case is still missing. The founder revenue paragraph does not satisfy that
+requirement. It is included as a correctly attributed experience metric, not as a substitute case study.
+
+ Required record               Minimum content
+
+                               Client or approved anonymous descriptor; engagement dates; baseline and comparison
+ Who and when
+                               periods.
+
+                               Work performed; metric definition; source export; cost and conversion scope; data
+ What and how
+                               limitations.
+
+                               Client public-use permission where needed; Mike approval; separation from pre-agency
+ Who approves
+                               work.
+
+                               A completed, factual sentence naming the metric, period, scope, and attribution. No
+ Publication wording
+                               invented placeholder number.
+
+
+
+
+Marketing Powered | November 6, 2026                                                                                 17 / 35
+<PARSED TEXT FOR PAGE: 18 / 35>
+MARKETING POWERED / HOMEPAGE COPY & IMPLEMENTATION
+
+
+03 / SEARCH IMPLEMENTATION
+
+
+Search metadata and heading system
+SEO title
+Experienced Growth Marketing Agency | Marketing Powered
+55 characters, including spaces and punctuation.
+
+
+Meta description
+Marketing leadership for hospitals, health systems, and multi-location organizations, with owned
+technology and execution tied to measurable growth.
+148 characters, including spaces and punctuation.
+These meet the editorial character limits in the brief. They are not fixed Google display limits. Search titles and snippets may
+be rewritten or truncated to fit the result and device. [R03; R04]
+
+  Level    Exact heading
+
+   H1      Marketing leadership built for measurable growth
+
+   H2      Experience earned inside growing organizations
+
+   H2      Connected marketing, from acquisition to revenue
+
+   H2      Built for hospitals and health systems
+
+   H2      Infrastructure we own, operated for your business
+
+   H2      Technology shaped around the way your business operates
+
+   H2      Measure what happens after the inquiry
+
+   H2      Specialty depth with a broader operating model
+
+   H2      Why Marketing Powered
+
+   H2      Start with the decisions your marketing needs to support

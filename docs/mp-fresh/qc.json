@@ -1,0 +1,116 @@
+{
+  "_about": "Deterministic QC gate run after the brief and after the draft. Hard failures trigger one automatic repair pass; if they persist the task stays in its section with a QC comment. Soft findings are listed in the doc and the Asana comment.",
+  "limits": {
+    "title_tag_max": 60,
+    "meta_description_max": 155,
+    "exact_match_anchor_share_max": 0.3,
+    "internal_links_min": 8,
+    "internal_links_max": 16,
+    "h2_min": 4,
+    "h2_max": 6,
+    "faq_min": 4,
+    "faq_max": 6
+  },
+  "banned_phrases": [
+    "ever-evolving landscape",
+    "landscape",
+    "crucial",
+    "vital",
+    "i hope this finds you well",
+    "in today's world",
+    "in today's market",
+    "in today's fast-paced",
+    "leverage",
+    "leveraging",
+    "synergy",
+    "synergize",
+    "unlock",
+    "unleash",
+    "elevate",
+    "empower",
+    "empowering",
+    "transform",
+    "harness the power of",
+    "robust",
+    "best-in-class",
+    "world-class",
+    "industry-leading",
+    "cutting-edge",
+    "seamless",
+    "seamlessly",
+    "drive results",
+    "drive growth",
+    "we believe",
+    "we think",
+    "passionate about",
+    "at the end of the day",
+    "going forward"
+  ],
+  "banned_cta_text": [
+    "get in touch",
+    "learn more",
+    "contact us today",
+    "click here",
+    "read more"
+  ],
+  "house_strip_outs": [
+    {
+      "pattern": "\\bHulick\\b",
+      "label": "names the founder",
+      "allowed_when": "founder voice or /author/mike-hulick"
+    },
+    {
+      "pattern": "\\$\\s?50\\s?(?:million|M\\b|MM\\b)\\+?",
+      "label": "uses the $50M figure"
+    },
+    {
+      "pattern": "\\b(?:brand|company|business)\\s+valuation\\b|\\bvalued at\\b",
+      "label": "mentions a valuation"
+    },
+    {
+      "pattern": "\\bMarketing\\s?Powered\\s+AI\\b",
+      "label": "puts AI in the brand name"
+    },
+    {
+      "pattern": "\\bMarketing Powered,?\\s+LLC\\b",
+      "label": "adds LLC to the brand name"
+    },
+    {
+      "pattern": "\\bMarketingPowered\\b(?!\\.ai)",
+      "label": "writes the brand as one word"
+    },
+    {
+      "pattern": "\\bHaven Health\\b",
+      "label": "names a former employer"
+    },
+    {
+      "pattern": "\\$\\s?30\\s?(?:million|M\\b)[^.\\n]{0,40}\\$\\s?140\\s?(?:million|M\\b)",
+      "label": "uses the excluded revenue-growth figure"
+    },
+    {
+      "pattern": "\\b(?:Mac Studio|TerraMaster)\\b",
+      "label": "names hardware the approved list does not name"
+    }
+  ],
+  "hard_failures": [
+    "em dash anywhere in generated text",
+    "internal link target not in the live sitemap, or with a trailing slash",
+    "more than one H1, or a heading level skip (H1 to H3)",
+    "H1, title tag or meta description differ from the approved brief (draft stage)",
+    "CTA URL other than /get-started/book-a-call or /get-started/request-an-audit",
+    "placeholder text ([TODO], [INSERT ...], lorem ipsum, {{...}})",
+    "SSN-like pattern or patient-identifying detail",
+    "writer returned status blocked"
+  ],
+  "soft_findings": [
+    "title tag over 60 or meta description over 155 characters (code-counted)",
+    "headings not in sentence case",
+    "banned phrase or banned CTA text",
+    "house strip-out",
+    "figure without a bracketed citation on the same line, or citations without a Sources list",
+    "exact-match anchors above 30% of internal links",
+    "primary keyword missing from title, H1, meta, first 100 words or every H2",
+    "word count outside the brief's target range",
+    "repeats another live draft's opening or closing line"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "_about": "Approved proof points, injected into the brief and writer prompts as {{APPROVED_PROOF_POINTS}}. Agents may use only these. Editable in MAIOS > Content Engine without a deploy. Approved by Mike, Nov 16 2026.",
+  "approved": [
+    "Former healthcare CMO who ran marketing for a treatment network that grew from 3 to 24 locations (do not name the network)",
+    "Managed $1.5 to $2M per month in Google Ads across 11+ behavioral and mental health accounts",
+    "Court-certified expert witness in advertising strategy",
+    "AI-native since 2022",
+    "LegitScript-aware and HIPAA-aware; built for Google's sensitive healthcare vertical, where retargeting is not permitted",
+    "Attribution tracked to admission, not just lead",
+    "Owned, local AI infrastructure for HIPAA-aware inference"
+  ],
+  "excluded": [
+    "$50M+ lifetime managed media spend",
+    "Revenue growth from roughly $30M to $140M",
+    "Haven Health, or any former employer or client, by name",
+    "CMO tenure dates",
+    "Named hardware or vendors (Mac Studio, TerraMaster NAS)"
+  ]
+}

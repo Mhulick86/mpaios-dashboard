@@ -1,0 +1,270 @@
+{
+  "name": "page_writer",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "status",
+      "blocking_reason",
+      "page_brief_acknowledgment",
+      "page_type",
+      "buyer_target",
+      "word_count_target",
+      "page_title",
+      "page_title_char_count",
+      "meta_description",
+      "meta_description_char_count",
+      "h1",
+      "hero_image_alt",
+      "hero_subhead",
+      "hero_cta_text",
+      "sections",
+      "final_cta_heading",
+      "final_cta_body",
+      "final_cta_button",
+      "faq",
+      "sources",
+      "schema_recommendation",
+      "delivery_notes"
+    ],
+    "properties": {
+      "status": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "blocked"
+        ]
+      },
+      "blocking_reason": {
+        "type": "string"
+      },
+      "page_brief_acknowledgment": {
+        "type": "string"
+      },
+      "page_type": {
+        "type": "string"
+      },
+      "buyer_target": {
+        "type": "string"
+      },
+      "word_count_target": {
+        "type": "string"
+      },
+      "page_title": {
+        "type": "string"
+      },
+      "page_title_char_count": {
+        "type": "integer"
+      },
+      "meta_description": {
+        "type": "string"
+      },
+      "meta_description_char_count": {
+        "type": "integer"
+      },
+      "h1": {
+        "type": "string"
+      },
+      "hero_image_alt": {
+        "type": "string"
+      },
+      "hero_subhead": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "hero_cta_text": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "sections": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "heading",
+            "subheading",
+            "body_paragraphs",
+            "bullets",
+            "cta_text"
+          ],
+          "properties": {
+            "heading": {
+              "type": "string"
+            },
+            "subheading": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "body_paragraphs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "bullets": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "cta_text": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "final_cta_heading": {
+        "type": "string"
+      },
+      "final_cta_body": {
+        "type": "string"
+      },
+      "final_cta_button": {
+        "type": "string"
+      },
+      "faq": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "question",
+            "answer"
+          ],
+          "properties": {
+            "question": {
+              "type": "string"
+            },
+            "answer": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "sources": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "number",
+            "title",
+            "url"
+          ],
+          "properties": {
+            "number": {
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "schema_recommendation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_type",
+          "fields_to_populate"
+        ],
+        "properties": {
+          "schema_type": {
+            "type": "string"
+          },
+          "fields_to_populate": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "delivery_notes": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "external_citations",
+          "brief_conflicts",
+          "internal_link_gaps",
+          "compliance_flags",
+          "missing_proof_points",
+          "banned_phrasing_in_brief"
+        ],
+        "properties": {
+          "external_citations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "anchor_text",
+                "target_url",
+                "source_category",
+                "rationale"
+              ],
+              "properties": {
+                "anchor_text": {
+                  "type": "string"
+                },
+                "target_url": {
+                  "type": "string"
+                },
+                "source_category": {
+                  "type": "string"
+                },
+                "rationale": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "brief_conflicts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "internal_link_gaps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "compliance_flags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "missing_proof_points": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "banned_phrasing_in_brief": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

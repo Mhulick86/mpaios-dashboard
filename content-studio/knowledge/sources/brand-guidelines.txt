@@ -1,0 +1,24 @@
+<PARSED TEXT FOR PAGE: 1 / 1>
+   Brand Guidelines
+
+colors
+        #2CACE8
+
+
+        #000000
+
+
+
+        #FFFFFF
+
+
+        #08AE67
+
+
+
+
+fonts
+just sans variable
+semi bold     marketing powered is awesome
+medium        marketing powered is awesome
+light         marketing powered is awesome

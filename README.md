@@ -126,3 +126,10 @@ mpaios/
 - Independent tasks support parallel execution
 - All campaigns publish in draft mode for human review before activation
 - Git version control provides full audit trail of process changes
+
+
+## Content Studio and MP FRESH
+
+- `content-studio/`: the MAIOS Content Studio (Node 22, SQLite, local LM Studio). Its browser UI is copied to `public/studio/` at build time by `scripts/sync-studio.mjs` and shown inside MAIOS at **/content-studio**. The server, knowledge pack and data are never part of the website.
+- Run the backend on the computer that runs LM Studio: `npm run studio` (or `cd content-studio && node server.mjs`). To use it from the hosted MAIOS, start it with `CORS_ORIGIN=https://mpaios.vercel.app` and a `MAIOS_API_TOKEN`, then enter the token in the studio's Settings. Try it without LM Studio: `npm run studio:demo`. Tests: `npm run studio:test`.
+- `docs/mp-fresh/`: the final MP FRESH workflow (Asana board, briefs, drafts, graphics, QC, measurement), with its prompts, schemas and QC rules. This is the spec for the content engine that will be built into MAIOS.

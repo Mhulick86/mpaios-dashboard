@@ -1,0 +1,66 @@
+/* v0.4 interaction fixes. Loaded last so it overrides styles.css and v3.css.
+   Goal: exactly one scroll area under the pointer at any time, and nothing that moves when hovered. */
+html,body{height:100%}
+body{overflow:hidden}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed}
+button:focus-visible,a:focus-visible,.task-card:focus-visible{outline:2px solid #6fc7ee;outline-offset:2px}
+.button:active,.command-btn:active,.artifact-tab:active,.icon-btn:active,.view-tab:active,.step:active{filter:brightness(1.18)}
+
+/* The app shell fills the window; the sidebar and the main area each scroll on their own. */
+#app{height:100vh;height:100dvh;min-height:0;overflow:hidden}
+.sidebar{position:relative;top:auto;height:100%;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.sidebar-collapse{display:none!important} /* was visible but never wired to anything */
+.main{height:100%;overflow-y:auto;overscroll-behavior:contain}
+.view-content{overflow:visible}
+
+/* Board view on a normal screen: the page itself does not scroll. The board scrolls sideways,
+   each column scrolls its own cards, and the horizontal scrollbar is always in view. */
+@media (min-width:641px) and (min-height:700px){
+  .main.is-board{overflow:hidden}
+  .main.is-board .page-head{padding-top:22px;padding-bottom:16px}
+  .main.is-board .metric-row{padding-bottom:16px}
+  .main.is-board .view-content{flex:1 1 0;min-height:0;overflow:hidden}
+  .main.is-board .kanban-board{height:100%;min-height:0;align-items:stretch;overflow-y:hidden;padding-top:16px;padding-bottom:12px}
+  .main.is-board .kanban-column{min-height:0;max-height:none}
+  .main.is-board .column-body{flex:1 1 0;min-height:0}
+}
+.kanban-board{overscroll-behavior-x:contain}
+.column-body{overscroll-behavior:contain;scrollbar-width:thin}
+
+/* Hover lift made cards flicker when the pointer sat on their edge. Highlight without moving. */
+.task-card:hover,.kb-record:hover{transform:none}
+.task-card{transition:border-color .15s,background .15s,box-shadow .15s}
+.task-card:hover{box-shadow:0 6px 18px rgba(0,0,0,.28)}
+.task-card.dragging{opacity:.45}
+
+/* Pop-outs: one scroll area each, and scrolling never leaks to what is behind them. */
+.task-drawer{height:100vh;height:100dvh}
+.drawer-scroll,.modal-content,.settings-modal{overscroll-behavior:contain}
+.drawer-scroll{scrollbar-gutter:stable}
+.artifact-card{overflow:visible}
+.artifact-body{max-height:none;overflow:visible}
+.artifact-toolbar{position:sticky;top:-25px;z-index:2;background:#161d2a;border-radius:10px 10px 0 0}
+.modal-shell form{display:flex;flex-direction:column;min-height:0;flex:1}
+.modal-content{flex:1;min-height:0}
+
+/* Integrations: Google Docs links and Gemini images */
+.doc-link{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:#bfeaff;background:#1c3340;border:1px solid #3f6a80;border-radius:8px;padding:7px 10px;text-decoration:none}
+.doc-link:hover{background:#25475a}
+.table-doc{font-size:10px;color:#bae9ff;text-decoration:underline;margin-left:8px;white-space:nowrap}
+.integration-note{margin-top:12px;padding:11px 13px;border:1px dashed #35506a;border-radius:9px;font-size:11px;line-height:1.6;color:#a9b8cc;background:#121c29}
+.integration-note.bad{border-color:#7a4450;color:#f1b3bd}
+.integration-note .command-btn{margin:8px 8px 0 0}
+.settings-section{margin-top:22px;padding-top:18px;border-top:1px solid #2c3547}
+.settings-section h3{margin:0 0 4px;font:800 14px 'Avenir Next',Inter,system-ui,sans-serif}
+.settings-section ol{margin:8px 0 0;padding-left:18px;font-size:11px;line-height:1.75;color:#a3b0c4}
+.settings-section code{background:#0f1622;border:1px solid #2b3648;border-radius:4px;padding:1px 5px;font-size:10.5px;color:#cfe9f7;overflow-wrap:anywhere}
+.settings-section a{color:#9fdcf8}
+.status-line{display:flex;align-items:center;gap:8px;font-size:11px;color:#a9b6c9;margin:10px 0}
+.status-line .live-dot{margin:0}
+.check-line{display:flex;gap:8px;align-items:flex-start;font-size:11px;color:#a9b6c9;line-height:1.5;margin-top:10px;cursor:pointer}
+.check-line input{width:auto;margin-top:2px}
+.image-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:12px}
+.image-grid figure{margin:0;border:1px solid #303b4e;border-radius:9px;overflow:hidden;background:#0f1622}
+.image-grid img{display:block;width:100%;aspect-ratio:1;object-fit:cover;cursor:zoom-in;background:#0b111a}
+.image-grid figcaption{font-size:10px;color:#93a1b7;padding:6px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

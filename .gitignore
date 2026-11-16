@@ -44,3 +44,12 @@ logs/
 # Temporary files
 tmp/
 temp/
+
+# Content Studio UI copied in at build time (scripts/sync-studio.mjs)
+public/studio/
+
+# Content Studio local data
+content-studio/data/*
+!content-studio/data/.gitkeep
+content-studio/data-demo/
+content-studio/.env

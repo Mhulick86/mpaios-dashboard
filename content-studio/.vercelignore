@@ -1,0 +1,26 @@
+# Vercel hosts the static UI only (public/ + vercel.json). Everything else stays out,
+# in particular knowledge/ (internal agent instructions and unapproved drafts).
+/.dockerignore
+/.env.example
+/.gitignore
+/.vercelignore
+/CHANGELOG.md
+/Dockerfile
+/README.md
+/SECURITY.md
+/agents.mjs
+/data
+/db.mjs
+/docker-compose.yml
+/env.mjs
+/events.mjs
+/integrations.mjs
+/knowledge
+/knowledge.mjs
+/package.json
+/qa-checks.mjs
+/scripts
+/server.mjs
+/tests
+/data-demo
+/node_modules

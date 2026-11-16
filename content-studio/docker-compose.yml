@@ -1,0 +1,16 @@
+services:
+  content-studio:
+    build: .
+    ports:
+      - "127.0.0.1:4173:4173"
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      LM_STUDIO_BASE_URL: ${LM_STUDIO_DOCKER_URL:-http://host.docker.internal:1234/v1}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    # LM Studio runs on the Docker host. On Linux set LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
