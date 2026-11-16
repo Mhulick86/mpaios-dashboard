@@ -40,7 +40,12 @@ test('cards moved to Ship to dev wait for a quiet period, then ship as one batch
   await s.api(`/api/ship/${a}/done`, 'POST', { commit: 'abc1234def', url: 'https://site.example/resources/page-a' });
   await s.api(`/api/ship/${b}/failed`, 'POST', { reason: 'next build failed on page-b' });
   q = await s.api('/api/ship/queue');
-  assert.deepEqual(q.recent.map((x) => [x.path, x.status]).sort(), [['/resources/page-a', 'shipped'], ['/resources/page-b', 'failed']]);
+  assert.deepEqual(q.recent.map((x) => [x.path, x.status]), [['/resources/page-b', 'failed']]);
+  // A built page moves to Posted, with the live link recorded and on the first line of its notes.
+  const posted = await s.api(`/api/tasks/${a}`);
+  assert.equal(posted.lane_id, 'mpfresh:posted'); assert.equal(posted.published_url, 'https://site.example/resources/page-a');
+  assert.match(posted.instructions, /^Live page: https:\/\/site\.example\/resources\/page-a\n\nMode: new/);
+  assert.ok((await s.api('/api/bootstrap')).lanes.some((l) => l.id === 'mpfresh:posted' && l.name === 'Posted'));
   assert.equal(q.items.length, 0, 'a failed page is not retried on its own');
   const ev = (await s.api(`/api/tasks/${a}`)).events.map((e) => e.message);
   assert.ok(ev.includes('Site build started') && ev.some((m) => /Built on the site \(abc1234def/.test(m)));

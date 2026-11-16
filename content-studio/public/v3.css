@@ -107,3 +107,7 @@ mark.verify{background:#4a3a16;color:#ffd98a;padding:1px 5px;border-radius:4px;f
 .badge.BP1{color:#f1c483;background:#352f30;outline:1px dashed #5f4f3d}
 .badge.BP2{color:#a8c9ec;background:#232f40;outline:1px dashed #3f5670}
 .badge.BP3{color:#abb6cb;background:#262b38;outline:1px dashed #434b60}
+
+/* Posted: live page link at the top of the task */
+.live-page-link { display:flex; align-items:center; gap:8px; margin:-6px 0 16px; padding:10px 12px; border:1px solid #2f5e4a; border-radius:9px; background:#132a22; color:#bfeedd; font-size:12px; font-weight:600; overflow-wrap:anywhere; }
+.live-page-link a { color:#7be3b4; text-decoration:underline; text-underline-offset:3px; }

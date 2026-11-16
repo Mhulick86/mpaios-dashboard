@@ -48,7 +48,7 @@ test('commission, generate, QA, review, publish, and export without n8n',async(t
   let stderr='';serverProc.stderr.on('data',c=>stderr+=c.toString());
   await waitFor(async()=>{try{return(await request('/api/health')).ok}catch{return false}},14000);
   let b=await request('/api/bootstrap');
-  assert.equal(b.boards.length,2);assert.equal(b.lanes.length,16);assert.equal(b.tasks.length,0);
+  assert.equal(b.boards.length,2);assert.equal(b.lanes.length,17);assert.equal(b.tasks.length,0);
   const models=await request('/api/models');assert.equal(models.connected,true);assert.equal(models.ai.stages.draft,'lmstudio:auto');
   const order=await request('/api/commission','POST',{
     topic:'Owned AI vs rented marketing intelligence for hospital systems',outputs:['website','linkedin'],voice:'founder',priority:'P1',

@@ -194,7 +194,7 @@ test('a v0.2 database upgrades in place', async (t) => {
   const s = await startStudio(t, { dataDir: dir });
   const boot = await s.api('/api/bootstrap');
   assert.equal(boot.tasks.length, 1); assert.equal(boot.tasks[0].title, 'Legacy v0.2 card'); assert.equal(boot.tasks[0].qa_status, null);
-  assert.equal(boot.lanes.length, 16, 'missing lanes are filled in');
+  assert.equal(boot.lanes.length, 17, 'missing lanes are filled in');
   await s.api('/api/tasks/11111111-1111-4111-8111-111111111111/pipeline', 'POST', {});
   const done = await waitFor(async () => { const x = await s.api('/api/tasks/11111111-1111-4111-8111-111111111111'); return x.lane_id === 'mpfresh:final_approval' && x.artifacts.some((a) => a.kind === 'qa') ? x : false; });
   assert.deepEqual(kinds(done), ['brief', 'draft', 'graphics', 'qa']);

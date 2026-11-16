@@ -11,12 +11,13 @@
  * Everything is recorded as task events, so every server instance and the board see the same state. A failed page
  * stays failed until someone moves the card out of Ship to dev and back, so a broken page is not retried forever.
  */
-import { getDb, getTask, event, markPublished } from './db.mjs';
+import { getDb, getTask, event, moveTask } from './db.mjs';
 import { clamp } from './env.mjs';
 import { parseShotList } from './integrations.mjs';
 import { pageTarget } from './searchconsole.mjs';
 
 const SHIP_LANE = 'mpfresh:ship_dev';
+const POSTED_LANE = 'mpfresh:posted';
 const DEBOUNCE_MS = () => clamp(process.env.SHIP_DEBOUNCE_MS, 0, 3600000, 300000);
 const CLAIM_TTL_MS = 2 * 3600000; // a claim with no result after this long (builder crashed) returns to the queue
 const SITE = () => (process.env.SITE_ORIGIN || 'https://marketingpowered.ai').replace(/\/+$/, '');
@@ -102,12 +103,22 @@ export function shipClaim(ids, batch, actor = 'MP site builder') {
   }
   return { claimed, skipped };
 }
+/**
+ * A page is live: record it, put the live link on the first line of the card's notes, and move the card to Posted.
+ * The site build is the publish step, so the live URL is recorded whether or not the card was approved in the studio.
+ */
 export function shipDone(id, { commit = '', url = '', notes = '' } = {}, actor = 'MP site builder') {
   const task = getTask(id); if (!task) throw new Error('Task not found.');
   const live = String(url || '') || (pageTarget(task).path ? `${SITE()}${pageTarget(task).path}` : '');
   event(id, 'shipped', `Built on the site${commit ? ` (${String(commit).slice(0, 12)})` : ''}`, actor, { commit: String(commit).slice(0, 64), url: live, notes: String(notes).slice(0, 2000) });
-  if (task.approved_at && /^https?:\/\//.test(live)) markPublished(id, live, actor);
-  return shipState(getTask(id));
+  if (/^https?:\/\/\S+$/.test(live)) {
+    const rest = String(task.instructions || '').replace(/^Live page: \S+\n*/, '');
+    const now = new Date().toISOString();
+    getDb().prepare('UPDATE tasks SET published_at=?,published_url=?,instructions=?,updated_at=?,rev=rev+1 WHERE id=?').run(now, live.slice(0, 2000), `Live page: ${live}\n\n${rest}`.slice(0, 15000), now, id);
+    event(id, 'published', `Live page: ${live}`, actor, { url: live, approved: !!task.approved_at });
+  }
+  if (task.board_id === 'mpfresh') moveTask(id, POSTED_LANE, actor, false);
+  return { status: 'shipped', url: live, lane: getTask(id).lane_id };
 }
 export function shipFailed(id, reason = '', actor = 'MP site builder') {
   const task = getTask(id); if (!task) throw new Error('Task not found.');

@@ -35,7 +35,8 @@ const BOARDS = [
     ['draft_complete', 'Draft Complete', ''],
     ['graphics', 'Graphics', 'graphics'],
     ['final_approval', 'Final Approval', 'qa'],
-    ['ship_dev', 'Ship to dev', '']
+    ['ship_dev', 'Ship to dev', ''],
+    ['posted', 'Posted', '']
   ] },
   { id: 'social', name: 'Social Media', subtitle: 'Social content production', color: '#08ae67', stages: [
     ['post_plan', 'Post Plan', ''],

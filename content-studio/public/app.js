@@ -195,7 +195,7 @@ function taskView() {
 function artifactKinds(id) { return state.data.artifactCounts.filter((x) => x.task_id === id).map((x) => x.kind); }
 function activeJob(id) { return state.data.jobs.find((x) => x.task_id === id && x.status === 'running') || state.data.jobs.find((x) => x.task_id === id && x.status === 'queued'); }
 const commentCount = (id) => state.data.commentCounts?.find((x) => x.task_id === id)?.count || 0;
-const isOverdue = (t) => t.due_date && !t.published_at && !/ship_dev|ready_post/.test(t.lane_id) && t.due_date < new Date().toISOString().slice(0, 10);
+const isOverdue = (t) => t.due_date && !t.published_at && !/ship_dev|posted|ready_post/.test(t.lane_id) && t.due_date < new Date().toISOString().slice(0, 10);
 const qaChip = (t, cls = 'card-tag') => { const q = QA_LABEL[t.qa_status]; return q ? `<span class="${cls} qa-${q[1]}">${q[0]}</span>` : ''; };
 
 // ---------- Board ----------
@@ -256,8 +256,8 @@ function renderMetrics() {
   if (['knowledge', 'instructions'].includes(state.view)) { $('#metrics').innerHTML = kbUi.metricsMarkup(); return; }
   const t = state.data.tasks.filter((x) => x.board_id === state.board && (state.showDemo || !x.demo));
   const review = t.filter((x) => REVIEW_LANES.test(x.lane_id)).length;
-  const ready = t.filter((x) => /ship_dev|ready_post/.test(x.lane_id)).length;
-  const active = t.filter((x) => !/(backlog|post_plan|ship_dev|ready_post)$/.test(x.lane_id)).length;
+  const ready = t.filter((x) => /ship_dev|posted|ready_post/.test(x.lane_id)).length;
+  const active = t.filter((x) => !/(backlog|post_plan|ship_dev|posted|ready_post)$/.test(x.lane_id)).length;
   const blocked = t.filter((x) => x.qa_status === 'blocked').length;
   const vals = [
     ['TOTAL CONTENT', t.length, 'All cards on this board', '▦'],
@@ -284,7 +284,7 @@ function renderBoard() {
   const scrolls = new Map($$('.kanban-column', $('#board')).map((col) => [col.dataset.laneId, $('.column-body', col)?.scrollTop || 0]));
   $('#board').innerHTML = lanes().map((l, i) => {
     const items = tasks.filter((t) => t.lane_id === l.id);
-    return `<section class="kanban-column" data-lane-id="${html(l.id)}"><div class="column-head"><span class="column-kicker" style="background:${laneColors[i % laneColors.length]}"></span><strong>${html(l.name)}</strong>${l.auto_action ? `<span class="lane-auto" title="Dropping a card here queues the ${html(l.auto_action)} stage">✦ ${html(l.auto_action)}</span>` : ''}<span class="column-count">${items.length}</span><button class="column-add" data-add-lane="${html(l.id)}" title="Commission content">+</button></div><div class="column-body">${items.length ? items.map(cardMarkup).join('') : '<div class="empty-column"><strong>Nothing here yet</strong>Drop a card to move it into this stage.</div>'}</div></section>`;
+    return `<section class="kanban-column" data-lane-id="${html(l.id)}"><div class="column-head"><span class="column-kicker" style="background:${l.slug === 'posted' ? '#08ae67' : laneColors[i % laneColors.length]}"></span><strong>${html(l.name)}</strong>${l.auto_action ? `<span class="lane-auto" title="Dropping a card here queues the ${html(l.auto_action)} stage">✦ ${html(l.auto_action)}</span>` : ''}<span class="column-count">${items.length}</span><button class="column-add" data-add-lane="${html(l.id)}" title="Commission content">+</button></div><div class="column-body">${items.length ? items.map(cardMarkup).join('') : '<div class="empty-column"><strong>Nothing here yet</strong>Drop a card to move it into this stage.</div>'}</div></section>`;
   }).join('');
   for (const col of $$('.kanban-column', $('#board'))) { const top = scrolls.get(col.dataset.laneId); if (top) $('.column-body', col).scrollTop = top; }
 }
@@ -362,7 +362,7 @@ function renderDrawer(resetScroll = false) {
   const live = job?.status === 'running' ? (state.live.get(job.id) ?? '') : '';
   $('#taskDrawer').dataset.taskId = t.id;
   $('#taskDrawer').innerHTML = `<div class="drawer-header"><div class="drawer-eyebrow">CONTENT RECORD / ${html(t.board_id.toUpperCase())} ${t.demo ? ' · SAMPLE' : ''}</div><div class="drawer-actions"><button class="icon-btn" id="copyTaskLink" title="Copy link">⧉</button><button class="icon-btn" id="closeDrawer" aria-label="Close task">✕</button></div></div><div class="drawer-scroll">
-  <h2 class="detail-title">${html(t.title)}</h2><div class="detail-state"><span class="stage-pill">${html(stage?.name || '')}</span><span class="badge ${html(t.priority)}">${html(t.priority)}</span>${qaChip(t, 'chip')}${t.approved_at ? '<span class="chip qa-ok">✓ Approved</span>' : ''}${t.published_url ? '<span class="chip qa-ok">Live</span>' : ''}<span class="badge">${html(channelLabel[t.channel] || t.channel)}</span>${isOverdue(t) ? '<span class="chip qa-bad">Overdue</span>' : ''}${(t.docs || []).filter((d) => d.kind === 'draft').map((d) => `<a class="doc-link" href="${html(safeUrl(d.url))}" target="_blank" rel="noopener noreferrer">Google Doc ↗</a>`).join('')}</div>
+  <h2 class="detail-title">${html(t.title)}</h2>${t.published_url ? `<div class="live-page-link"><span class="live-dot on"></span>Live page: <a href="${html(safeUrl(t.published_url))}" target="_blank" rel="noopener noreferrer">${html(t.published_url)}</a></div>` : ''}<div class="detail-state"><span class="stage-pill">${html(stage?.name || '')}</span><span class="badge ${html(t.priority)}">${html(t.priority)}</span>${qaChip(t, 'chip')}${t.approved_at ? '<span class="chip qa-ok">✓ Approved</span>' : ''}${t.published_url ? '<span class="chip qa-ok">Live</span>' : ''}<span class="badge">${html(channelLabel[t.channel] || t.channel)}</span>${isOverdue(t) ? '<span class="chip qa-bad">Overdue</span>' : ''}${(t.docs || []).filter((d) => d.kind === 'draft').map((d) => `<a class="doc-link" href="${html(safeUrl(d.url))}" target="_blank" rel="noopener noreferrer">Google Doc ↗</a>`).join('')}</div>
   <div class="detail-section"><h4>Production controls</h4>
   ${stepperMarkup(t, job)}
   <div class="detail-commands" style="margin-top:12px">${job ? `<button class="command-btn red" data-cancel-job="${html(job.id)}">■ Stop ${job.options?.chain ? 'autopilot' : 'generation'}</button>` : `<button class="command-btn primary" data-action="pipeline" title="Runs every remaining stage in order, then stops for human approval">▶ Run autopilot</button>`}<button class="command-btn green" data-action="approve" ${canApprove ? '' : 'disabled'} title="${canApprove ? 'Requires a QA report newer than the draft with no blocking findings' : t.approved_at ? 'Already approved' : 'Move the card to an approval lane first'}">✓ Approve & advance</button><button class="command-btn" data-action="revise-open" ${job || !t.artifacts.some((a) => a.kind === 'draft') ? 'disabled' : ''} title="Sends the card back to drafting with your note. The next draft must address it.">↩ Send back for revision</button><button class="command-btn" data-action="comment-jump">↳ Leave feedback</button><button class="command-btn red ghost" data-action="archive">Archive</button></div>
