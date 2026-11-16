@@ -115,7 +115,7 @@ function topicRegex(keyword) {
   const perms = (a) => a.length <= 1 ? [a] : a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map((p) => [x, ...p]));
   return perms(words).map((p) => p.map(esc).join('.*')).join('|');
 }
-function pageTarget(task) {
+export function pageTarget(task) {
   const text = String(task.instructions || '');
   const url = (text.match(/^URL(?: Path)?:\s*(\S+)/mi)?.[1] || String(task.title || '').match(/^B?P\d+-\s*(\/\S*)/)?.[1] || '').trim();
   const mode = (text.match(/^Mode:\s*(new|refresh)/mi)?.[1] || 'new').toLowerCase();

@@ -1,0 +1,124 @@
+/**
+ * Ship to dev: hand finished pages to the site builder (a Claude Code session working in the Marketing-Powered/mp-site
+ * repository), in batches.
+ *
+ *   1. A card moved to MP FRESH > Ship to dev waits in the ship queue.
+ *   2. The batch is ready once no card has arrived for SHIP_DEBOUNCE_MS (5 minutes), so pages moved together ship
+ *      together.
+ *   3. The builder claims the batch (POST /api/ship/claim), downloads each package (GET /api/ship/:id: final draft,
+ *      metadata, images), builds the pages, merges and pushes, then reports each page done or failed.
+ *
+ * Everything is recorded as task events, so every server instance and the board see the same state. A failed page
+ * stays failed until someone moves the card out of Ship to dev and back, so a broken page is not retried forever.
+ */
+import { getDb, getTask, event, markPublished } from './db.mjs';
+import { clamp } from './env.mjs';
+import { parseShotList } from './integrations.mjs';
+import { pageTarget } from './searchconsole.mjs';
+
+const SHIP_LANE = 'mpfresh:ship_dev';
+const DEBOUNCE_MS = () => clamp(process.env.SHIP_DEBOUNCE_MS, 0, 3600000, 300000);
+const CLAIM_TTL_MS = 2 * 3600000; // a claim with no result after this long (builder crashed) returns to the queue
+const SITE = () => (process.env.SITE_ORIGIN || 'https://marketingpowered.ai').replace(/\/+$/, '');
+const parse = (s) => { try { return JSON.parse(s || '{}'); } catch { return {}; } };
+
+function shipEvents(taskId) {
+  return getDb().prepare("SELECT event_type,message,details,created_at,actor FROM events WHERE task_id=? AND event_type IN ('moved','ship_started','shipped','ship_failed') ORDER BY created_at DESC LIMIT 60")
+    .all(taskId).map((e) => ({ ...e, details: parse(e.details) }));
+}
+/** Where a task in Ship to dev stands: waiting, building, shipped or failed (since it last arrived in the lane). */
+export function shipState(task) {
+  if (!task || task.lane_id !== SHIP_LANE) return null;
+  const events = shipEvents(task.id);
+  const arrived = events.find((e) => e.event_type === 'moved' && e.details.to === SHIP_LANE);
+  const arrivedAt = arrived?.created_at || task.updated_at;
+  const latest = events.find((e) => e.event_type !== 'moved' && e.created_at >= arrivedAt);
+  if (latest?.event_type === 'shipped') return { status: 'shipped', arrived_at: arrivedAt, at: latest.created_at, url: latest.details.url || '', commit: latest.details.commit || '' };
+  if (latest?.event_type === 'ship_failed') return { status: 'failed', arrived_at: arrivedAt, at: latest.created_at, error: latest.message.replace(/^Site build failed: /, '') };
+  if (latest?.event_type === 'ship_started' && Date.now() - Date.parse(latest.created_at) < CLAIM_TTL_MS) return { status: 'building', arrived_at: arrivedAt, at: latest.created_at, batch: latest.details.batch || '' };
+  return { status: 'waiting', arrived_at: arrivedAt };
+}
+function holdReason(task) {
+  if (!task.artifacts.some((a) => a.kind === 'draft')) return 'No draft to build.';
+  if (task.qa_status === 'blocked') return 'QA has blocking findings. Fix the draft and rerun QA, then move the card back to Ship to dev.';
+  if (!pageTarget(task).path) return 'No page URL. Add "URL: /path" to the notes.';
+  return '';
+}
+const summary = (t, st) => ({ id: t.id, title: t.title, path: pageTarget(t).path, mode: pageTarget(t).mode, priority: t.priority, approved: !!t.approved_at, qa_status: t.qa_status || '', ...st });
+
+/** The queue the builder polls. ready=true once the newest arrival is SHIP_DEBOUNCE_MS old. */
+export function shipQueue() {
+  const tasks = getDb().prepare('SELECT id FROM tasks WHERE lane_id=? AND archived=0').all(SHIP_LANE).map((r) => getTask(r.id));
+  const waiting = [], held = [], building = [], recent = [];
+  for (const t of tasks) {
+    const st = shipState(t); if (!st) continue;
+    if (st.status === 'waiting') { const why = holdReason(t); (why ? held : waiting).push({ ...summary(t, st), ...(why ? { held: why } : {}) }); }
+    else if (st.status === 'building') building.push(summary(t, st));
+    else recent.push(summary(t, st));
+  }
+  const newest = waiting.map((x) => Date.parse(x.arrived_at)).reduce((a, b) => Math.max(a, b), 0);
+  const readyAt = newest ? new Date(newest + DEBOUNCE_MS()).toISOString() : null;
+  return { ready: waiting.length > 0 && Date.now() >= newest + DEBOUNCE_MS(), ready_at: readyAt, debounce_minutes: Math.round(DEBOUNCE_MS() / 60000), site: SITE(), items: waiting, held, building, recent };
+}
+
+/** Everything the builder needs for one page. Image files are fetched from /api/assets/:id with the same token. */
+export function shipPackage(id) {
+  const task = getTask(id); if (!task) throw new Error('Task not found.');
+  const target = pageTarget(task);
+  const latest = (kind) => task.artifacts.filter((a) => a.kind === kind).sort((a, b) => b.version - a.version)[0] || null;
+  const draft = latest('draft'), qa = latest('qa'), brief = latest('brief'), plan = latest('graphics');
+  // Images from the most recent image run (a regenerated set replaces the older one), then any uploaded images.
+  const runStart = getDb().prepare("SELECT created_at FROM events WHERE task_id=? AND event_type='images' AND message LIKE 'Generating %' ORDER BY created_at DESC LIMIT 1").get(id)?.created_at || '';
+  const shots = parseShotList(plan?.body || '') || [];
+  const altFor = (name) => {
+    const section = name.replace(/^AI image \d+ · /, '').replace(/^(Hero photo|Photo · |Infographic · |Diagram · )/, (m) => (m === 'Hero photo' ? 'Hero' : ''));
+    return shots.find((s) => s.section.toLowerCase() === section.toLowerCase())?.alt || '';
+  };
+  const images = task.assets.filter((a) => a.mime.startsWith('image/') && (!a.name.startsWith('AI image') || a.created_at >= runStart))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((a) => ({ id: a.id, name: a.name, mime: a.mime, size: a.size, source: a.name.startsWith('AI image') ? 'generated' : 'uploaded', alt: altFor(a.name), download: `/api/assets/${a.id}` }));
+  return {
+    id: task.id, title: task.title, path: target.path, mode: target.mode, live_url: target.path ? `${SITE()}${target.path}` : '',
+    priority: task.priority, primary_keyword: task.primary_keyword, secondary_keywords: task.secondary_keywords, audience: task.audience,
+    cta: task.cta, content_type: task.content_type, approved: !!task.approved_at, qa_status: task.qa_status || '',
+    ship: shipState(task), held: holdReason(task) || null,
+    draft: draft ? { version: draft.version, created_at: draft.created_at, markdown: draft.body } : null,
+    qa: qa ? { version: qa.version, verdict: (qa.body.match(/Verdict:\s*(PASS|REVIEW|FAIL)/i)?.[1] || '').toUpperCase(), report: qa.body.slice(0, 6000) } : null,
+    brief_excerpt: brief ? brief.body.slice(0, 4000) : '',
+    notes: task.instructions || '',
+    images
+  };
+}
+
+/** The builder takes the ready tasks it will build now. Only waiting, unheld tasks can be claimed. */
+export function shipClaim(ids, batch, actor = 'MP site builder') {
+  if (!Array.isArray(ids) || !ids.length) throw new Error('Nothing to claim.');
+  const claimed = [], skipped = [];
+  for (const id of ids.slice(0, 50)) {
+    const task = getTask(String(id)); const st = shipState(task);
+    if (!task || st?.status !== 'waiting' || holdReason(task)) { skipped.push({ id, reason: !task ? 'not found' : holdReason(task) || `status ${st?.status || 'not in Ship to dev'}` }); continue; }
+    event(task.id, 'ship_started', 'Site build started', actor, { batch: String(batch || '').slice(0, 80) });
+    claimed.push(task.id);
+  }
+  return { claimed, skipped };
+}
+export function shipDone(id, { commit = '', url = '', notes = '' } = {}, actor = 'MP site builder') {
+  const task = getTask(id); if (!task) throw new Error('Task not found.');
+  const live = String(url || '') || (pageTarget(task).path ? `${SITE()}${pageTarget(task).path}` : '');
+  event(id, 'shipped', `Built on the site${commit ? ` (${String(commit).slice(0, 12)})` : ''}`, actor, { commit: String(commit).slice(0, 64), url: live, notes: String(notes).slice(0, 2000) });
+  if (task.approved_at && /^https?:\/\//.test(live)) markPublished(id, live, actor);
+  return shipState(getTask(id));
+}
+export function shipFailed(id, reason = '', actor = 'MP site builder') {
+  const task = getTask(id); if (!task) throw new Error('Task not found.');
+  event(id, 'ship_failed', `Site build failed: ${String(reason || 'no reason given').slice(0, 1500)}`, actor);
+  return shipState(getTask(id));
+}
+/** One line per Ship to dev card for the board. */
+export function shipSummaries() {
+  const rows = getDb().prepare('SELECT id FROM tasks WHERE lane_id=? AND archived=0').all(SHIP_LANE).map((r) => { const t = getTask(r.id); return { t, st: shipState(t) }; }).filter((x) => x.st);
+  // The whole batch waits for the newest arrival, so every waiting card shows the same start time.
+  const newest = rows.filter((x) => x.st.status === 'waiting').map((x) => Date.parse(x.st.arrived_at)).reduce((a, b) => Math.max(a, b), 0);
+  const readyAt = newest ? new Date(newest + DEBOUNCE_MS()).toISOString() : undefined;
+  return rows.map(({ t, st }) => ({ task_id: t.id, ...st, ...(st.status === 'waiting' ? { ready_at: readyAt, held: holdReason(t) || undefined } : {}) }));
+}

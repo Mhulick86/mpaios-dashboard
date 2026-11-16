@@ -200,6 +200,18 @@ const qaChip = (t, cls = 'card-tag') => { const q = QA_LABEL[t.qa_status]; retur
 
 // ---------- Board ----------
 const imageRunFor = (taskId) => (state.data.imageRuns || []).find((r) => r.task_id === taskId);
+function shipChip(t) {
+  const sh = (state.data.ship || []).find((x) => x.task_id === t.id); if (!sh) return '';
+  if (sh.status === 'waiting') {
+    if (sh.held) return `<span class="card-tag qa-warn" title="${html(sh.held)}">Held: not built</span>`;
+    const mins = Math.ceil((Date.parse(sh.ready_at) - Date.now()) / 60000);
+    return `<span class="card-tag running" title="Pages moved here are built together, 5 minutes after the last one arrives">${mins > 0 ? `Site build in ${mins} min` : 'Waiting for the site builder'}</span>`;
+  }
+  if (sh.status === 'building') return '<span class="card-tag running"><span class="live-dot on"></span>Building on the site</span>';
+  if (sh.status === 'shipped') return t.published_url ? '' : `<span class="card-tag qa-ok" title="${html(sh.url || '')}">Built on the site</span>`;
+  if (sh.status === 'failed') return `<span class="card-tag qa-bad" title="${html(sh.error || '')}">Site build failed</span>`;
+  return '';
+}
 function imageChip(t) {
   const r = imageRunFor(t.id); if (!r) return '';
   if (r.status === 'running') return `<span class="card-tag running"><span class="live-dot on"></span>Creating images ${Math.min(r.total, r.done + r.failed)}/${r.total}</span>`;
@@ -212,7 +224,7 @@ function cardMarkup(t) {
   return `<article class="task-card ${job?.status === 'running' ? 'is-running' : ''}" draggable="true" data-task-id="${html(t.id)}" tabindex="0" role="button" aria-label="Open ${html(t.title)}">
     <div class="card-top"><span class="card-type"><span class="type-dot">${kindIcon[t.content_type] || '▤'}</span>${html(titleCase(t.content_type))}</span><span class="badge ${html(t.priority)}">${html(t.priority)}</span></div>
     <h3>${html(t.title)}</h3>
-    <div class="card-tags"><span class="card-tag">${html(channelLabel[t.channel] || t.channel)}</span>${t.voice === 'founder' ? '<span class="card-tag">Founder voice</span>' : ''}${t.demo ? '<span class="card-tag sample">SAMPLE</span>' : ''}${job ? '' : imageChip(t)}${job ? `<span class="card-tag running"><span class="live-dot on"></span>${html(job.status === 'running' ? stageVerb[job.kind] : prettyKind[job.kind] + ' queued')}${job.options?.chain ? ' · autopilot' : ''}</span>` : ''}${qaChip(t)}${t.approved_at ? '<span class="card-tag qa-ok">✓ Approved</span>' : ''}${t.published_url ? '<span class="card-tag qa-ok">Live</span>' : ''}</div>
+    <div class="card-tags"><span class="card-tag">${html(channelLabel[t.channel] || t.channel)}</span>${t.voice === 'founder' ? '<span class="card-tag">Founder voice</span>' : ''}${t.demo ? '<span class="card-tag sample">SAMPLE</span>' : ''}${job ? '' : imageChip(t)}${shipChip(t)}${job ? `<span class="card-tag running"><span class="live-dot on"></span>${html(job.status === 'running' ? stageVerb[job.kind] : prettyKind[job.kind] + ' queued')}${job.options?.chain ? ' · autopilot' : ''}</span>` : ''}${qaChip(t)}${t.approved_at ? '<span class="card-tag qa-ok">✓ Approved</span>' : ''}${t.published_url ? '<span class="card-tag qa-ok">Live</span>' : ''}</div>
     <div class="card-footer"><div class="card-owner"><span class="avatar ${t.owner === 'Mike' ? 'gold' : t.owner === 'Emily' ? 'teal' : ''}">${html(initials(t.owner))}</span><span>${html(t.owner)}</span></div><div class="card-progress" title="Brief / Draft / Graphics / QA">${STAGES.map((k) => `<span class="progress-mark ${done.includes(k) ? 'done' : ''} ${job?.kind === k ? 'active' : ''}" title="${prettyKind[k]}"></span>`).join('')}</div><span class="card-time ${isOverdue(t) ? 'overdue' : ''}">${notes ? `<span title="${notes} comment${notes > 1 ? 's' : ''}">✎ ${notes}</span> ` : ''}${t.due_date ? html(dateFmt(t.due_date)) : notes ? '' : '⋯'}</span></div>
   </article>`;
 }

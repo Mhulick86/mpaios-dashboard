@@ -22,6 +22,7 @@ import {
   googleAuthStart, googleAuthFinish, disconnectGoogle, syncDoc, taskDocs, allDocs, afterArtifact, recentImageRuns
 } from './integrations.mjs';
 import { aiStatus, saveAiSettings, testProvider } from './providers.mjs';
+import { shipQueue, shipPackage, shipClaim, shipDone, shipFailed, shipSummaries } from './ship.mjs';
 import { searchConsoleStatus, saveSearchConsole, testSearchConsole, searchConsoleContext } from './searchconsole.mjs';
 import { runtime } from './runtime.mjs';
 import { assets } from './assets.mjs';
@@ -85,12 +86,23 @@ export async function handleApi(req, ctx = {}) {
   const { method, path, query } = req;
   const actor = actorFrom(req);
   if (method === 'GET' && path === '/api/health') return json(200, { ok: true, version: VERSION, stats: taskStats(), knowledge: knowledgeStats(), worker: workerInfo(), backend: runtime.hosted ? 'maios-hosted' : 'local-sqlite-fts5-and-node' });
-  if (method === 'GET' && path === '/api/bootstrap') return json(200, { ...getBootstrap(), docs: allDocs(), imageRuns: recentImageRuns(), integrations: integrationStatus(), stats: taskStats(), ai: aiStatus(), searchConsole: searchConsoleStatus(), settings: settingsView() });
+  if (method === 'GET' && path === '/api/bootstrap') return json(200, { ...getBootstrap(), docs: allDocs(), imageRuns: recentImageRuns(), ship: shipSummaries(), integrations: integrationStatus(), stats: taskStats(), ai: aiStatus(), searchConsole: searchConsoleStatus(), settings: settingsView() });
   if (method === 'GET' && path === '/api/models') return json(200, await modelCatalog());
 
   // AI providers: keys are write-only from the browser's point of view. Status shows only whether one is set and its last 4 characters.
   if (method === 'GET' && path === '/api/ai') return json(200, aiStatus());
   if (method === 'PATCH' && path === '/api/ai') return json(200, saveAiSettings(await parseJson(req, 64 * 1024)));
+  // Ship to dev: the site builder polls the queue, claims a ready batch, downloads packages and reports results.
+  if (method === 'GET' && path === '/api/ship/queue') return json(200, shipQueue());
+  if (method === 'POST' && path === '/api/ship/claim') { const body = await parseJson(req, 64 * 1024); return json(200, shipClaim(body.ids, body.batch, actor === 'Mike' ? 'MP site builder' : actor)); }
+  const shipMatch = path.match(/^\/api\/ship\/([a-f0-9-]{36})(?:\/(done|failed))?$/);
+  if (shipMatch) {
+    const [, id, action] = shipMatch;
+    if (!getTask(id)) return fail(404, 'Task not found.');
+    if (!action && method === 'GET') return json(200, shipPackage(id));
+    if (action === 'done' && method === 'POST') return json(200, shipDone(id, await parseJson(req, 16 * 1024)));
+    if (action === 'failed' && method === 'POST') return json(200, shipFailed(id, (await parseJson(req, 16 * 1024)).reason));
+  }
   // Search Console: service account key is write-only, like the AI keys.
   if (method === 'GET' && path === '/api/searchconsole') return json(200, searchConsoleStatus());
   if (method === 'PATCH' && path === '/api/searchconsole') return json(200, await saveSearchConsole(await parseJson(req, 32 * 1024)));

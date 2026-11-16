@@ -127,7 +127,16 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
   const initial = () => (process.env.STUDIO_PASSCODE || '').trim();
   const storedPasscode = () => setting('auth:passcode') || (initial().length >= 8 ? passcodeHash(initial()) : '');
   const cookie = (value, maxAge) => `${COOKIE}=${value}; Path=${cookiePath}; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+  // The site builder authenticates with STUDIO_BUILD_TOKEN and may only use the ship queue and download images.
+  const buildToken = () => (process.env.STUDIO_BUILD_TOKEN || '').trim();
+  const isBuilder = (req) => {
+    const token = buildToken(); const sent = (req.header('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+    if (token.length < 24 || sent.length !== token.length) return false;
+    let diff = 0; for (let i = 0; i < token.length; i++) diff |= token.charCodeAt(i) ^ sent.charCodeAt(i);
+    return diff === 0 && (/^\/api\/ship(\/|$)/.test(req.path) || (req.method === 'GET' && /^\/api\/assets\/[a-f0-9-]{36}$/.test(req.path)));
+  };
   function access(req) {
+    if (isBuilder(req)) return { ok: true, hosted: true, builder: true, passcodeSet: true, signedIn: false };
     const stored = storedPasscode();
     const signedIn = verifySession(req.cookie, stored);
     return { ok: signedIn, hosted: true, passcodeSet: !!stored, signedIn };

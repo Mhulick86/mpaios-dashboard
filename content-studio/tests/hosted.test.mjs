@@ -46,7 +46,7 @@ async function instance(t, env) {
     if (!r.ok) { const e = new Error(`${r.status}: ${data.error}`); e.status = r.status; e.data = data; throw e; }
     return data;
   }
-  return { api, logs: () => err, setCookie: (c) => { cookie = c; }, cookie: () => cookie };
+  return { api, port, logs: () => err, setCookie: (c) => { cookie = c; }, cookie: () => cookie };
 }
 
 test('hosted: passcode gate, cloud-style generation in the background, and no lost writes across instances', async (t) => {
@@ -56,7 +56,7 @@ test('hosted: passcode gate, cloud-style generation in the background, and no lo
     FAKE_BLOB_URL: `http://127.0.0.1:${blobPort}`, STUDIO_SECRET_KEY: randomBytes(32).toString('base64'), STUDIO_HOSTED: '1',
     LM_STUDIO_BASE_URL: `http://127.0.0.1:${modelPort}/v1`, STUDIO_MODEL_BRIEF: 'lmstudio:auto', STUDIO_MODEL_DRAFT: 'lmstudio:auto',
     STUDIO_MODEL_GRAPHICS: 'lmstudio:auto', STUDIO_MODEL_QA: 'lmstudio:auto', ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', GEMINI_API_KEY: '', GOOGLE_AI_API_KEY: '', GOOGLE_API_KEY: '',
-    AUTO_GENERATE_ON_MOVE: 'true', JOB_RETRY_BASE_MS: '200', STUDIO_PASSCODE: 'correct horse battery'
+    AUTO_GENERATE_ON_MOVE: 'true', JOB_RETRY_BASE_MS: '200', STUDIO_PASSCODE: 'correct horse battery', STUDIO_BUILD_TOKEN: 'build-token-0123456789abcdefghij'
   };
   const [a, b] = await Promise.all([instance(t, env), instance(t, env)]);
 
@@ -79,6 +79,13 @@ test('hosted: passcode gate, cloud-style generation in the background, and no lo
   assert.equal(boot.settings.hosted, true); assert.equal(boot.ai.hosted, true);
   assert.ok(!boot.ai.models.some((m) => m.id.startsWith('lmstudio')), 'local models are not offered when hosted');
   await assert.rejects(a.api('/api/ai', 'PATCH', { stages: { draft: 'lmstudio:auto' } }), /only available when the studio runs on your own computer/);
+
+  // The site builder's token opens the ship queue and image downloads, and nothing else.
+  const port = a.port;
+  const asBuilder = (path, token = 'build-token-0123456789abcdefghij') => fetch(`http://127.0.0.1:${port}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  assert.equal((await asBuilder('/api/ship/queue')).status, 200);
+  assert.equal((await asBuilder('/api/bootstrap')).status, 401, 'the builder token is not a passcode');
+  assert.equal((await asBuilder('/api/ship/queue', 'build-token-0123456789abcdefghiX')).status, 401);
 
   // A provider key is stored encrypted and only its last 4 characters ever come back.
   const ai = await a.api('/api/ai', 'PATCH', { provider: 'openai', key: 'sk-test-abcdefghijklmnop1234' });
