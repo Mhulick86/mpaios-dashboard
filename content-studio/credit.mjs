@@ -97,6 +97,12 @@ export async function creditWatchTick() {
         if (now !== provider && !paused.has(now)) getDb().prepare('UPDATE jobs SET run_after=?,error=NULL WHERE id=?').run(stamp(), j.id);
       }
     }
+    // A provider with nothing left waiting (its jobs moved to another provider) needs no more checks.
+    let changed = false;
+    for (const [provider, p] of Object.entries(state.providers || {})) {
+      if (!pausedJobs(provider).length && !(p.images || []).length) { delete state.providers[provider]; changed = true; }
+    }
+    if (changed) write(state);
   });
   const due = Object.entries(read().providers || {}).filter(([, p]) => Date.parse(p.next_check) <= Date.now());
   const results = [];
