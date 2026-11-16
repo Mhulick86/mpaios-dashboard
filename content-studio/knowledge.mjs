@@ -14,6 +14,11 @@ const NOW=()=>new Date().toISOString();
 const asJson=x=>JSON.stringify(x??null);
 const parse=(x,fallback)=>{try{return x?JSON.parse(x):fallback}catch{return fallback}};
 let initialized=false;
+let injectedSeed=null;
+/** The hosted build bundles seed.json and hands it over, because it cannot read files next to this module. */
+export function setKnowledgeSeed(seed){injectedSeed=seed;}
+/** Called when the database file changes underneath (hosted runtime), so the next call re-checks the schema. */
+export function resetKnowledge(){initialized=false;}
 const DB_SCHEMA=`
 CREATE TABLE IF NOT EXISTS knowledge_items (
   id TEXT PRIMARY KEY, source_key TEXT UNIQUE NOT NULL, title TEXT NOT NULL,
@@ -70,7 +75,7 @@ function matchScope(item,task){return item.scope==='all'||item.scope===task.chan
 export function initKnowledge(){
  if(initialized)return;
  const db=getDb();db.exec(DB_SCHEMA);
- const seed=JSON.parse(readFileSync(join(ROOT,'knowledge','seed.json'),'utf8'));
+ const seed=injectedSeed||JSON.parse(readFileSync(join(ROOT,'knowledge','seed.json'),'utf8'));
  const insert=db.prepare(`INSERT OR IGNORE INTO knowledge_items
  (id,source_key,title,category,scope,tags,body,trust,source_type,source_url,priority,enabled,seeded,created_at,updated_at)
  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);

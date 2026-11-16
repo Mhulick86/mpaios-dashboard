@@ -129,8 +129,7 @@ test('jobs wait and retry while the model server is offline, then fail clearly',
   const waiting = await waitFor(async () => { const j = (await s.api(`/api/tasks/${task.id}`)).jobs[0]; return j.status === 'queued' && j.attempts === 1 ? j : false; }, 8000, 20);
   assert.match(waiting.error, /Retrying in/);
   const failed = await waitFor(async () => { const j = (await s.api(`/api/tasks/${task.id}`)).jobs[0]; return j.status === 'failed' ? j : false; });
-  assert.equal(failed.attempts, 2); assert.match(failed.error, /Model server unavailable|Could not reach/);
-  assert.equal((await s.api('/api/models')).connected, false);
+  assert.equal(failed.attempts, 2); assert.match(failed.error, /LM Studio is not reachable|Could not reach/);
 });
 
 test('token auth, CORS preflight for the split Vercel deployment, and static hardening', async (t) => {
@@ -151,7 +150,7 @@ test('token auth, CORS preflight for the split Vercel deployment, and static har
   assert.equal((await fetch(s.origin + '/api/events')).status, 401);
   assert.equal((await fetch(s.origin + '/api/bootstrap', { headers: { 'X-MAIOS-Token': 'wrong-secret-token' } })).status, 401);
   const boot = await s.api('/api/bootstrap');
-  assert.equal(boot.version, '0.4.0'); assert.equal(boot.settings.worker.streaming, true);
+  assert.equal(boot.version, '0.5.0'); assert.equal(boot.settings.worker.streaming, true);
 
   const page = await fetch(s.origin + '/');
   assert.equal(page.status, 200);

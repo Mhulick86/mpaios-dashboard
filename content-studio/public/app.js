@@ -30,10 +30,11 @@ const state = {
 };
 
 // ---------- API ----------
-// Served by the studio's own server (at /): same origin. Served by MAIOS (at /studio/, locally or on Vercel):
-// default to the studio backend on this computer, until Settings says otherwise.
-const EMBEDDED = location.pathname.startsWith('/studio/');
-function baseUrl() { const saved = store.get('maios_api_url'); if (saved) return saved.replace(/\/$/, ''); return EMBEDDED ? 'http://127.0.0.1:4173' : ''; }
+// Served by MAIOS (at /studio/, on Vercel or `next dev`): the backend is MAIOS itself at /api/studio, with the database
+// in Vercel Blob and generation on cloud models. Served by the studio's own local server (at /): same origin, or a
+// remote API URL saved in Settings.
+const HOSTED = location.pathname.startsWith('/studio/');
+function baseUrl() { if (HOSTED) return '/api/studio'; const saved = store.get('maios_api_url'); return saved ? saved.replace(/\/$/, '') : ''; }
 function token() { try { return sessionStorage.getItem('maios_token') || ''; } catch { return ''; } }
 function actor() { return store.get('maios_actor', 'Mike').trim() || 'Mike'; }
 const authHeaders = () => ({ 'X-MAIOS-Token': token(), 'X-MAIOS-Actor': encodeURIComponent(actor()) });
@@ -41,8 +42,9 @@ async function api(path, opts = {}) {
   const req = { method: opts.method || 'GET', headers: { Accept: 'application/json', ...authHeaders() }, cache: 'no-store' };
   if (opts.body !== undefined) { req.headers['Content-Type'] = 'application/json'; req.body = JSON.stringify(opts.body); }
   let r;
-  try { r = await fetch(baseUrl() + path, req); } catch { throw new Error('Unable to reach the MAIOS backend. Check Settings > API connection and that the local server is running.'); }
-  let body; try { body = await r.json(); } catch { throw new Error(`Backend returned a non-JSON response (HTTP ${r.status}). Check API URL.`); }
+  try { r = await fetch(baseUrl() + path, req); } catch { throw new Error(HOSTED ? 'Unable to reach MAIOS. Check your connection and try again.' : 'Unable to reach the MAIOS backend. Check Settings > API connection and that the local server is running.'); }
+  let body; try { body = await r.json(); } catch { throw new Error(`Backend returned a non-JSON response (HTTP ${r.status}).${HOSTED ? '' : ' Check API URL.'}`); }
+  if (r.status === 401 && body.auth) authGate(body.auth);
   if (!r.ok) throw new Error(body.error || `Request failed (${r.status})`);
   return body;
 }
@@ -75,14 +77,33 @@ function scheduleDrawerReload(ms = 200) {
 }
 function paintSync() {
   const el = $('#lastSync'); if (!el) return;
-  el.innerHTML = state.liveConnected ? '<span class="live-dot on"></span>Live updates on' : `Synced ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} · reconnecting`;
+  const time = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  el.innerHTML = HOSTED ? `<span class="live-dot on"></span>Synced ${time} · auto-refresh` : state.liveConnected ? '<span class="live-dot on"></span>Live updates on' : `Synced ${time} · reconnecting`;
 }
 async function refreshModel() {
-  try { state.model = await api('/api/models'); } catch (e) { state.model = { connected: false, error: e.message, models: [] }; }
+  try { state.model = await api('/api/models'); } catch (e) { state.model = { connected: false, error: e.message, models: [], ai: state.model.ai }; }
   const card = $('#workerCard'); if (!card) return;
+  const stages = state.model.ai?.stages || {};
   $('.worker-pulse', card).className = 'worker-pulse ' + (state.model.connected ? 'online' : 'offline');
-  $('small', card).textContent = state.model.connected ? (state.model.models[0]?.id || 'Ready, no model loaded') : 'Offline / not configured';
-  card.title = state.model.connected ? `${state.model.models.length} model(s) at ${state.model.endpoint}` : `No model server at ${state.model.endpoint || 'the configured URL'}`;
+  $('strong', card).textContent = 'AI models';
+  $('small', card).textContent = state.model.connected ? `Writer: ${modelLabel(stages.draft)}` : state.model.ai ? 'Add an API key in Settings' : 'Unavailable';
+  card.title = state.model.ai ? `${STAGES.map((s) => `${prettyKind[s]}: ${modelLabel(stages[s])}`).join('\n')}\n\nClick to change models or API keys.` : (state.model.error || '');
+}
+const modelLabel = (id) => (state.model.ai?.models || []).find((m) => m.id === id)?.label || String(id || '').replace(/^[a-z]+:/, '') || 'not set';
+const STAGE_LABEL = { brief: 'Brief', draft: 'Draft (writer)', graphics: 'Graphics plan', qa: 'QA review' };
+
+// ---------- Hosted access: passcode on the public address ----------
+let gateOpen = false;
+function authGate(info) {
+  state.auth = info;
+  if (gateOpen) return; gateOpen = true;
+  $('#settingsBackdrop').hidden = false; $('#settingsModal').hidden = false;
+  $('#settingsModal').innerHTML = info.passcodeSet
+    ? `<div class="eyebrow">CONTENT STUDIO</div><h2>Enter the studio passcode</h2><p>Content Studio holds your AI provider keys, so on this address it asks for the team passcode. This browser stays signed in for 90 days.</p>
+      <form id="signInForm"><div class="settings-field"><label>PASSCODE</label><input type="password" name="passcode" autocomplete="current-password" required autofocus /></div><div class="settings-actions"><button type="submit" class="button primary">Open the studio</button></div></form>`
+    : `<div class="eyebrow">CONTENT STUDIO</div><h2>Set a passcode first</h2><p>Content Studio holds your AI provider keys, so on this public address it needs a passcode. Set it once from the protected address, which asks you to sign in to Vercel:</p>
+      <ol><li>Open <a href="${html(info.setupUrl || 'https://mpaios.vercel.app/content-studio')}" target="_blank" rel="noopener noreferrer">${html((info.setupUrl || 'https://mpaios.vercel.app/content-studio').replace(/^https:\/\//, ''))}</a>.</li><li>Open Settings (gear icon) and set the <strong>Studio passcode</strong>.</li><li>Come back here and enter it.</li></ol>
+      <div class="settings-actions"><button class="button primary" id="authRetry">I set it, continue</button></div>`;
 }
 
 // ---------- Live updates (Server-Sent Events over fetch, so the access token stays in a header) ----------
@@ -128,6 +149,26 @@ function onServerEvent(type, d) {
   if (type === 'task') { scheduleRefresh(); if (d.taskId === state.selected) scheduleDrawerReload(); return; }
   if (type === 'changed') { scheduleRefresh(); if (/\/api\/(knowledge|agents|brand)/.test(d.path || '')) kbUi.initialize(); }
 }
+/** Hosted: no event stream on Vercel functions, so poll the board and, while something runs, the live output. */
+function startPolling() {
+  let lastJobs = '';
+  const active = () => state.data.jobs.some((j) => ['queued', 'running'].includes(j.status));
+  const tick = async () => {
+    try {
+      if (document.visibilityState !== 'hidden' && !gateOpen) {
+        await refresh(false);
+        if (state.view === 'activity' && active()) renderRuns();
+        if (state.selected) {
+          const sig = state.data.jobs.filter((j) => j.task_id === state.selected).map((j) => j.id + j.status).join();
+          if (sig !== lastJobs) { lastJobs = sig; scheduleDrawerReload(0); }
+          if (state.data.jobs.some((j) => j.task_id === state.selected && j.status === 'running')) await seedLive(state.selected);
+        }
+      }
+    } catch { /* next tick */ }
+    setTimeout(tick, active() ? 2500 : 8000);
+  };
+  setTimeout(tick, 2500);
+}
 async function seedLive(taskId) {
   try { for (const j of (await api(`/api/tasks/${taskId}/live`)).jobs) { state.live.set(j.jobId, j.text); paintLive(j.jobId, taskId); } } catch { /* job already finished */ }
 }
@@ -172,7 +213,7 @@ function render() {
     knowledge: ['Knowledge Library', 'Source-tagged intelligence for every content agent'],
     instructions: ['Agent Instructions', 'Original MPAIOS roles, editable specialists and production playbooks'],
     queue: ['Review Queue', 'Everything waiting on a human decision, across both boards'],
-    activity: ['Agent Runs', 'Every local model job: live, queued, finished and failed']
+    activity: ['Agent Runs', 'Every generation job: live, queued, finished and failed']
   };
   const [name, subtitle] = names[state.view] || [board.name, board.subtitle];
   $('#boardTitle').innerHTML = html(name) + ' <span class="title-spark">✦</span>';
@@ -282,7 +323,7 @@ function stepperMarkup(t, job) {
   return `<div class="stepper">${STAGES.map((k, i) => {
     const running = job?.kind === k, skipped = k === 'graphics' && !t.graphics_count && !has(k);
     const stateCls = running ? 'running' : has(k) ? 'done' : skipped ? 'skipped' : '';
-    const hint = k === 'draft' && has('draft') ? `Revises the current draft${open ? ` using ${open} open comment${open > 1 ? 's' : ''}` : ''} and the latest QA findings` : `Generate the ${prettyKind[k].toLowerCase()} with the local model`;
+    const hint = k === 'draft' && has('draft') ? `Revises the current draft${open ? ` using ${open} open comment${open > 1 ? 's' : ''}` : ''} and the latest QA findings` : `Generate the ${prettyKind[k].toLowerCase()} with ${html(modelLabel(state.model.ai?.stages?.[k]))}`;
     return `<button class="step ${stateCls}" data-generate="${k}" title="${html(hint)}" ${job ? 'disabled' : ''}><span class="step-n">${running ? '<span class="live-dot on"></span>' : has(k) ? '✓' : i + 1}</span><span class="step-label">${labels[k]}</span>${k === 'draft' && open && has('draft') ? `<span class="step-note">${open} note${open > 1 ? 's' : ''}</span>` : ''}</button>`;
   }).join('<span class="step-line"></span>')}</div>`;
 }
@@ -306,7 +347,7 @@ function renderDrawer(resetScroll = false) {
   <div class="detail-commands" style="margin-top:12px">${job ? `<button class="command-btn red" data-cancel-job="${html(job.id)}">■ Stop ${job.options?.chain ? 'autopilot' : 'generation'}</button>` : `<button class="command-btn primary" data-action="pipeline" title="Runs every remaining stage in order, then stops for human approval">▶ Run autopilot</button>`}<button class="command-btn green" data-action="approve" ${canApprove ? '' : 'disabled'} title="${canApprove ? 'Requires a QA report newer than the draft with no blocking findings' : t.approved_at ? 'Already approved' : 'Move the card to an approval lane first'}">✓ Approve & advance</button><button class="command-btn" data-action="revise-open" ${job || !t.artifacts.some((a) => a.kind === 'draft') ? 'disabled' : ''} title="Sends the card back to drafting with your note. The next draft must address it.">↩ Send back for revision</button><button class="command-btn" data-action="comment-jump">↳ Leave feedback</button><button class="command-btn red ghost" data-action="archive">Archive</button></div>
   ${state.revising && !job ? `<form id="reviseForm" class="integration-note"><label class="field-label" for="reviseNote">What needs to change?</label><textarea id="reviseNote" name="note" rows="3" required minlength="3" maxlength="4000" class="brand-rules" placeholder="e.g. Cut the second section, add a citation for the 40% figure, and make the opening less salesy."></textarea><div style="margin-top:8px"><button class="command-btn primary" type="submit">Send back and redraft</button><button class="command-btn" type="button" data-action="revise-cancel">Cancel</button></div><span class="field-hint">The card returns to drafting, approval is withdrawn, and the current draft stays in version history.</span></form>` : ''}
   ${job?.status === 'running' ? `<div class="live-box"><div class="live-head"><span><span class="live-dot on"></span>${html(stageVerb[job.kind])}${job.options?.chain ? ' · autopilot' : ''}</span><span id="liveCount">${live ? num(countWords(live)) + ' words' : ''}</span></div><pre id="liveOutput" data-job="${html(job.id)}">${html(live || 'Waiting for the first words from the model…')}</pre></div>` : ''}
-  ${job?.status === 'queued' ? `<div class="run-message">◌ ${html(prettyKind[job.kind])} is queued${job.error ? `. ${html(job.error)}` : '. It starts as soon as the local model worker is free.'}</div>` : ''}
+  ${job?.status === 'queued' ? `<div class="run-message">◌ ${html(prettyKind[job.kind])} is queued${job.error ? `. ${html(job.error)}` : '. It starts as soon as a generation slot is free.'}</div>` : ''}
   ${lastFailed ? `<div class="run-message failed">${html(prettyKind[lastFailed.kind])} ${html(lastFailed.status)}: ${html(lastFailed.error || 'Unknown error')} <button class="mini-link" data-retry-job="${html(lastFailed.id)}">Retry${lastFailed.options?.chain ? ' and resume autopilot' : ''}</button></div>` : ''}
   <div class="detail-grid" style="margin-top:14px"><div class="detail-field full"><label class="field-label" for="detailStage">Move to workflow stage</label><select id="detailStage">${stages.map((x) => `<option value="${html(x.id)}" ${t.lane_id === x.id ? 'selected' : ''}>${html(x.name)}${x.auto_action ? '  •  triggers ' + x.auto_action : ''}</option>`).join('')}</select></div></div>
   </div>
@@ -354,7 +395,7 @@ function docPanel(t, kind, latestVersion) {
 function imagePanel(t) {
   const g = integ().gemini, run = t.imageRun, images = t.assets.filter((a) => a.mime.startsWith('image/') && a.name.startsWith('AI image'));
   const grid = images.length ? `<div class="image-grid">${images.map((a) => `<figure><img data-asset-preview="${html(a.id)}" data-view-asset="${html(a.id)}" alt="${html(a.name)}" title="Open full size" /><figcaption title="${html(a.name)}">${html(a.name)}</figcaption></figure>`).join('')}</div>` : '';
-  if (!g.configured) return `<div class="integration-note">To generate real images for this piece, add a Google Gemini API key in Settings.<br/><button class="command-btn" data-action="open-settings">Open Settings</button></div>${grid}`;
+  if (!g.configured) return `<div class="integration-note">To generate real images for this piece, add a Google (Gemini) key under Settings > AI models & API keys.<br/><button class="command-btn" data-action="open-settings">Open Settings</button></div>${grid}`;
   const running = run?.status === 'running';
   const status = running ? `<span class="live-dot on"></span>Generating image ${Math.min(run.total, run.done + run.failed + 1)} of ${run.total} with ${html(g.model)}…`
     : run?.status === 'failed' ? `Image generation failed: ${html(run.error)}`
@@ -367,8 +408,8 @@ function integrationSettingsMarkup() {
   const dot = (on) => `<span class="live-dot ${on ? 'on' : ''}"></span>`;
   return `<form id="integrationsForm">
   <div class="settings-section"><h3>Image generation · Google Gemini</h3><p>Generates a set of on-brand graphics from each draft and attaches them to the task. Image models are paid only (about 3 to 13 cents per image), so the key's Google AI Studio project needs billing turned on.</p>
-   <div class="status-line">${dot(ai.configured)}${ai.configured ? `API key saved · model ${html(ai.model)}` : 'Not set up'}</div>
-   <div class="settings-field"><label>GEMINI API KEY</label><input type="password" autocomplete="off" name="gemini_api_key" placeholder="${ai.configured ? 'Saved. Paste a new key to replace it' : 'Paste the key from aistudio.google.com/apikey'}" /><span class="field-hint">Create one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey</a>. Stored only in this studio's local database.</span></div>
+   <div class="status-line">${dot(ai.configured)}${ai.configured ? `Google key ready · model ${html(ai.model)}` : 'Needs a Google (Gemini) key: add it under AI models & API keys above'}</div>
+   <div class="settings-field" hidden><label>GEMINI API KEY</label><input type="password" autocomplete="off" name="gemini_api_key" placeholder="${ai.configured ? 'Saved. Paste a new key to replace it' : 'Paste the key from aistudio.google.com/apikey'}" /><span class="field-hint">Create one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey</a>. Stored only in this studio's local database.</span></div>
    <div class="settings-field"><label>IMAGE MODEL</label><input name="gemini_image_model" value="${html(ai.model || '')}" placeholder="gemini-3.1-flash-image" /></div>
    <div class="settings-field"><label>IMAGES PER PIECE (1 TO ${ai.maxCount || 8})</label><input type="number" name="gemini_image_count" min="1" max="${ai.maxCount || 8}" value="${ai.count || 8}" /><span class="field-hint">In order: hero banner, key concept, process infographic, stats infographic, icon set, quote card, section divider, summary.</span></div>
    <label class="check-line"><input type="checkbox" name="gemini_image_text" ${ai.text ? 'checked' : ''} /><span>Allow words inside images. Off by default, because image models often misspell them; text-free graphics leave space for a designer to add headlines.</span></label>
@@ -376,7 +417,7 @@ function integrationSettingsMarkup() {
    <label class="check-line"><input type="checkbox" name="gemini_auto" ${ai.auto !== false ? 'checked' : ''} /><span>Generate images automatically whenever a graphics plan is written</span></label>
    <div class="settings-actions"><button type="button" class="button ghost" id="geminiTest" ${ai.configured ? '' : 'disabled'}>Test key</button><button type="submit" class="button primary">Save</button></div>
   </div>
-  <div class="settings-section"><h3>Review links · Google Docs</h3><p>Creates a Google Doc in your own Drive for every draft and keeps the same link up to date as the draft is revised.</p>
+  ${g.available === false ? '' : `<div class="settings-section"><h3>Review links · Google Docs</h3><p>Creates a Google Doc in your own Drive for every draft and keeps the same link up to date as the draft is revised.</p>
    <div class="status-line">${dot(g.connected)}${g.connected ? `Connected${g.email ? ' as ' + html(g.email) : ''}` : g.clientConfigured ? 'Client saved. Not connected yet' : 'Not set up'}</div>
    ${g.connected ? '' : `<ol><li>Create a project at <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener noreferrer">console.cloud.google.com/projectcreate</a>.</li><li><a href="https://console.cloud.google.com/apis/enableflow;apiid=drive.googleapis.com" target="_blank" rel="noopener noreferrer">Enable the Google Drive API</a> for it.</li><li>Open <a href="https://console.developers.google.com/auth/branding" target="_blank" rel="noopener noreferrer">Google Auth platform</a>, click Get started, name the app MAIOS. For Audience choose <strong>Internal</strong> if you use Google Workspace. Otherwise choose External and then press <strong>Publish app</strong> on the Audience page, or the sign-in expires every 7 days.</li><li>Under <a href="https://console.developers.google.com/auth/clients" target="_blank" rel="noopener noreferrer">Clients</a>, click Create client, choose <strong>Desktop app</strong>, and copy the client ID and secret into the boxes below.</li><li>Press Save, then Connect Google account.</li></ol>`}
    <div class="settings-field"><label>GOOGLE CLIENT ID</label><input name="google_client_id" autocomplete="off" placeholder="${g.clientConfigured ? 'Saved. Paste a new one to replace it' : '1234567890-abc.apps.googleusercontent.com'}" /></div>
@@ -384,14 +425,47 @@ function integrationSettingsMarkup() {
    <label class="check-line"><input type="checkbox" name="google_auto" ${g.auto !== false ? 'checked' : ''} /><span>Create or update the Google Doc automatically whenever a draft is saved</span></label>
    <label class="check-line"><input type="checkbox" name="google_share" ${g.share ? 'checked' : ''} /><span>Let anyone with the link comment (otherwise each document stays private until you share it)</span></label>
    <div class="settings-actions">${g.connected ? '<button type="button" class="button ghost" id="googleDisconnect">Disconnect Google</button>' : `<button type="button" class="button ghost" id="googleConnect" ${g.clientConfigured ? '' : 'disabled title="Save the client ID and secret first"'}>Connect Google account</button>`}<button type="submit" class="button primary">Save</button></div>
-  </div></form>`;
+  </div>`}</form>`;
+}
+function aiSettingsMarkup() {
+  const ai = state.model.ai || state.data.ai; if (!ai) return '';
+  const dot = (on) => `<span class="live-dot ${on ? 'on' : ''}"></span>`;
+  const sel = ai.providers.some((p) => p.id === state.aiProvider) ? state.aiProvider : (ai.providers.find((p) => !p.configured) || ai.providers[0]).id;
+  const p = ai.providers.find((x) => x.id === sel);
+  const source = (x) => x.source === 'saved' ? `key saved ····${html(x.last4)}` : x.source === 'environment' ? 'using the key from the Vercel project environment' : 'no key yet';
+  const keyed = (provider) => provider === 'lmstudio' || ai.providers.find((x) => x.id === provider)?.configured;
+  const providerName = (id) => ai.providers.find((x) => x.id === id)?.label || (id === 'lmstudio' ? 'Local' : id);
+  const stageSelect = (stage) => {
+    const current = ai.stages[stage], known = ai.models.some((m) => m.id === current);
+    const groups = [...new Set(ai.models.map((m) => m.provider))].map((prov) => `<optgroup label="${html(providerName(prov))}${keyed(prov) ? '' : ' (add a key first)'}">${ai.models.filter((m) => m.provider === prov).map((m) => `<option value="${html(m.id)}" ${m.id === current ? 'selected' : ''}>${html(m.label)} · ${html(m.price)}${m.id === ai.defaults[stage] ? ' · recommended' : ''}</option>`).join('')}</optgroup>`).join('');
+    return `<div class="settings-field"><label>${html(STAGE_LABEL[stage].toUpperCase())}</label><select class="stage-model" name="${stage}">${groups}${known ? '' : `<option value="${html(current)}" selected>${html(current)} (custom)</option>`}<option value="__custom">Other model ID…</option></select>${keyed(current.split(':')[0]) ? '' : `<span class="field-hint bad-hint">No ${html(providerName(current.split(':')[0]))} key yet, so this stage cannot run.</span>`}</div>`;
+  };
+  return `<div class="settings-section" id="aiSection"><h3>AI models &amp; API keys</h3><p>Every generation goes to the model chosen for its stage below${HOSTED ? ', running on MAIOS servers, not this computer' : ''}. Pick a provider, paste its API key once, and it is stored encrypted on the server and reused for every run. The key is never shown again, only its last 4 characters.</p>
+   <div class="provider-status">${ai.providers.map((x) => `<div class="status-line">${dot(x.configured)}<strong>${html(x.label)}</strong>&nbsp;· ${source(x)}</div>`).join('')}</div>
+   <form id="aiKeyForm" autocomplete="off">
+    <div class="settings-field"><label>PROVIDER</label><select name="provider" id="aiProvider">${ai.providers.map((x) => `<option value="${html(x.id)}" ${x.id === sel ? 'selected' : ''}>${html(x.label)}${x.configured ? ' · ready' : ''}</option>`).join('')}</select></div>
+    <div class="settings-field"><label>${html(p.label.toUpperCase())} API KEY</label><input type="password" name="key" autocomplete="new-password" spellcheck="false" placeholder="${p.source === 'saved' ? 'Saved. Paste a new key to replace it' : html(p.keyHint)}" /><span class="field-hint">Create one at <a href="${html(p.docs)}" target="_blank" rel="noopener noreferrer">${html(p.docs.replace(/^https?:\/\//, ''))}</a>. Encrypted with AES-256 before it is stored${p.source === 'environment' ? '; a saved key takes priority over the environment key' : ''}.</span></div>
+    <div class="settings-actions">${p.source === 'saved' ? '<button type="button" class="button ghost" id="aiKeyRemove">Remove key</button>' : ''}<button type="button" class="button ghost" id="aiKeyTest" ${p.configured ? '' : 'disabled'}>Test key</button><button type="submit" class="button primary">Save key</button></div>
+   </form>
+   <form id="aiModelsForm"><h3 style="margin-top:18px">Model for each stage</h3><p>Prices are per million input / output tokens. A typical 1,500-word page through all four stages costs a few cents on the recommended models.</p>
+    ${STAGES.map(stageSelect).join('')}
+    <div class="settings-actions"><button type="button" class="button ghost" id="aiModelsReset">Use recommended</button><button type="submit" class="button primary">Save models</button></div>
+   </form></div>`;
+}
+function passcodeMarkup() {
+  if (!HOSTED) return '';
+  const a = state.auth || {}, dot = (on) => `<span class="live-dot ${on ? 'on' : ''}"></span>`;
+  return `<div class="settings-section"><h3>Studio passcode</h3><p>On MAIOS's public address the studio asks for this passcode. On the protected mpaios.vercel.app address (Vercel sign-in) it opens without one.</p>
+   <div class="status-line">${dot(a.passcodeSet)}${a.passcodeSet ? 'Passcode set' : 'No passcode yet: the public address stays locked until you set one'}${a.signedIn ? ' · this browser is signed in' : ''}</div>
+   <form id="passcodeForm" autocomplete="off"><div class="settings-field"><label>${a.passcodeSet ? 'NEW PASSCODE' : 'PASSCODE'}</label><input type="password" name="passcode" minlength="8" autocomplete="new-password" placeholder="At least 8 characters" /><span class="field-hint">Share it with the team. Changing it signs every browser out.</span></div>
+   <div class="settings-actions">${a.signedIn ? '<button type="button" class="button ghost" id="signOut">Sign out</button>' : ''}<button type="submit" class="button primary">${a.passcodeSet ? 'Change passcode' : 'Set passcode'}</button></div></form></div>`;
 }
 function renderDrawerTab(t) {
   if (state.taskTab === 'knowledge') return '<div id="taskKnowledgeArea"></div>';
   if (state.taskTab === 'overview') return `<form id="taskEditForm"><div class="detail-grid">${field('title', 'Content title', t.title, 'text', true)}${field('priority', 'Priority', t.priority, 'select_priority')}${field('voice', 'Voice', t.voice, 'select_voice')}${field('owner', 'Owner', t.owner)}${field('reviewer', 'Reviewer', t.reviewer)}${field('due_date', 'Due date', t.due_date || '', 'date')}${field('primary_keyword', 'Primary keyword', t.primary_keyword)}${field('topic', 'Core topic', t.topic, 'text', true)}${field('objective', 'Business objective', t.objective, 'textarea', true)}${field('audience', 'Target audience / ICP', t.audience, 'textarea', true)}${field('secondary_keywords', 'Secondary keywords (comma separated)', t.secondary_keywords.join(', '), 'text', true)}${field('word_count', 'Target word count', t.word_count, 'number')}${field('graphics_count', 'Graphics requested', t.graphics_count, 'number')}${field('cta', 'CTA / destination', t.cta, 'text', true)}${field('source_urls', 'Reference URLs (one per line)', t.source_urls.join('\n'), 'textarea', true)}${field('instructions', 'Additional writer / designer instructions', t.instructions, 'textarea', true)}</div><div style="margin-top:14px"><button type="submit" class="button primary">Save commission details</button></div></form>`;
   if (state.taskTab === 'artifact') {
     const kind = state.artifactTab, { versions, artifact: a } = currentArtifact(t);
-    if (!a) return `<div class="artifact-card"><div class="artifact-empty"><strong>No ${html(prettyKind[kind])} yet.</strong><br/>Use the production controls above to generate it with your local model, or start with a manually written version.<br/><button class="command-btn" style="margin-top:15px" id="manualArtifact">+ Write manually</button></div></div>${kind === 'graphics' ? imagePanel(t) : ''}`;
+    if (!a) return `<div class="artifact-card"><div class="artifact-empty"><strong>No ${html(prettyKind[kind])} yet.</strong><br/>Use the production controls above to generate it with the AI model chosen for this stage, or start with a manually written version.<br/><button class="command-btn" style="margin-top:15px" id="manualArtifact">+ Write manually</button></div></div>${kind === 'graphics' ? imagePanel(t) : ''}`;
     const latest = a.version === versions[0].version;
     const picker = versions.length > 1 ? `<select id="artifactVersion" class="version-pick" aria-label="Version">${versions.map((v) => `<option value="${v.version}" ${v.version === a.version ? 'selected' : ''}>v${v.version}${v === versions[0] ? ' (latest)' : ''}</option>`).join('')}</select>` : `v${a.version}`;
     const body = state.editingArtifact
@@ -400,7 +474,7 @@ function renderDrawerTab(t) {
     const extra = kind === 'draft' && !state.editingArtifact ? `<div class="artifact-foot"><span>Not happy with this direction?</span><button class="mini-link" data-generate="draft" data-fresh="1">Rewrite from scratch, ignoring this draft</button></div>` : '';
     return `<div class="artifact-card"><div class="artifact-toolbar"><span>${html(prettyKind[kind])} · ${picker} · ${html(a.model === 'manual' ? 'Written by hand' : a.model || 'Manual')} · ${html(stampFmt(a.created_at))} · ${num(countWords(a.body))} words</span><div class="tools"><button class="mini-link" id="toggleRaw">${state.rawView ? 'Formatted' : 'Markdown'}</button><button class="mini-link" id="copyArtifact">Copy</button><button class="mini-link" id="downloadArtifact">Download</button><button class="mini-link" id="editArtifact">${state.editingArtifact ? 'Cancel edit' : latest ? 'Edit' : 'Restore as new version'}</button></div></div>${!latest && !state.editingArtifact ? `<div class="version-note">You are viewing an older version. Approval and QA always use the latest (v${versions[0].version}).</div>` : ''}${body}${extra}</div>${state.editingArtifact ? '' : docPanel(t, kind, versions[0].version)}${kind === 'graphics' && !state.editingArtifact ? imagePanel(t) : ''}`;
   }
-  if (state.taskTab === 'files') return `<div class="approval-note">Attach approved graphics and source assets. Supported: PNG, JPG, WEBP and PDF, up to 5 MB each. LM Studio text models produce graphics directions, not image files.</div><div style="margin:15px 0"><input type="file" id="assetInput" accept="image/png,image/jpeg,image/webp,application/pdf" /></div>${t.assets.map((a) => `<div class="file-row">${a.mime.startsWith('image/') ? `<img data-asset-preview="${html(a.id)}" alt="${html(a.name)}" />` : '<span>PDF</span>'}<span>${html(a.name)}<br/><small class="muted">${Math.round(a.size / 1024)} KB</small></span><button class="mini-link" data-view-asset="${html(a.id)}">View ↗</button></div>`).join('')}`;
+  if (state.taskTab === 'files') return `<div class="approval-note">Attach approved graphics and source assets. Supported: PNG, JPG, WEBP and PDF, up to ${HOSTED ? 3 : 5} MB each. The graphics plan stage writes directions; Gemini image generation (Graphics tab) makes the image files.</div><div style="margin:15px 0"><input type="file" id="assetInput" accept="image/png,image/jpeg,image/webp,application/pdf" /></div>${t.assets.map((a) => `<div class="file-row">${a.mime.startsWith('image/') ? `<img data-asset-preview="${html(a.id)}" alt="${html(a.name)}" />` : '<span>PDF</span>'}<span>${html(a.name)}<br/><small class="muted">${Math.round(a.size / 1024)} KB</small></span><button class="mini-link" data-view-asset="${html(a.id)}">View ↗</button></div>`).join('')}`;
   if (state.taskTab === 'activity') return `<div><h4>Reviewer comments</h4><p class="muted small">Comments posted after the latest draft are sent to the model as requirements the next time the draft is revised.</p>${t.comments.map((c) => `<div class="comment"><strong>${html(c.author)}</strong><time>${html(stampFmt(c.created_at))}</time><p>${html(c.body)}</p></div>`).join('') || '<p class="muted small">No reviewer comments yet.</p>'}<form id="commentForm"><textarea name="text" placeholder="Write specific feedback or a revision request..." class="artifact-edit comment-box" required></textarea><div class="edit-bar"><button class="button primary" type="submit">Post comment</button><label class="inline-check"><input type="checkbox" name="revise" ${t.artifacts.some((a) => a.kind === 'draft') ? '' : 'disabled'} /> and revise the draft now</label></div></form><h4 style="margin-top:25px">Task history</h4>${t.events.map((e) => `<div class="timeline-item"><div class="timeline-dot ${html(e.event_type)}"></div><div class="timeline-content"><strong>${html(e.message)}</strong>${e.details?.error ? `<span class="job-error">${html(e.details.error)}</span>` : ''}<small>${html(e.actor)} · ${html(stampFmt(e.created_at))}</small></div></div>`).join('')}</div>`;
   return '';
 }
@@ -431,21 +505,22 @@ function commissionModal(preferredLane, requestedPlaybook) {
  <div class="modal-field full"><label>REFERENCE URLS</label><textarea name="source_urls" rows="2" placeholder="One source URL per line. They are references, not automatically crawled."></textarea></div>
  <div class="modal-field full"><label>ADDITIONAL INSTRUCTIONS</label><textarea name="instructions" rows="3" placeholder="Specific evidence, visual direction, claims to avoid, tone, internal links, etc."></textarea></div>
  </div><div class="modal-side"><div class="eyebrow">THE PRODUCTION MODEL</div><h3>Built like MP FRESH.</h3><p>Each selected output becomes a separate content card, linked under one campaign ID. Website content enters MP FRESH; social derivatives enter the Social Media board.</p><div class="process-mini">${[['01', 'Commission'], ['02', 'Research & editorial brief'], ['03', 'Model-assisted writing'], ['04', 'Graphics directions & assets'], ['05', 'QA & human approval'], ['06', 'Development / publishing handoff']].map(([n, label]) => `<div class="process-step"><span>${n}</span>${label}</div>`).join('')}</div>
- <label class="autopilot-opt"><input type="checkbox" name="autostart" /><span><strong>Start autopilot immediately</strong>Brief, draft, graphics plan and QA run back to back on your local model, then every deliverable waits in its approval lane for a person.</span></label>
- <p style="margin-top:14px">Models are invoked by the local Node worker using LM Studio. Publishing never happens automatically.</p></div></div>
+ <label class="autopilot-opt"><input type="checkbox" name="autostart" /><span><strong>Start autopilot immediately</strong>Brief, draft, graphics plan and QA run back to back on the models chosen in Settings, then every deliverable waits in its approval lane for a person.</span></label>
+ <p style="margin-top:14px">Generation uses the AI model chosen for each stage in Settings. Publishing never happens automatically.</p></div></div>
  <div class="modal-footer"><span>Nothing is published without approval.</span><div><button type="button" class="button ghost" id="cancelCommission">Cancel</button><button type="submit" class="button primary">＋ Create production order</button></div></div></form>`;
   if (requestedPlaybook) kbUi.applyPlaybook(requestedPlaybook);
 }
 function settingsModal(open) {
+  if (gateOpen) return; // the passcode screen uses the same modal and cannot be dismissed
   $('#settingsBackdrop').hidden = !open; $('#settingsModal').hidden = !open;
   if (!open) return;
   const settingsTop = $('#settingsModal').scrollTop;
-  $('#settingsModal').innerHTML = `<div style="display:flex;align-items:start;justify-content:space-between"><div><div class="eyebrow">SYSTEM CONNECTION</div><h2>Workspace settings</h2><p>Local UI and Vercel-hosted UI both connect to the same self-hosted Node production API.</p></div><button class="icon-btn" id="settingsClose">✕</button></div>
+  $('#settingsModal').innerHTML = `<div style="display:flex;align-items:start;justify-content:space-between"><div><div class="eyebrow">${HOSTED ? 'CONTENT STUDIO IN MAIOS' : 'SYSTEM CONNECTION'}</div><h2>Workspace settings</h2><p>${HOSTED ? 'Runs inside MAIOS: the board, knowledge base and files are stored in private Vercel storage, and generation uses the cloud models below. Nothing runs on this computer.' : 'This studio runs on your own computer. Generation still uses the cloud models chosen below unless a stage is set to LM Studio.'}</p></div><button class="icon-btn" id="settingsClose">✕</button></div>
  <form id="settingsForm"><div class="settings-field"><label>YOUR NAME</label><input name="actor" value="${html(actor())}" maxlength="80" placeholder="Shown on comments, approvals and history" /><span class="field-hint">Recorded as the actor on everything you do from this browser.</span></div>
- <div class="settings-field"><label>BACKEND API URL</label><input name="url" value="${html(baseUrl())}" placeholder="Local: leave empty. Remote: https://api.example.com" /><span class="field-hint">Leave empty when the UI and backend run together locally.</span></div>
- <div class="settings-field"><label>BACKEND ACCESS TOKEN</label><input type="password" autocomplete="off" name="token" value="${html(token())}" placeholder="Required for publicly exposed backend" /><span class="field-hint">Held in this tab's session storage, not embedded in the site.</span></div>
- <div class="settings-actions"><button type="button" class="button ghost" id="settingsCancel">Cancel</button><button type="submit" class="button primary">Save & connect</button></div></form>
- ${integrationSettingsMarkup()}<div class="settings-help"><strong>Local LM Studio:</strong> Open LM Studio, load an instruct model and enable its Local Server. The Node worker calls the configured <code>/v1/chat/completions</code> endpoint; the browser does not call LM Studio directly.<br/><br/><strong>Vercel option:</strong> Host only the static UI on Vercel. Keep this database and model worker on your own machine/server, with a protected HTTPS API endpoint. Vercel cannot access a private localhost model directly.<br/><br/><strong>Current state:</strong> ${html(state.model.connected ? 'Model server online: ' + (state.model.models[0]?.id || 'connected') : 'Model server offline or unavailable')} · studio v${html(state.data.version || '')}.<br/><br/><button class="command-btn" id="clearDemo">Remove sample tasks</button></div><div class="brand-settings"><div class="eyebrow" style="margin-top:25px">CONTENT INTELLIGENCE</div><h3 style="font-size:14px;margin-bottom:3px">Voice and QA profiles</h3><p>Editable operating rules injected into the model prompt for every job. Based on Marketing Powered's historical content standards.</p><form id="brandForm">${[['company', 'Company voice'], ['founder', 'Founder voice'], ['visual', 'Visual creative'], ['qa', 'Quality assurance']].map(([key, label]) => `<div class="settings-field"><label>${label}</label><textarea data-brand-key="${key}" name="${key}" rows="5" class="brand-rules" placeholder="Loading rules..."></textarea></div>`).join('')}<button class="button primary" type="submit">Save profiles</button></form></div>`;
+ ${HOSTED ? '' : `<div class="settings-field"><label>BACKEND API URL</label><input name="url" value="${html(baseUrl())}" placeholder="Local: leave empty. Remote: https://api.example.com" /><span class="field-hint">Leave empty when the UI and backend run together locally.</span></div>
+ <div class="settings-field"><label>BACKEND ACCESS TOKEN</label><input type="password" autocomplete="off" name="token" value="${html(token())}" placeholder="Required for publicly exposed backend" /><span class="field-hint">Held in this tab's session storage, not embedded in the site.</span></div>`}
+ <div class="settings-actions"><button type="button" class="button ghost" id="settingsCancel">Cancel</button><button type="submit" class="button primary">${HOSTED ? 'Save' : 'Save & connect'}</button></div></form>
+ ${aiSettingsMarkup()}${passcodeMarkup()}${integrationSettingsMarkup()}<div class="settings-help">${HOSTED ? '<strong>How it runs:</strong> generations run on MAIOS servers and keep going if you close this tab. A scheduled check every 5 minutes picks up anything left in the queue.' : '<strong>Local model (optional):</strong> to use LM Studio for a stage, load an instruct model, enable its Local Server and pick "LM Studio (local model)" for that stage above.'}<br/><br/><strong>Current state:</strong> ${html(state.model.connected ? 'Ready. Writer model: ' + modelLabel(state.model.ai?.stages?.draft) : 'A stage is set to a provider with no API key')} · studio v${html(state.data.version || '')}.<br/><br/><button class="command-btn" id="clearDemo">Remove sample tasks</button></div><div class="brand-settings"><div class="eyebrow" style="margin-top:25px">CONTENT INTELLIGENCE</div><h3 style="font-size:14px;margin-bottom:3px">Voice and QA profiles</h3><p>Editable operating rules injected into the model prompt for every job. Based on Marketing Powered's historical content standards.</p><form id="brandForm">${[['company', 'Company voice'], ['founder', 'Founder voice'], ['visual', 'Visual creative'], ['qa', 'Quality assurance']].map(([key, label]) => `<div class="settings-field"><label>${label}</label><textarea data-brand-key="${key}" name="${key}" rows="5" class="brand-rules" placeholder="Loading rules..."></textarea></div>`).join('')}<button class="button primary" type="submit">Save profiles</button></form></div>`;
   $('#settingsModal').scrollTop = settingsTop;
   api('/api/brand').then((x) => { for (const [key, value] of Object.entries(x)) { const el = $(`[data-brand-key="${key}"]`, $('#settingsModal')); if (el) el.value = value; } }).catch(() => { });
 }
@@ -480,7 +555,8 @@ async function onTaskSave(form) {
 }
 function handleAssetUpload(input) {
   const file = input.files?.[0]; if (!file) return;
-  if (file.size > 5 * 1024 * 1024) return toast('Maximum attachment size is 5 MB.', 'error');
+  const maxMb = HOSTED ? 3 : 5;
+  if (file.size > maxMb * 1024 * 1024) return toast(`Maximum attachment size is ${maxMb} MB.`, 'error');
   const id = state.selected, reader = new FileReader();
   reader.onload = async () => { try { await api(`/api/tasks/${id}/asset`, { method: 'POST', body: { name: file.name, mime: file.type, data: String(reader.result).split(',')[1] } }); toast('Asset attached.'); await openTask(id, true); } catch (e) { toast(e.message, 'error'); } };
   reader.readAsDataURL(file);
@@ -519,6 +595,12 @@ function installListeners() {
     if (e.target.id === 'closeDrawer') return closeDrawer();
     if (['closeCommission', 'cancelCommission'].includes(e.target.id)) return modalClose();
     if (['settingsClose', 'settingsCancel'].includes(e.target.id)) return settingsModal(false);
+    if (e.target.closest?.('#workerCard')) return settingsModal(true);
+    if (e.target.id === 'authRetry') return location.reload();
+    if (e.target.id === 'aiKeyTest') { const provider = $('#aiProvider').value; try { await api('/api/ai/test', { method: 'POST', body: { provider } }); toast('The key works.'); } catch (err) { toast(err.message, 'error'); } return; }
+    if (e.target.id === 'aiKeyRemove') { const provider = $('#aiProvider').value; if (!confirm('Remove the saved key for this provider? Stages that use it stop working until a new key is added.')) return; try { state.model.ai = await api('/api/ai', { method: 'PATCH', body: { provider, clear: true } }); await refreshModel(); settingsModal(true); toast('Key removed.'); } catch (err) { toast(err.message, 'error'); } return; }
+    if (e.target.id === 'aiModelsReset') { try { state.model.ai = await api('/api/ai', { method: 'PATCH', body: { stages: { ...state.model.ai.defaults } } }); await refreshModel(); settingsModal(true); toast('Recommended models restored.'); } catch (err) { toast(err.message, 'error'); } return; }
+    if (e.target.id === 'signOut') { try { await api('/api/session', { method: 'DELETE' }); location.reload(); } catch (err) { toast(err.message, 'error'); } return; }
     const tab = e.target.closest('[data-task-tab]'); if (tab) { state.dirty = false; state.taskTab = tab.dataset.taskTab; state.editingArtifact = false; renderDrawer(); return; }
     const atab = e.target.closest('[data-artifact-tab]'); if (atab) { state.dirty = false; state.taskTab = 'artifact'; state.artifactTab = atab.dataset.artifactTab; state.artifactVersion = null; state.editingArtifact = false; renderDrawer(); return; }
     const gen = e.target.closest('[data-generate]');
@@ -611,6 +693,34 @@ function installListeners() {
       try { await api('/api/integrations', { method: 'PATCH', body }); await refresh(false, true); settingsModal(true); toast('Integration settings saved.'); } catch (err) { toast(err.message, 'error'); }
       return;
     }
+    if (e.target.id === 'signInForm') {
+      e.preventDefault();
+      try { state.auth = await api('/api/session', { method: 'POST', body: { passcode: String(new FormData(e.target).get('passcode') || '') } }); gateOpen = false; settingsModal(false); await start(); }
+      catch (err) { toast(err.message, 'error'); }
+      return;
+    }
+    if (e.target.id === 'passcodeForm') {
+      e.preventDefault();
+      try { state.auth = await api('/api/session/passcode', { method: 'POST', body: { passcode: String(new FormData(e.target).get('passcode') || '') } }); settingsModal(true); toast('Passcode saved. Share it with the team for the public MAIOS address.'); }
+      catch (err) { toast(err.message, 'error'); }
+      return;
+    }
+    if (e.target.id === 'aiKeyForm') {
+      e.preventDefault(); const fd = new FormData(e.target), provider = String(fd.get('provider')), key = String(fd.get('key') || '').trim();
+      if (!key) return toast('Paste the API key first.', 'error');
+      try {
+        state.model.ai = await api('/api/ai', { method: 'PATCH', body: { provider, key } }); state.aiProvider = provider;
+        await refreshModel(); settingsModal(true);
+        try { await api('/api/ai/test', { method: 'POST', body: { provider } }); toast('Key saved and verified.'); } catch (err) { toast(`Key saved, but the test failed: ${err.message}`, 'error'); }
+      } catch (err) { toast(err.message, 'error'); }
+      return;
+    }
+    if (e.target.id === 'aiModelsForm') {
+      e.preventDefault();
+      const stages = Object.fromEntries($$('select.stage-model', e.target).map((x) => [x.name, x.value]).filter(([, v]) => v && v !== '__custom'));
+      try { state.model.ai = await api('/api/ai', { method: 'PATCH', body: { stages } }); await refreshModel(); settingsModal(true); toast('Models saved. New generations use them.'); } catch (err) { toast(err.message, 'error'); }
+      return;
+    }
     if (e.target.id === 'brandForm') { e.preventDefault(); try { await api('/api/brand', { method: 'PATCH', body: Object.fromEntries(new FormData(e.target).entries()) }); toast('Voice and QA profiles saved.'); } catch (err) { toast(err.message, 'error'); } return; }
     if (e.target.id === 'settingsForm') {
       e.preventDefault(); const fd = new FormData(e.target); const url = String(fd.get('url') || '').trim().replace(/\/$/, '');
@@ -623,6 +733,12 @@ function installListeners() {
   });
   document.addEventListener('change', async (e) => {
     if (e.target.id === 'detailStage') await changeTaskStage(state.selected, e.target.value);
+    if (e.target.id === 'aiProvider') { state.aiProvider = e.target.value; settingsModal(true); }
+    if (e.target.matches?.('select.stage-model') && e.target.value === '__custom') {
+      const id = (prompt('Model ID as provider:model, for example anthropic:claude-opus-5-5, openai:gpt-6.1-sol or google:gemini-3.8-flash') || '').trim();
+      if (!id) { e.target.value = state.model.ai?.stages?.[e.target.name] || ''; return; }
+      const opt = document.createElement('option'); opt.value = id; opt.textContent = `${id} (custom)`; e.target.insertBefore(opt, e.target.lastElementChild); e.target.value = id;
+    }
     if (e.target.id === 'assetInput') handleAssetUpload(e.target);
     if (e.target.id === 'artifactVersion') { state.artifactVersion = Number(e.target.value); state.editingArtifact = false; renderDrawer(); }
   });
@@ -649,12 +765,23 @@ function paintIdentity() {
 const kbUi = makeKnowledgeUI({ api, html, toast, commissionModal });
 async function boot() {
   installListeners(); kbUi.install(); paintIdentity();
+  const pill = $('#enginePill'); if (pill && HOSTED) pill.textContent = 'MAIOS CLOUD ENGINE';
+  if (HOSTED) {
+    try { state.auth = await api('/api/session'); } catch (e) { toast(e.message, 'error'); }
+    if (state.auth && !state.auth.ok) return authGate(state.auth); // signing in calls start()
+  }
+  await start();
+}
+let started = false;
+async function start() {
+  if (started) return; started = true;
   await kbUi.initialize();
   const d = await refresh(false); await refreshModel();
-  if (!d) { settingsModal(true); toast('Connect your local MAIOS backend to get started.', 'error'); }
+  if (!d) { settingsModal(true); toast(HOSTED ? 'Could not load the studio. Reload the page, or check Settings.' : 'Connect your local MAIOS backend to get started.', 'error'); }
+  else if (!state.model.connected && state.model.ai) { settingsModal(true); toast('Add an API key for the models below to start generating.', 'error'); }
   if (location.hash.startsWith('#task=')) openTask(location.hash.slice(6));
-  connectEvents();
-  // Safety net only: live events normally keep everything current.
-  setInterval(() => { if (document.visibilityState === 'hidden') return; if (!state.liveConnected) refresh(false); refreshModel(); if (state.view === 'activity' && state.data.jobs.some((j) => j.status === 'running')) renderRuns(); }, 15000);
+  if (HOSTED) startPolling(); else connectEvents();
+  // Safety net only: live events (local) or polling (hosted) normally keep everything current.
+  setInterval(() => { if (document.visibilityState === 'hidden' || gateOpen) return; if (!HOSTED && !state.liveConnected) refresh(false); refreshModel(); if (!HOSTED && state.view === 'activity' && state.data.jobs.some((j) => j.status === 'running')) renderRuns(); }, 15000);
 }
 boot();

@@ -31,13 +31,13 @@
       <nav class="board-switcher" id="boardSwitcher"></nav>
       <button class="new-board-tip" id="howItWorks"><span>✦</span><span>How automation works</span></button>
       <div class="sidebar-footer">
-        <div class="worker-card" id="workerCard"><div class="worker-pulse offline"></div><div><strong>Local inference</strong><small>Checking LM Studio...</small></div></div>
+        <div class="worker-card" id="workerCard"><div class="worker-pulse offline"></div><div><strong>AI models</strong><small>Checking…</small></div></div>
         <button class="footer-btn" id="settingsBtn"><span>⚙</span> Settings & connections</button>
         <div class="footer-line"><div class="user-avatar">M</div><span id="whoAmI">Mike</span><span class="footer-version">v0.4</span></div>
       </div>
     </aside>
     <main class="main">
-      <div class="topline"><div class="breadcrumbs">WORKSPACE <span>/</span> <strong>CONTENT STUDIO</strong></div><div class="topline-right"><span class="environment-pill">● <span>SELF-HOSTED ENGINE</span></span><button id="exportBtn" class="small-icon-btn" title="Export all data">↧</button><button id="settingsTopBtn" class="small-icon-btn" title="Settings">⚙</button></div></div>
+      <div class="topline"><div class="breadcrumbs">WORKSPACE <span>/</span> <strong>CONTENT STUDIO</strong></div><div class="topline-right"><span class="environment-pill">● <span id="enginePill">SELF-HOSTED ENGINE</span></span><button id="exportBtn" class="small-icon-btn" title="Export all data">↧</button><button id="settingsTopBtn" class="small-icon-btn" title="Settings">⚙</button></div></div>
       <div class="page-head">
         <div class="page-copy"><div class="eyebrow">PRODUCTION CONTROL</div><h1 id="boardTitle">MP FRESH <span class="title-spark">✦</span></h1><p id="boardSubtitle">Website content production pipeline</p></div>
         <div class="head-actions"><button id="refreshBtn" class="button ghost"><span>↻</span> Refresh</button><button id="commissionBtn" class="button primary"><span class="button-plus">＋</span> Commission content</button></div>
@@ -45,7 +45,7 @@
       <div class="metric-row" id="metrics"></div>
       <div class="board-toolbar" id="boardToolbar"><div class="view-tabs"><button class="view-tab active" id="tabBoard">▦ <span>Board</span></button><button class="view-tab" id="tabList">☷ <span>List</span></button></div><div class="toolbar-right"><label class="search"><span>⌕</span><input id="taskSearch" type="search" placeholder="Search content..." autocomplete="off" /></label><select id="priorityFilter" class="select-filter" aria-label="Filter by priority"><option value="all">All priorities</option><option value="P0">P0 Critical</option><option value="P1">P1 High</option><option value="P2">P2 Normal</option><option value="P3">P3 Low</option></select><button id="demoToggle" class="filter-button active" title="Toggle sample tasks">◉ Samples</button></div></div>
       <div id="viewContent" class="view-content"><div id="board" class="kanban-board"></div><div id="listView" class="list-view" hidden></div></div>
-      <div class="bottom-status"><span><span class="status-dot"></span> Local-first production engine</span><span id="lastSync">Initializing...</span><span>Drag cards between stages · ⌘K to search</span></div>
+      <div class="bottom-status"><span><span class="status-dot"></span> MAIOS production engine</span><span id="lastSync">Initializing...</span><span>Drag cards between stages · ⌘K to search</span></div>
     </main>
   </div>
   <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>

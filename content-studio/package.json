@@ -1,9 +1,9 @@
 {
   "name": "maios-content-studio",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
-  "description": "Self-hosted, no-n8n content commissioning and production board for Marketing Powered",
+  "description": "Content commissioning and production board for Marketing Powered. Runs inside MAIOS on Vercel or on its own as a local server",
   "engines": {
     "node": ">=22.13.0"
   },
@@ -13,7 +13,7 @@
     "demo": "node scripts/demo.mjs",
     "mock-model": "node scripts/mock-model.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check server.mjs && node --check db.mjs && node --check agents.mjs && node --check knowledge.mjs && node --check qa-checks.mjs && node --check integrations.mjs && node --check public/app.js && node --check public/knowledge-ui.js && node --check public/markdown.js",
+    "check": "node --check server.mjs && node --check core.mjs && node --check hosted.mjs && node --check providers.mjs && node --check db.mjs && node --check agents.mjs && node --check knowledge.mjs && node --check qa-checks.mjs && node --check integrations.mjs && node --check public/app.js && node --check public/knowledge-ui.js && node --check public/markdown.js",
     "export": "node scripts/export.mjs"
   }
 }

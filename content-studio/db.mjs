@@ -3,11 +3,17 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { DATA_DIR, VERSION } from './env.mjs';
+import { runtime } from './runtime.mjs';
+import { dirname } from 'node:path';
 import { publish } from './events.mjs';
 import { hasBlockingFinding } from './qa-checks.mjs';
 
 const stamp = () => new Date().toISOString();
 let database;
+let databasePath = null; // set by useDatabaseFile (hosted runtime); default is DATA_DIR/content-studio.sqlite
+/** Point the studio at a different database file. Closes the current connection; the next getDb() opens the new file. */
+export function useDatabaseFile(path) { if (database) { try { database.close(); } catch { /* already closed */ } } database = undefined; databasePath = path; }
+export const changeCount = () => (database ? database.prepare('SELECT total_changes() AS n').get().n : 0);
 const json = (v) => JSON.stringify(v ?? null);
 const fromJson = (v, fallback) => { try { return v ? JSON.parse(v) : fallback; } catch { return fallback; } };
 
@@ -48,7 +54,6 @@ export const PIPELINE_LANES = {
 };
 
 const SCHEMA = `
-PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
 PRAGMA busy_timeout=4000;
 CREATE TABLE IF NOT EXISTS boards (
@@ -130,8 +135,11 @@ const jobRow = (row) => (row ? { ...row, options: fromJson(row.options, {}) } : 
 
 export function getDb() {
   if (!database) {
-    mkdirSync(DATA_DIR, { recursive: true });
-    database = new DatabaseSync(resolve(DATA_DIR, 'content-studio.sqlite'));
+    const file = databasePath || resolve(DATA_DIR, 'content-studio.sqlite');
+    mkdirSync(dirname(file), { recursive: true });
+    database = new DatabaseSync(file);
+    // The hosted runtime uploads the whole file after each write, so it keeps everything in the main file (no WAL).
+    database.exec(runtime.hosted ? 'PRAGMA journal_mode=DELETE;' : 'PRAGMA journal_mode=WAL;');
     database.exec(SCHEMA);
     migrate(database);
     for (const board of BOARDS) {
@@ -148,8 +156,10 @@ export function getDb() {
     const row = database.prepare('SELECT value FROM settings WHERE key=?').get('seeded');
     if (!row && process.env.NO_DEMO_SEED !== '1') seedData(database);
     database.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').run('seeded', 'yes');
-    // On restart, safely recover jobs that were interrupted by process termination.
-    database.prepare("UPDATE jobs SET status='queued',started_at=NULL,run_after=? WHERE status='running'").run(stamp());
+    // Recover jobs interrupted by a process ending. Hosted, other instances may be mid-generation, so only jobs
+    // that have been "running" far longer than any generation can take are put back in the queue.
+    if (runtime.hosted) database.prepare("UPDATE jobs SET status='queued',started_at=NULL,run_after=? WHERE status='running' AND started_at < ?").run(stamp(), new Date(Date.now() - 20 * 60000).toISOString());
+    else database.prepare("UPDATE jobs SET status='queued',started_at=NULL,run_after=? WHERE status='running'").run(stamp());
   }
   return database;
 }

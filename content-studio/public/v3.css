@@ -92,3 +92,11 @@ mark.verify{background:#4a3a16;color:#ffd98a;padding:1px 5px;border-radius:4px;f
 #lastSync{display:inline-flex;align-items:center}
 @media(max-width:640px){.stepper{flex-wrap:wrap}.step-line{display:none}.step{flex:1 1 45%}}
 @media(prefers-reduced-motion:reduce){.live-dot.on,.progress-mark.active,#liveOutput::after{animation:none}}
+
+/* v0.5: AI models & API keys, hosted passcode */
+#workerCard { cursor: pointer; }
+.provider-status { margin: 8px 0 14px; display: grid; gap: 4px; }
+.field-hint.bad-hint { color: #f0a35a; }
+#settingsModal ol { margin: 8px 0 14px 18px; line-height: 1.7; }
+#settingsModal select { width: 100%; }
+#settingsModal .settings-field select { background:#171f2d; border:1px solid #354057; border-radius:8px; padding:10px 12px; color:#eff2f7; font-size:12px; min-width:0; }

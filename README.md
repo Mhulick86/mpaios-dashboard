@@ -130,6 +130,11 @@ mpaios/
 
 ## Content Studio and MP FRESH
 
-- `content-studio/`: the MAIOS Content Studio (Node 22, SQLite, local LM Studio). Its browser UI is copied to `public/studio/` at build time by `scripts/sync-studio.mjs` and shown inside MAIOS at **/content-studio**. The server, knowledge pack and data are never part of the website.
-- Run the backend on the computer that runs LM Studio: `npm run studio` (or `cd content-studio && node server.mjs`). To use it from the hosted MAIOS, start it with `CORS_ORIGIN=https://maios.marketingpowered.ai,https://mpaios.vercel.app` and a `MAIOS_API_TOKEN`, then enter the token in the studio's Settings. Try it without LM Studio: `npm run studio:demo`. Tests: `npm run studio:test`.
+- `content-studio/`: the MAIOS Content Studio. It runs **inside MAIOS on Vercel** at **/content-studio**: the browser UI is copied to `public/studio/` at build time (`scripts/sync-studio.mjs`) and its API runs as `app/api/studio/[...path]` (see `lib/contentStudio.ts`). Nothing runs on anyone's computer.
+  - Generation goes to the cloud model chosen per stage in the studio's **Settings > AI models & API keys** (Anthropic, OpenAI or Google). Keys entered there are encrypted (AES-256-GCM with `STUDIO_SECRET_KEY`) before they are stored and are never sent back to the browser; without a saved key the studio falls back to `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GOOGLE_AI_API_KEY` from the project environment.
+  - Storage: the studio's SQLite database, uploads and generated images live in the private Blob store `maios-content-studio` (`BLOB_READ_WRITE_TOKEN`). Writes use ETag-conditional uploads so concurrent function instances never overwrite each other.
+  - Background work: generations continue after the response (`after()`), and Vercel Cron calls `/api/studio/cron` every 5 minutes (`CRON_SECRET`) to pick up anything left in the queue.
+  - Access: on `*.vercel.app` (Vercel Authentication) the studio opens directly; on `maios.marketingpowered.ai` it asks for a team passcode, set once in the studio's Settings from `mpaios.vercel.app/content-studio`.
+  - Required env: `BLOB_READ_WRITE_TOKEN`, `STUDIO_SECRET_KEY` (32 random bytes, base64; changing it makes saved keys unreadable), `CRON_SECRET`.
+  - The studio can still run standalone on a laptop (`npm run studio`, demo: `npm run studio:demo`). Tests: `npm run studio:test`.
 - `docs/mp-fresh/`: the final MP FRESH workflow (Asana board, briefs, drafts, graphics, QC, measurement), with its prompts, schemas and QC rules. This is the spec for the content engine that will be built into MAIOS.

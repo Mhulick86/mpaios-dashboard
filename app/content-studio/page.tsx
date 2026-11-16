@@ -2,7 +2,7 @@
 
 /**
  * Content Studio inside MAIOS. The studio UI is served as static files from /studio/ (see scripts/sync-studio.mjs)
- * and talks to the Content Studio backend running next to LM Studio (default http://127.0.0.1:4173).
+ * and talks to its API at /api/studio (app/api/studio), which runs on Vercel with cloud models. Nothing runs locally.
  */
 export default function ContentStudioPage() {
   return (

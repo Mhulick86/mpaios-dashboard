@@ -6,10 +6,12 @@
  * never written to events, and are not part of the JSON export.
  */
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { runtime } from './runtime.mjs';
+import { assets } from './assets.mjs';
+import { providerKey, saveAiSettings } from './providers.mjs';
 import { join } from 'node:path';
 import { getDb, getTask, event } from './db.mjs';
-import { DATA_DIR, clamp } from './env.mjs';
+import { clamp } from './env.mjs';
 import { publish } from './events.mjs';
 import { renderMarkdown } from './public/markdown.js';
 
@@ -50,8 +52,9 @@ const imageModel = () => setting('gemini_image_model') || DEFAULT_IMAGE_MODEL;
 /** What the browser may know: whether things are configured, never the credentials themselves. */
 export function integrationStatus() {
   return {
-    gemini: { configured: !!setting('gemini_api_key'), model: imageModel(), auto: flag('gemini_auto', true), count: imageCount(), maxCount: IMAGE_SPECS.length, text: imageText(), brandSystem: brandSystem() },
+    gemini: { configured: !!providerKey('google'), model: imageModel(), auto: flag('gemini_auto', true), count: imageCount(), maxCount: IMAGE_SPECS.length, text: imageText(), brandSystem: brandSystem() },
     google: {
+      available: !runtime.hosted, // the Google Docs connection uses a desktop sign-in flow; not offered on the hosted studio
       clientConfigured: !!(setting('google_client_id') && setting('google_client_secret')),
       connected: !!setting('google_refresh_token'), email: setting('google_email'),
       auto: flag('google_auto', true), share: flag('google_share', false)
@@ -61,8 +64,8 @@ export function integrationStatus() {
 export function saveIntegrationSettings(patch = {}) {
   const text = (v, max) => String(v ?? '').trim().slice(0, max);
   // Secrets are write-only: an empty field means "keep what is stored", so the form never has to echo them.
-  if (text(patch.gemini_api_key, 300)) saveSetting('gemini_api_key', text(patch.gemini_api_key, 300));
-  if (patch.gemini_clear === true) saveSetting('gemini_api_key', '');
+  if (text(patch.gemini_api_key, 300)) saveAiSettings({ provider: 'google', key: text(patch.gemini_api_key, 300) });
+  if (patch.gemini_clear === true) { saveAiSettings({ provider: 'google', clear: true }); saveSetting('gemini_api_key', ''); }
   if (patch.gemini_image_model !== undefined) {
     const model = text(patch.gemini_image_model, 120);
     if (model && !/^[a-z0-9][a-z0-9.\-_]*$/i.test(model)) throw new IntegrationError('Image model must be a Gemini model ID such as gemini-nano-banana-2.1.');
@@ -87,7 +90,7 @@ export function saveIntegrationSettings(patch = {}) {
 /** Strip anything that looks like a credential before an upstream error reaches a log, an event or the browser. */
 function scrub(message) {
   let out = String(message ?? '');
-  for (const key of ['gemini_api_key', 'google_client_secret', 'google_refresh_token']) { const v = setting(key); if (v) out = out.split(v).join('[hidden]'); }
+  for (const v of [providerKey('google'), setting('google_client_secret'), setting('google_refresh_token')]) { if (v) out = out.split(v).join('[hidden]'); }
   return out.replace(/ya29\.[\w.-]+/g, '[hidden]').slice(0, 400);
 }
 async function upstreamError(r, service) {
@@ -149,7 +152,7 @@ export function buildImagePrompts(task, draftBody, { brand = brandSystem(), coun
 }
 
 async function geminiImage(prompt, aspectRatio) {
-  const key = setting('gemini_api_key'); if (!key) throw new IntegrationError('Add a Google Gemini API key in Settings first.');
+  const key = providerKey('google'); if (!key) throw new IntegrationError('Add a Google (Gemini) API key in Settings first.');
   let r;
   try {
     r = await fetch(`${GEMINI_BASE}/models/${encodeURIComponent(imageModel())}:generateContent`, {
@@ -180,36 +183,40 @@ export const imageRun = (taskId) => imageRuns.get(taskId) || null;
 
 /** Generate the brand graphic set for the latest draft and attach each image to the task. Runs in the background. */
 export function startImageGeneration(taskId, actor = 'MAIOS') {
-  if (!setting('gemini_api_key')) throw new IntegrationError('Add a Google Gemini API key in Settings first.');
+  if (!providerKey('google')) throw new IntegrationError('Add a Google (Gemini) API key in Settings first.');
   const task = getTask(taskId); if (!task) throw new IntegrationError('Task not found.');
   if (imageRuns.get(taskId)?.status === 'running') return imageRuns.get(taskId);
   const draft = task.artifacts.filter((a) => a.kind === 'draft').sort((a, b) => b.version - a.version)[0];
   if (!draft) throw new IntegrationError('Write the draft first. The graphics are generated from it.');
   const prompts = buildImagePrompts(task, draft.body);
   const run = { status: 'running', done: 0, failed: 0, total: prompts.length, error: '', started_at: stamp() };
-  imageRuns.set(taskId, run);
   event(taskId, 'images', `Generating ${prompts.length} image${prompts.length > 1 ? 's' : ''} with ${imageModel()}`, actor, { draftVersion: draft.version });
-  const dir = join(DATA_DIR, 'assets'); mkdirSync(dir, { recursive: true });
-  (async () => {
+  // Registered when the work actually starts: hosted, a request can be re-run after a concurrent write, and only the
+  // attempt that saved schedules its background work.
+  runtime.defer(async () => {
+    if (imageRuns.get(taskId)?.status === 'running') return;
+    imageRuns.set(taskId, run);
     for (let i = 0; i < prompts.length; i++) {
       const { label, prompt, aspect } = prompts[i];
       try {
         const img = await geminiImage(prompt, aspect);
         const id = randomUUID(), file = `${id}.${IMAGE_EXT[img.mime]}`;
-        writeFileSync(join(dir, file), img.data, { flag: 'wx' });
+        await assets().write(file, img.data);
         const name = `AI image ${String(i + 1).padStart(2, '0')} · ${label}`;
-        getDb().prepare('INSERT INTO assets (id,task_id,name,mime,path,size,created_at) VALUES (?,?,?,?,?,?,?)').run(id, taskId, name, img.mime, file, img.data.length, stamp());
+        await runtime.commit(() => {
+          getDb().prepare('INSERT INTO assets (id,task_id,name,mime,path,size,created_at) VALUES (?,?,?,?,?,?,?)').run(id, taskId, name, img.mime, file, img.data.length, stamp());
+          event(taskId, 'asset', `Image ${i + 1} of ${prompts.length} generated`, 'MAIOS', { name, model: imageModel() });
+        });
         run.done++;
-        event(taskId, 'asset', `Image ${i + 1} of ${prompts.length} generated`, 'MAIOS', { name, model: imageModel() });
       } catch (e) {
         run.failed++; run.error = scrub(e?.message || e);
-        event(taskId, 'warning', `Image ${i + 1} of ${prompts.length} failed: ${run.error}`, 'MAIOS');
+        await runtime.commit(() => event(taskId, 'warning', `Image ${i + 1} of ${prompts.length} failed: ${run.error}`, 'MAIOS'));
         if (e?.fatal) break; // a bad key, model or billing problem will fail every remaining image too
       }
     }
     run.status = run.done ? 'done' : 'failed';
-    event(taskId, 'images', run.done ? `${run.done} of ${run.total} images attached${run.failed ? `, ${run.failed} failed` : ''}` : `Image generation failed: ${run.error}`, 'MAIOS');
-  })().catch((e) => { run.status = 'failed'; run.error = scrub(e?.message || e); publish('task', { taskId, type: 'images' }); });
+    await runtime.commit(() => event(taskId, 'images', run.done ? `${run.done} of ${run.total} images attached${run.failed ? `, ${run.failed} failed` : ''}` : `Image generation failed: ${run.error}`, 'MAIOS'));
+  });
   return run;
 }
 
@@ -352,7 +359,7 @@ export async function syncDoc(taskId, kind = 'draft', actor = 'MAIOS') {
 /** Called after any artifact is saved. Never throws: an integration problem must not fail the content pipeline. */
 export function afterArtifact(taskId, kind) {
   const status = integrationStatus();
-  if (DOC_KINDS.includes(kind) && status.google.connected && status.google.auto && (kind === 'draft' || taskDocs(taskId).some((d) => d.kind === kind))) {
+  if (!runtime.hosted && DOC_KINDS.includes(kind) && status.google.connected && status.google.auto && (kind === 'draft' || taskDocs(taskId).some((d) => d.kind === kind))) {
     syncDoc(taskId, kind).catch((e) => { try { event(taskId, 'warning', `Google Doc was not updated: ${scrub(e?.message || e)}`, 'MAIOS'); } catch { /* task removed */ } });
   }
   if (kind === 'graphics' && status.gemini.configured && status.gemini.auto) {
@@ -362,7 +369,7 @@ export function afterArtifact(taskId, kind) {
 
 /** Cheap credential check for the Settings screen: lists models, generates nothing, costs nothing. */
 export async function testGemini() {
-  const key = setting('gemini_api_key'); if (!key) throw new IntegrationError('Add a Google Gemini API key first.');
+  const key = providerKey('google'); if (!key) throw new IntegrationError('Add a Google (Gemini) API key first.');
   let r;
   try { r = await fetch(`${GEMINI_BASE}/models?pageSize=1000`, { signal: AbortSignal.timeout(15000), headers: { 'x-goog-api-key': key } }); }
   catch (e) { throw new IntegrationError(`Could not reach Gemini (${e?.cause?.code || e?.message || 'network error'}).`); }

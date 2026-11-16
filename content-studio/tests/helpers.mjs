@@ -23,7 +23,7 @@ export async function startStudio(t, { env = {}, model = true, dataDir } = {}) {
   const port = await freePort();
   const child = spawn(process.execPath, ['server.mjs'], {
     cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), DATA_DIR: dir, NO_DEMO_SEED: '1', LM_STUDIO_BASE_URL: `http://127.0.0.1:${modelPort}/v1`, AUTO_GENERATE_ON_MOVE: 'true', MAIOS_API_TOKEN: '', CORS_ORIGIN: '', ...env }
+    env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), DATA_DIR: dir, NO_DEMO_SEED: '1', LM_STUDIO_BASE_URL: `http://127.0.0.1:${modelPort}/v1`, STUDIO_MODEL_BRIEF: 'lmstudio:auto', STUDIO_MODEL_DRAFT: 'lmstudio:auto', STUDIO_MODEL_GRAPHICS: 'lmstudio:auto', STUDIO_MODEL_QA: 'lmstudio:auto', ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', GEMINI_API_KEY: '', GOOGLE_AI_API_KEY: '', GOOGLE_API_KEY: '', AUTO_GENERATE_ON_MOVE: 'true', MAIOS_API_TOKEN: '', CORS_ORIGIN: '', ...env }
   });
   const logs = { stderr: '', stdout: '' };
   child.stderr.on('data', (c) => { logs.stderr += c; }); child.stdout.on('data', (c) => { logs.stdout += c; });

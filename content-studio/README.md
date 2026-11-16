@@ -1,4 +1,13 @@
-# MAIOS Content Studio v0.3 | Knowledge-powered
+# MAIOS Content Studio v0.5 | Knowledge-powered
+
+## What changed in v0.5: runs inside MAIOS on cloud models
+
+- **No local compute.** Inside MAIOS (maios.marketingpowered.ai/content-studio) the studio's API runs on Vercel functions (`hosted.mjs`, mounted by MAIOS at `/api/studio`). Its database, uploads and generated images are kept in private Vercel Blob storage, and generations keep running after the browser tab closes.
+- **AI models & API keys** in Settings: pick a provider (Anthropic, OpenAI, Google) from the dropdown, paste its key once, and it is encrypted (AES-256-GCM) and reused for every run. Only the last 4 characters are ever shown again. A model dropdown per stage (brief, draft, graphics plan, QA) with prices; defaults are Claude Sonnet 5.5 for brief, draft and QA and Claude Haiku 5.5 for the graphics plan. Any other model ID can be typed in.
+- **Passcode** on the public address; the Vercel-protected `*.vercel.app` address opens without one and is where the passcode is set.
+- The local server (`node server.mjs`) still works and uses the same cloud models; LM Studio remains available there as an optional per-stage choice.
+
+The rest of this file describes the standalone (local) setup from v0.3 and v0.4.
 
 **An actual, runnable MP FRESH-style content commissioning board for Marketing Powered.** This is an early operational application, not a static mockup. It uses a dependency-free Node.js 22 server, SQLite for persistence, a browser UI, a durable local job queue, and LM Studio's OpenAI-compatible local model API. **No n8n. No required SaaS API or cloud model.**
 
@@ -207,7 +216,7 @@ node scripts/export.mjs ./my-content-backup.json
 
 For full recovery, stop the server and back up the entire `data/` folder. To start with no sample tasks, use **Settings > Remove sample tasks**, or set `NO_DEMO_SEED=1` before first startup.
 
-## Host the frontend on Vercel, keep compute local
+## Standalone: host the frontend on Vercel, keep compute local (superseded by the MAIOS-hosted studio)
 
 You can deploy the `public/` folder as a static frontend on Vercel. The root `vercel.json` is configured with `outputDirectory: "public"`; choose the **Other** framework preset in Vercel if prompted.
 

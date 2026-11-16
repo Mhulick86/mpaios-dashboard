@@ -1,6 +1,6 @@
 /**
  * Knowledge Library and Specialist Instruction Studio for MAIOS Content Studio.
- * All data and edits persist on the self-hosted backend, never in Vercel storage.
+ * All data and edits persist on the studio backend (local SQLite, or private Vercel Blob storage inside MAIOS).
  */
 export function makeKnowledgeUI({api,html,toast,commissionModal}){
  const $=(q,root=document)=>root.querySelector(q);
@@ -49,7 +49,7 @@ export function makeKnowledgeUI({api,html,toast,commissionModal}){
  function renderInstructions(){
   const board=$('#board'),list=$('#listView');if(!list)return;board.hidden=true;list.hidden=false;
   list.innerHTML=`<div class="kb-shell"><div class="kb-heading"><div><div class="eyebrow">CODE-BASED AGENT EXECUTION</div><h2>Agent instruction studio</h2><p>Four stage-specific specialists backed by the original 33-agent MPAIOS reference library. Edit behavioral rules without changing application code.</p></div><div class="kb-heading-actions"><button class="button ghost" data-kb-open="knowledge">Open knowledge library ↗</button></div></div>
-  <div class="agent-intro"><div class="agent-intro-icon">✧</div><div><strong>Instructions are actually used in LM Studio requests.</strong><p>Every generation combines a fixed safety baseline, the selected specialist's editable rules, the task commission, previous artifacts, voice profile and a bounded set of relevant knowledge excerpts.</p></div></div>
+  <div class="agent-intro"><div class="agent-intro-icon">✧</div><div><strong>These instructions are sent with every model request.</strong><p>Every generation combines a fixed safety baseline, the selected specialist's editable rules, the task commission, previous artifacts, voice profile and a bounded set of relevant knowledge excerpts.</p></div></div>
   <div class="kb-section-title"><h3>Execution specialists</h3><span>4 active stages</span></div><div class="agent-grid">${agents.map(x=>`<button class="agent-card" data-agent-kind="${html(x.kind)}"><div class="agent-card-head"><div class="agent-symbol">${{brief:'◎',draft:'✎',graphics:'▧',qa:'✓'}[x.kind]}</div><span class="kb-trust policy">Revision ${x.revision}</span></div><h3>${html(x.title)}</h3><p>${html(short(x.instructions,260))}</p><div class="agent-card-foot"><span>${html(x.model_role.split('_').join(' '))}</span><strong>Open instructions →</strong></div></button>`).join('')}</div>
   <div class="kb-section-title"><h3>Commission playbooks</h3><span>${playbooks.length} ready-to-use production patterns</span></div>
   <div class="playbook-grid">${playbooks.map(p=>`<div class="playbook-card"><div class="playbook-icon">▦</div><h3>${html(p.title)}</h3><p>${html(p.description)}</p><div class="playbook-badges">${p.default_outputs.map(ch=>`<span>${html(ch)}</span>`).join('')}</div><div class="playbook-bottom"><small>${html(p.voice)} voice · ${p.graphics_count} visuals</small><button class="command-btn" data-use-playbook="${html(p.id)}">Commission ↗</button></div><div class="playbook-criteria">${html(p.acceptance)}</div></div>`).join('')}</div>
@@ -92,7 +92,7 @@ export function makeKnowledgeUI({api,html,toast,commissionModal}){
   <div class="detail-field full"><label class="field-label">MODEL ROUTING PROFILE</label><input name="model_role" value="${html(d.model_role)}" required /></div>
   <div class="detail-field full"><label class="field-label">DETAILED OPERATING INSTRUCTIONS</label><textarea name="instructions" class="kb-body-edit" style="min-height:400px" required>${html(d.instructions)}</textarea></div>
   <div class="detail-field full"><label class="field-label">ACCEPTANCE AND QUALITY CRITERIA</label><textarea name="success_criteria" rows="7" required>${html(d.success_criteria)}</textarea></div></div><div class="kb-editor-footer"><button class="button primary" type="submit">Save specialist instructions</button></div></form>
-  <div class="kb-source-meta"><strong>Source architecture</strong><p>The relevant original MPAIOS agents live in the knowledge library. This execution role is a condensed operating instruction that is actually attached to every relevant LM Studio job.</p><span>v${d.revision} · Updated ${html(d.updated_at?.slice(0,10))}</span></div></div>`;
+  <div class="kb-source-meta"><strong>Source architecture</strong><p>The relevant original MPAIOS agents live in the knowledge library. This execution role is a condensed operating instruction that is actually attached to every relevant generation job.</p><span>v${d.revision} · Updated ${html(d.updated_at?.slice(0,10))}</span></div></div>`;
  }
  function applyPlaybook(id){
   const p=playbooks.find(x=>x.id===id),form=$('#commissionForm');if(!p||!form)return;
@@ -107,7 +107,7 @@ export function makeKnowledgeUI({api,html,toast,commissionModal}){
  function commissionedSelect(){return `<div class="modal-field full"><label>PRODUCTION PLAYBOOK</label><select id="commissionPlaybook" name="playbook_id"><option value="">Custom commission</option>${playbooks.map(p=>`<option value="${html(p.id)}">${html(p.title)}</option>`).join('')}</select><span class="field-hint" id="playbookCriteria">Selecting a playbook fills the voice, channel mix, length and creative request. All fields remain editable.</span></div>`;}
  function renderTaskKnowledge(task){
    const area=$('#taskKnowledgeArea');if(!area)return;
-   area.innerHTML=`<div class="kb-preview-intro">See exactly which internal policies, historical source excerpts and specialist instructions will be supplied to LM Studio. Historical drafts are not authoritative factual sources.</div>
+   area.innerHTML=`<div class="kb-preview-intro">See exactly which internal policies, historical source excerpts and specialist instructions will be supplied to the model. Historical drafts are not authoritative factual sources.</div>
      <div class="kb-context-picker"><label>Generation stage</label><select id="taskContextKind">${['brief','draft','graphics','qa'].map(kind=>`<option value="${kind}" ${promptKind===kind?'selected':''}>${kind}</option>`).join('')}</select><button id="taskContextRefresh" class="command-btn">Refresh context</button></div><div id="taskContextContent" class="kb-context-loading">Retrieving knowledge context…</div>`;
    loadTaskContext(task.id);
  }
@@ -119,7 +119,7 @@ export function makeKnowledgeUI({api,html,toast,commissionModal}){
    area.innerHTML=`<div class="kb-context-stats"><strong>${r.sources.length} records</strong><span>≈ ${r.approxKnowledgeTokens.toLocaleString()} knowledge tokens</span><span>≈ ${(r.approxPromptTokens||0).toLocaleString()} tokens in the full prompt</span><span>${html(r.kind)} stage${r.mode==='revise'?' · revision':''}</span>${r.openFeedback?`<span>${r.openFeedback} open reviewer comment${r.openFeedback>1?'s':''} included</span>`:''}</div>
    <h4>Knowledge selected for this task</h4>${r.sources.map(x=>`<div class="kb-context-source"><div class="kb-record-top"><span class="kb-trust ${html(x.trust)}">${html(trusted[x.trust]||x.trust)}</span><span class="kb-source-type">${html(x.reason)}</span></div><strong>${html(x.title)}</strong><p>${html(short(x.snippet,170))}</p><small>${html(x.category)} · ${x.chars} characters</small></div>`).join('')}
    <h4>Actual sources used by completed agent jobs</h4>${used.length?`<p class="kb-editor-intro">${used.length} source references were recorded across generation jobs.</p>${used.slice(0,12).map(x=>`<div class="kb-job-source">${html(x.kind)} · ${html(x.title)}</div>`).join('')}`:'<p class="kb-editor-intro">No completed model jobs have recorded source usage yet.</p>'}
-   <details class="kb-prompt-inspector"><summary>Inspect exact LM Studio instructions and prompt</summary><strong>System instructions</strong><pre>${html(r.system)}</pre><strong>Commission, artifacts and relevant knowledge</strong><pre>${html(r.user)}</pre></details>`;
+   <details class="kb-prompt-inspector"><summary>Inspect the exact instructions and prompt sent to the model</summary><strong>System instructions</strong><pre>${html(r.system)}</pre><strong>Commission, artifacts and relevant knowledge</strong><pre>${html(r.user)}</pre></details>`;
   }catch(e){if(area)area.textContent='Unable to assemble prompt: '+e.message;}
  }
  function install(){

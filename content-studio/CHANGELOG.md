@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0
+
+- Runs inside MAIOS on Vercel: shared API core (`core.mjs`), hosted runtime (`hosted.mjs`) with the SQLite database in private Vercel Blob storage and ETag-conditional writes, background generation via `after()` and a cron backstop, polling instead of Server-Sent Events, cross-instance cancel.
+- Cloud model providers (`providers.mjs`): Anthropic (streaming, effort per stage, server-side refusal fallback), OpenAI Responses API, Google Gemini; LM Studio only for the local server.
+- Settings: provider dropdown with encrypted key storage (`secrets.mjs`), key test, per-stage model dropdowns.
+- Hosted access control: passcode with signed HttpOnly sessions; trusted on the Vercel-protected address.
+- Knowledge context budget raised to 30,000 characters for cloud models.
+- Tests: two-instance hosted test (no lost writes under conflicts, cross-instance cancel, encrypted keys).
+
 ## 0.4.0
 
 ### Fixed

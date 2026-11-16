@@ -43,13 +43,13 @@ test('commission, generate, QA, review, publish, and export without n8n',async(t
   modelServer=http.createServer(modelStub);
   await new Promise(resolve=>modelServer.listen(mport,'127.0.0.1',resolve));
   serverProc=spawn(process.execPath,['server.mjs'],{cwd:new URL('../',import.meta.url).pathname,
-    env:{...process.env,HOST:'127.0.0.1',PORT:String(port),DATA_DIR:temp,NO_DEMO_SEED:'1',LM_STUDIO_BASE_URL:`http://127.0.0.1:${mport}/v1`,AUTO_GENERATE_ON_MOVE:'true'},stdio:['ignore','pipe','pipe']});
+    env:{...process.env,HOST:'127.0.0.1',PORT:String(port),DATA_DIR:temp,NO_DEMO_SEED:'1',LM_STUDIO_BASE_URL:`http://127.0.0.1:${mport}/v1`,STUDIO_MODEL_BRIEF:'lmstudio:auto',STUDIO_MODEL_DRAFT:'lmstudio:auto',STUDIO_MODEL_GRAPHICS:'lmstudio:auto',STUDIO_MODEL_QA:'lmstudio:auto',AUTO_GENERATE_ON_MOVE:'true'},stdio:['ignore','pipe','pipe']});
   t.after(async()=>{serverProc.kill('SIGTERM');modelServer.closeAllConnections?.();await new Promise(resolve=>modelServer.close(resolve));rmSync(temp,{recursive:true,force:true});});
   let stderr='';serverProc.stderr.on('data',c=>stderr+=c.toString());
   await waitFor(async()=>{try{return(await request('/api/health')).ok}catch{return false}},14000);
   let b=await request('/api/bootstrap');
   assert.equal(b.boards.length,2);assert.equal(b.lanes.length,16);assert.equal(b.tasks.length,0);
-  const models=await request('/api/models');assert.equal(models.connected,true);assert.equal(models.models[0].id,'local-test-instruct');
+  const models=await request('/api/models');assert.equal(models.connected,true);assert.equal(models.ai.stages.draft,'lmstudio:auto');
   const order=await request('/api/commission','POST',{
     topic:'Owned AI vs rented marketing intelligence for hospital systems',outputs:['website','linkedin'],voice:'founder',priority:'P1',
     audience:'Hospital CMOs',objective:'Explain infrastructure economics',primary_keyword:'AI data sovereignty',
