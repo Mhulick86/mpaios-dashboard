@@ -200,6 +200,7 @@ async function callAnthropic({ model, apiKey, system, user, stage, t, onText }) 
       throw e;
     }
   } catch (e) {
+    if (/credit balance is too low|billing|insufficient.*(credit|quota)/i.test(String(e?.message))) throw new Error('The Anthropic account is out of API credit. Add credit at console.anthropic.com (Plans & Billing), or pick another provider for this stage in Settings > AI models & API keys, then press Retry.');
     if (e?.status === 401 || e?.status === 403) throw new Error(`Anthropic rejected the API key (HTTP ${e.status}). Check it in Settings.`);
     if (e?.status === 429 || e?.status >= 500 || e?.name === 'APIConnectionError') throw new ModelUnavailable(`Anthropic is unavailable right now: ${scrubKeys(e.message)}`);
     t.rethrow(e);
