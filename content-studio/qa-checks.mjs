@@ -114,6 +114,11 @@ export function deterministicQa(task, draftBody, corpus = []) {
   const placeholders = uniq((body.match(PLACEHOLDER) || []).map((x) => x.slice(0, 40)));
   if (placeholders.length) block.push(`Unresolved placeholder text: ${placeholders.slice(0, 5).join(', ')}.`);
   if (INTERNAL_KEYS.test(body)) block.push('Internal knowledge-base identifiers or source tags appear in the draft. Remove them before publishing.');
+  // Working notes and placeholders render publicly on the site, so they block like [VERIFY] does.
+  const notes = uniq((body.match(/\[(?:PHONE|INTERNAL LINK|EVIDENCE SLOT|EVIDENCE|TBD|TODO|INSERT|PLACEHOLDER|CONFIRM)\b[^\]]*\]/gi) || []).map((x) => x.slice(0, 40)));
+  if (notes.length) block.push(`Bracketed working notes in the copy: ${notes.slice(0, 5).join(', ')}.`);
+  if (/\]\(#[^)]*\)/.test(body)) block.push('Links pointing to "#" in the copy. Link a real page or remove the link.');
+  if (/^#{1,6}\s*(?:production notes|editor(?:'s)? notes|notes for (?:the )?(?:editor|designer|developer)|fact[- ]check(?:ing)?(?: notes| log)?|internal notes|graphics?(?: notes| plan)?|suggested internal links)\b|not for publication/im.test(body)) block.push('Production, editor or fact-check notes are in the copy. The draft must contain only the published page.');
   if (/^\s*(?:sure|certainly|of course|here(?:'s| is| are)|absolutely|great question)\b[^\n]{0,120}[:!.]\s*\n/i.test(body) || /\b(?:let me know if|i hope this helps|feel free to ask|would you like me to)\b/i.test(body.slice(-400))) {
     review.push('Chat-style preamble or sign-off detected. Strip assistant chatter so only the publishable piece remains.');
   }
@@ -127,10 +132,12 @@ export function deterministicQa(task, draftBody, corpus = []) {
   if (hype.length) review.push(`Generic AI-hype phrasing: ${hype.slice(0, 6).map((p) => `"${p}"`).join(', ')}.`);
 
   // Claims that need evidence in regulated marketing.
-  // House rule: no number unless it was supplied and is cited. A figure counts as cited when its line carries a [n] marker.
-  const uncited = uniq(body.split('\n').filter((line) => !CITATION.test(line) && !SOURCES_HEADING.test(line)).flatMap((line) => line.match(NUMERIC) || []).map((x) => x.trim()));
+  // House rule: no number unless it is sourced. A figure counts as cited when its paragraph carries a [n] marker or an
+  // inline link to an outside source (the writer cites what it verified as [source](url)).
+  const sourced = (para) => CITATION.test(para) || /\]\(https?:\/\/(?!(?:www\.)?marketingpowered\.ai)[^)]+\)/i.test(para);
+  const uncited = uniq(body.split(/\n\s*\n|\n(?=[-*]\s|\d+[.)]\s|#)/).filter((para) => !sourced(para) && !SOURCES_HEADING.test(para)).flatMap((para) => para.match(NUMERIC) || []).map((x) => x.trim()));
   const cited = uniq((body.match(NUMERIC) || []).map((x) => x.trim())).length - uncited.length;
-  if (uncited.length) review.push(`Numeric claims need a source on file: ${uncited.slice(0, 6).join(', ')}${uncited.length > 6 ? ` and ${uncited.length - 6} more` : ''}. Add a bracketed citation like [1] on the same line, or remove the figure.${cited > 0 ? ` (${cited} other figure${cited > 1 ? 's are' : ' is'} cited.)` : ''}`);
+  if (uncited.length) review.push(`Numeric claims need a source on file: ${uncited.slice(0, 6).join(', ')}${uncited.length > 6 ? ` and ${uncited.length - 6} more` : ''}. Cite the source inline as a link in the same paragraph, or remove the figure.${cited > 0 ? ` (${cited} other figure${cited > 1 ? 's are' : ' is'} cited.)` : ''}`);
   const stripped = HOUSE_STRIP.filter(([re, , exceptVoice]) => re.test(body) && task.voice !== exceptVoice).map(([, label]) => label);
   if (stripped.length) review.push(`House strip-outs: the draft ${stripped.join('; ')}. Editorial review removes these.`);
   const absolutes = uniq((body.match(ABSOLUTES) || []).map((x) => x.toLowerCase()));
@@ -155,14 +162,12 @@ export function deterministicQa(task, draftBody, corpus = []) {
     if (!metaTitle && !metaDesc) review.push('No meta title or meta description found.');
     // Citations and links: bracketed numbers with a source list, plus internal and outbound links.
     if (words > 400) {
-      const hasMarkers = CITATION.test(body), hasList = SOURCES_HEADING.test(body);
-      if (!hasMarkers) review.push('No bracketed citations like [1] found. Long-form pages cite their sources with numbered markers and a source list.');
-      else if (!hasList) review.push('Bracketed citations are used but there is no Sources section listing them.');
+      // Sources are cited inline as links; numbered [n] markers are optional but then need a Sources list.
+      if (CITATION.test(body) && !SOURCES_HEADING.test(body)) review.push('Bracketed citations are used but there is no Sources section listing them.');
       const links = [...body.matchAll(/\]\(([^)\s]+)[^)]*\)/g)].map((m) => m[1]).concat(body.match(/(?<![(\w])https?:\/\/[^\s)>\]]+/g) || []);
       const internal = links.filter((u) => /^\/(?!\/)/.test(u) || /^https?:\/\/(?:www\.)?marketingpowered\.ai\b/i.test(u));
       const outbound = links.filter((u) => /^https?:\/\//i.test(u) && !/^https?:\/\/(?:www\.)?marketingpowered\.ai\b/i.test(u));
       if (!internal.length) review.push('No internal links found. Link to related Marketing Powered pages.');
-      if (!outbound.length) review.push('No outbound links found. Link the sources behind the claims.');
     }
     const keyword = String(task.primary_keyword || '').trim().toLowerCase();
     if (keyword && !lower.includes(keyword)) review.push(`Primary keyword "${task.primary_keyword}" does not appear in the copy.`);

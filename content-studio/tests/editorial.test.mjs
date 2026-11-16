@@ -8,15 +8,15 @@ const web = { channel: 'website', content_type: 'article', word_count: 500, prim
 const filler = 'Treatment centers that own their reporting make faster budget decisions and keep their history when a vendor changes. '.repeat(30);
 
 test('house editing rules: strip-outs, uncited figures, citations and links', () => {
-  const draft = `# Title\n\nMeta title: Short\n\n## Section\n\n${filler}\nMike Hulick managed $50 million in spend at Haven Health. Marketing Powered AI grew leads 40%.\nAdmissions rose 12% in a year [1].\n`;
+  const draft = `# Title\n\nMeta title: Short\n\n## Section\n\n${filler}\nMike Hulick managed $50 million in spend at Haven Health. Marketing Powered AI grew leads 40%.\n\nAdmissions rose 12% in a year [1].\n`;
   const r = deterministicQa(web, draft, []);
   const all = r.review.join('\n');
   assert.match(all, /House strip-outs:.*names Mike Hulick.*"\$50 million".*"AI" in the brand name.*former employer/);
   assert.match(all, /Numeric claims need a source on file: .*40%/);
-  assert(!/source on file: [^.]*12%/.test(all), 'a figure with a [n] marker on its line counts as cited');
+  assert(!/source on file: [^.]*12%/.test(all), 'a figure with a [n] marker in its paragraph counts as cited');
   assert.match(all, /1 other figure is cited/);
   assert.match(all, /no Sources section/);
-  assert.match(all, /No internal links/); assert.match(all, /No outbound links/);
+  assert.match(all, /No internal links/); assert.doesNotMatch(all, /outbound links/, 'pages are not asked for outbound links for their own sake');
 
   const founder = deterministicQa({ ...web, voice: 'founder' }, `# T\n\n## S\n\n${filler}\nMike Hulick here.`, []);
   assert(!/names Mike Hulick/.test(founder.review.join('\n')), 'founder-voice pieces may name the founder');
@@ -24,7 +24,13 @@ test('house editing rules: strip-outs, uncited figures, citations and links', ()
   const good = `# Title\n\nMeta title: Short\n\n## Section\n\n${filler}\nAdmissions rose 12% in a year [1]. See [our playbook](/resources/guides/playbook/).\n\n## Sources\n\n1. [SAMHSA survey](https://www.samhsa.gov/data)\n`;
   const ok = deterministicQa(web, good, []).review.join('\n');
   for (const re of [/House strip-outs/, /Numeric claims/, /bracketed citations/, /Sources section/, /internal links/, /outbound links/]) assert(!re.test(ok), `clean draft should not raise ${re}`);
-  assert.match(deterministicQa(web, `# T\n\n## S\n\n${filler}`, []).review.join('\n'), /No bracketed citations/);
+  assert.doesNotMatch(deterministicQa(web, `# T\n\n## S\n\n${filler}`, []).review.join('\n'), /bracketed citations/, 'numbered citations are optional');
+  // A figure cited inline with a link to its source counts as sourced (the writer verifies and links what it states).
+  const inline = deterministicQa(web, `# T\n\n## S\n\n${filler}\nAbout 48.4 million adults had a substance use disorder in 2023 ([SAMHSA NSDUH](https://www.samhsa.gov/data/report/2023-nsduh-annual-national-report)).\n`, []).review.join('\n');
+  assert.doesNotMatch(inline, /Numeric claims/);
+  // Working notes and placeholders would render on the live page, so they block.
+  const notes = deterministicQa(web, `# T\n\n## S\n\n${filler}\nCall [PHONE: tracked number] or [Local SEO](#).\n\n## Production notes (not for publication)\n- check\n`, []);
+  assert.match(notes.block.join('\n'), /Bracketed working notes.*PHONE/); assert.match(notes.block.join('\n'), /Links pointing to "#"/); assert.match(notes.block.join('\n'), /Production, editor or fact-check notes/);
 });
 
 test('images are text-free unless words are explicitly allowed', () => {

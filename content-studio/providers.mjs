@@ -146,30 +146,66 @@ async function anthropicClient(apiKey) {
   if (!AnthropicClass) AnthropicClass = (await import('@anthropic-ai/sdk')).default;
   return new AnthropicClass({ apiKey, baseURL: ANTHROPIC_BASE, maxRetries: 2, timeout: TOTAL_TIMEOUT });
 }
+// Writer and QA verify claims themselves: Claude's server-side web search and fetch (dynamic filtering built in).
+const RESEARCH_STAGES = new Set(['draft', 'qa']);
+let researchOff = ''; // set when this Anthropic account cannot use the web tools; generation then continues without them
+const researchTools = () => [
+  { type: 'web_search_20260209', name: 'web_search', max_uses: clamp(process.env.STUDIO_MAX_SEARCHES, 1, 30, 10) },
+  { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: clamp(process.env.STUDIO_MAX_FETCHES, 1, 30, 8) }
+];
+/** The finished artifact: text after the last research step, or, if the model wrote around its searches, everything from the first page line. */
+function finalText(blocks, stage) {
+  const text = (list) => list.filter((b) => b.type === 'text').map((b) => b.text).join('');
+  const all = text(blocks);
+  let last = -1; blocks.forEach((b, i) => { if (b.type === 'server_tool_use' || /_tool_result$/.test(b.type)) last = i; });
+  const after = text(blocks.slice(last + 1));
+  if (last < 0 || after.trim().length >= all.trim().length * 0.5) return last < 0 ? all : after;
+  const start = stage === 'qa' ? all.search(/^\s*Verdict:/m) : all.search(/^\s*(\*\*Meta title|# )/m);
+  return start > 0 ? all.slice(start) : all;
+}
 async function callAnthropic({ model, apiKey, system, user, stage, t, onText }) {
   const client = await anthropicClient(apiKey);
-  const body = {
-    model, max_tokens: MAX_OUTPUT, system, messages: [{ role: 'user', content: user }],
-    output_config: { effort: STAGE_EFFORT[stage] || 'medium' }
-  };
+  const base = { model, max_tokens: MAX_OUTPUT, system, output_config: { effort: STAGE_EFFORT[stage] || 'medium' } };
   // Server-side refusal fallback where the model supports it (not Haiku).
-  if (!/haiku/.test(model)) { body.betas = ['server-side-fallback-2026-07-01']; body.fallbacks = 'default'; }
-  let text = '';
-  const stream = client.beta.messages.stream(body, { signal: t.signal });
-  try {
-    for await (const ev of stream) {
-      t.arm();
-      if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') { text += ev.delta.text; onText?.(text); }
+  if (!/haiku/.test(model)) { base.betas = ['server-side-fallback-2026-07-01']; base.fallbacks = 'default'; }
+  const useResearch = RESEARCH_STAGES.has(stage) && !researchOff && process.env.STUDIO_WEB_RESEARCH !== '0';
+  const run = async (withTools) => {
+    const messages = [{ role: 'user', content: user }];
+    const blocks = []; let shown = '', final = null, searches = 0, fetches = 0;
+    // A long research turn can pause (stop_reason pause_turn); sending the turn back lets the server continue it.
+    for (let round = 0; round < 6; round++) {
+      const stream = client.beta.messages.stream({ ...base, ...(withTools ? { tools: researchTools() } : {}), messages }, { signal: t.signal });
+      for await (const ev of stream) {
+        t.arm();
+        if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') { shown += ev.delta.text; onText?.(shown); }
+      }
+      final = await stream.finalMessage();
+      blocks.push(...final.content);
+      for (const b of final.content) if (b.type === 'server_tool_use') { if (b.name === 'web_search') searches++; else if (b.name === 'web_fetch') fetches++; }
+      if (final.stop_reason !== 'pause_turn') break;
+      messages.push({ role: 'assistant', content: final.content });
     }
-    const final = await stream.finalMessage();
     if (final.stop_reason === 'refusal') throw new Error(`The model declined this request${final.stop_details?.explanation ? `: ${final.stop_details.explanation}` : '.'}`);
-    return { output: text, model: final.model || model, truncated: final.stop_reason === 'max_tokens', usage: final.usage };
+    return { output: finalText(blocks, stage), model: final.model || model, truncated: final.stop_reason === 'max_tokens', usage: final.usage, research: withTools ? { searches, fetches } : null };
+  };
+  try {
+    try { return await run(useResearch); }
+    catch (e) {
+      // An account without web tools enabled: remember it, and write without research rather than fail every job.
+      if (useResearch && e?.status === 400 && /web_(search|fetch)|server tool|tool[s]? (is|are) not|not enabled/i.test(String(e?.message))) {
+        researchOff = scrubKeys(String(e.message)).slice(0, 200);
+        console.error('Web research unavailable, continuing without it:', researchOff);
+        return await run(false);
+      }
+      throw e;
+    }
   } catch (e) {
     if (e?.status === 401 || e?.status === 403) throw new Error(`Anthropic rejected the API key (HTTP ${e.status}). Check it in Settings.`);
     if (e?.status === 429 || e?.status >= 500 || e?.name === 'APIConnectionError') throw new ModelUnavailable(`Anthropic is unavailable right now: ${scrubKeys(e.message)}`);
     t.rethrow(e);
   }
 }
+export const researchStatus = () => ({ stages: [...RESEARCH_STAGES], enabled: process.env.STUDIO_WEB_RESEARCH !== '0' && !researchOff, unavailable: researchOff });
 async function callOpenAI({ model, apiKey, system, user, t, onText }) {
   let r;
   try {
@@ -253,7 +289,7 @@ export async function generate({ stage, system, user, signal, onText }) {
   try {
     const call = { anthropic: callAnthropic, openai: callOpenAI, google: callGemini, lmstudio: callLmStudio }[provider];
     const out = await call({ model, apiKey, system, user, stage, t, onText });
-    return { ...out, model: `${provider === 'lmstudio' ? 'lmstudio' : provider}/${out.model}` };
+    return { ...out, research: out.research || null, model: `${provider === 'lmstudio' ? 'lmstudio' : provider}/${out.model}` };
   } finally { t.done(); }
 }
 /** Cheap check that a provider key works. */
