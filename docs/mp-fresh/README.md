@@ -1,6 +1,6 @@
 # MP FRESH v2: final workflow resolution
 
-Status: **design locked, decisions 1-4 settled Nov 16, build not started.** This is the definitive version of the MP FRESH content pipeline. It replaces the three n8n workflows with a content engine inside the live MAIOS app (`mpaios-dashboard`, mpaios.vercel.app), with Asana staying the board and Google Docs staying the output.
+Status: **design locked, all decisions settled Nov 16, build not started.** This is the definitive version of the MP FRESH content pipeline. It replaces the three n8n workflows with a content engine inside the live MAIOS app (`mpaios-dashboard`, mpaios.vercel.app), with Asana staying the board and Google Docs staying the output.
 
 It reconciles four sources:
 
@@ -64,7 +64,7 @@ Voice: company
 
 ### Brief (Ready for Brief to Brief Complete)
 - **Inputs:** notes; keyword data (Ahrefs `/v3/keywords-explorer/matching-terms`, US, top 30 by volume, as in n8n); Search Console last 28 days for the URL (refresh) or for queries containing the primary keyword (new); live sitemap paths; current page text (refresh); the approved proof-point list (section 7).
-- **Model:** GPT-4o with web search, strict JSON schema `schemas/brief.schema.json`. The model is configurable, so it can change without code edits if GPT-4o is retired.
+- **Model:** Claude Sonnet 5.5 (`claude-sonnet-5-5`) with the web search tool and the strict JSON schema `schemas/brief.schema.json`. n8n used GPT-4o; the model is a setting, so it can change without code edits. If web search and strict JSON output cannot run in one request, the brief runs as two calls: a short web-research call, then the JSON brief with the research notes as input.
 - **Prompt:** `prompts/brief.system.md` and `prompts/brief.user.md`.
 - **QC gate:** `qc.json`. Character counts are computed in code and overwrite the model's numbers (fix 6). Hard failures get one automatic repair pass with the findings fed back. If they persist, the task stays in Ready for Brief with a QC comment.
 - **Doc:** `Content Brief - {task name} - {YYYY-MM-DD}` in Content Briefs (`1Jk7vjiKFVCMfcUnIu6SvWaL1S4BrERN8`). Same branded layout (Inter, 54 pt margins, #2CACE8 section bars, #08AE67 CTA bar), but every generated field is rendered: the six page-context fields, per-section must-include and proof points, closing direction, secondary-keyword placement notes, link placement and differentiators (fixes 2 and 3). The hardcoded fallback sentences are deleted; the "brand assets" and "paid media note" blocks stay as fixed copy. A QC block at the end lists any soft findings.
@@ -72,7 +72,7 @@ Voice: company
 
 ### Writer (Ready for Writing to Draft Complete)
 - **Inputs:** the stored brief JSON, plus the current brief doc text when a reviewer edited it after generation (the doc wins where they differ). On revision runs, also comments posted since the last draft and the last draft's QC findings.
-- **Model:** Claude Opus 4.5, extended thinking, 16,000 max tokens, JSON output per `schemas/writer.schema.json`. Configurable.
+- **Model:** Claude Sonnet 5.5 (`claude-sonnet-5-5`), adaptive thinking, high effort, streamed, JSON output per `schemas/writer.schema.json`. n8n used Claude Opus 4.5. Claude Opus 5.5 (`claude-opus-5-5`) is the configured quality fallback if Sonnet drafts fall short in review.
 - **Prompt:** `prompts/writer.system.md` and `prompts/writer.user.md`.
 - **Blocked runs:** the writer can return `status: "blocked"` (missing keyword or H1, unclear buyer, a compliance problem, or a request that needs invented stats) instead of the n8n behavior of "asking" no one. The engine comments the reason and leaves the task in Ready for Writing.
 - **QC gate:** as above, plus: H1, title and meta must match the brief; links must be in the live sitemap; every figure needs a bracketed citation and a Sources list.
@@ -104,8 +104,7 @@ Asked for at build time and stored as Vercel environment variables or in the MAI
 
 | What | Used for |
 |---|---|
-| OpenAI API key | Brief agent (GPT-4o with web search) |
-| Anthropic API key | Writer agent, alt text |
+| Anthropic API key | Brief agent (with web search), writer agent, alt text, QC repair |
 | Google Gemini API key | Images |
 | Ahrefs API key | Keyword data in briefs |
 | Asana personal access token for Mike's account | Webhook, task reads, moves, comments, attachments |
@@ -138,9 +137,14 @@ Settled Nov 16:
 
 4. **Who posts:** the engine uses Mike's Asana account (personal access token), as the n8n workflows did. Because that account also comments as a person, the engine marks its own comments with a leading tag (for example `[MP FRESH]`) and never treats a comment it posted as a TSMC sign-off.
 
-Still open:
-
-5. **Model availability.** GPT-4o and Claude Opus 4.5 are what n8n ran. If either is retired, the configured replacement needs your sign-off, since output quality changes.
+5. **Models** (prices per 1M tokens, input / output, Nov 16 2026):
+   - Brief: Claude Sonnet 5.5, $2 / $10, plus web search at $10 per 1,000 searches.
+   - Writer: Claude Sonnet 5.5, $2 / $10. Fallback: Claude Opus 5.5, $4 / $20.
+   - Alt text and QC repair passes: Claude Haiku 5.5, $0.10 / $0.50.
+   - Images: unchanged, `gemini-3.1-flash-image`.
+   - Estimated cost per page before images: about $0.33, against about $0.65 for the n8n setup (GPT-4o brief, Claude Opus 4.5 writer). These are estimates, not measurements.
+   - Before switching production over: run two or three real pages through Sonnet 5.5 and Opus 5.5 side by side and compare them in review. If Sonnet's drafts need noticeably more editing, set the writer to Opus 5.5; the price difference is cents per page.
+   - One fewer key: the engine no longer needs an OpenAI key.
 
 ## 8. What the site report changes in the content itself
 
