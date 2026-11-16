@@ -190,14 +190,15 @@ export function modelVerdict(report) {
 export function qaStatusFor(det, verdict) {
   const block = [...det.block];
   if (verdict === 'FAIL') block.unshift('The editorial QA model rated the draft FAIL.');
-  const status = block.length ? 'blocked' : (det.review.length || verdict !== 'PASS') ? 'review' : 'pass';
+  // Pass or fail. Review notes are advisory; a person decides on a FAIL (approve anyway, or redo).
+  const status = block.length ? 'blocked' : 'pass';
   return { status, block };
 }
 
 export function formatQaReport(det, verdict, modelBody) {
   const { status, block } = qaStatusFor(det, verdict);
-  const label = { blocked: 'BLOCKED', review: 'NEEDS REVIEW', pass: 'CLEAR' }[status];
-  const flags = [...block.map((s) => `- BLOCK: ${s}`), ...det.review.map((s) => `- REVIEW: ${s}`)];
+  const label = { blocked: 'FAIL', pass: 'PASS' }[status];
+  const flags = [...block.map((s) => `- BLOCK: ${s}`), ...det.review.map((s) => `- NOTE: ${s}`)];
   const m = det.metrics;
   return {
     status,

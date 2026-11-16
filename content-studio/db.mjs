@@ -350,7 +350,7 @@ export function addArtifact(id, kind, title, body, model = '', jobId = '', actor
   event(id, 'artifact', `${title} v${n} saved`, actor, { kind, version: n });
   return aid;
 }
-export function approveTask(id, actor = 'Mike') {
+export function approveTask(id, actor = 'Mike', { override = false } = {}) {
   const db = getDb(), task = getTask(id); if (!task) throw new Error('Task not found.');
   if (!['final_approval', 'graphic_review'].includes(task.lane_id.split(':')[1])) throw new Error('Move the task to an approval lane first.');
   const latestDraft = task.artifacts.find((a) => a.kind === 'draft');
@@ -358,9 +358,10 @@ export function approveTask(id, actor = 'Mike') {
   const latestQa = task.artifacts.find((a) => a.kind === 'qa');
   if (!latestQa) throw new Error('A completed QA report is required before final approval.');
   if (latestDraft.created_at > latestQa.created_at) throw new Error('The draft changed after QA. Run QA again before approval.');
-  if (hasBlockingFinding(latestQa.body)) throw new Error('QA contains blocking issues. Fix the draft and rerun QA, or record a manual QA sign-off that explains the override.');
+  const failed = task.qa_status === 'blocked' || hasBlockingFinding(latestQa.body);
+  if (failed && !override) throw new Error('QA failed. Approve anyway if you accept the draft as it is, or redo it with the QA fixes.');
   db.prepare('UPDATE tasks SET approved_at=?,updated_at=?,rev=rev+1 WHERE id=?').run(stamp(), stamp(), id);
-  event(id, 'approved', 'Approved for development or publishing', actor, { draftVersion: latestDraft.version, qaVersion: latestQa.version });
+  event(id, 'approved', failed ? 'Approved despite a failed QA (human decision)' : 'Approved for development or publishing', actor, { draftVersion: latestDraft.version, qaVersion: latestQa.version, override: failed });
   const destination = task.board_id === 'mpfresh' ? 'mpfresh:ship_dev' : 'social:ready_post';
   moveTask(id, destination, actor, false);
   return getTask(id);

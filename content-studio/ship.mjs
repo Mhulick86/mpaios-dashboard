@@ -41,7 +41,6 @@ export function shipState(task) {
 }
 function holdReason(task) {
   if (!task.artifacts.some((a) => a.kind === 'draft')) return 'No draft to build.';
-  if (task.qa_status === 'blocked') return 'QA has blocking findings. Fix the draft and rerun QA, then move the card back to Ship to dev.';
   if (!pageTarget(task).path) return 'No page URL. Add "URL: /path" to the notes.';
   return '';
 }

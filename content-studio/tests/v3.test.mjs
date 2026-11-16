@@ -53,7 +53,11 @@ test('QA gate blocks unresolved [VERIFY] markers and a FAIL verdict; reasoning i
   assert(done.artifacts.every((a) => !/<think>|private reasoning/.test(a.body)), 'reasoning blocks never reach artifacts');
   const qa = done.artifacts.find((a) => a.kind === 'qa');
   assert.match(qa.body, /- BLOCK: 1 unresolved \[VERIFY\] marker/);
-  await assert.rejects(s.api(`/api/tasks/${task.id}/approve`, 'POST', {}), /blocking issues/);
+  await assert.rejects(s.api(`/api/tasks/${task.id}/approve`, 'POST', {}), /QA failed\. Approve anyway/);
+  // A free recheck under the current rules keeps the FAIL (the marker is still there) without a model call.
+  const before = s.mock.requests.length;
+  assert.equal((await s.api(`/api/tasks/${task.id}/qa-recheck`, 'POST', {})).status, 'blocked');
+  assert.equal(s.mock.requests.length, before, 'recheck makes no model call');
 
   // Editor resolves the claim by hand: QA goes stale, approval refuses until QA is rerun.
   const draft = done.artifacts.find((a) => a.kind === 'draft');
@@ -62,7 +66,7 @@ test('QA gate blocks unresolved [VERIFY] markers and a FAIL verdict; reasoning i
   await assert.rejects(s.api(`/api/tasks/${task.id}/approve`, 'POST', {}), /draft changed after QA/);
   await s.api(`/api/tasks/${task.id}/generate`, 'POST', { kind: 'qa' });
   done = await waitFor(async () => { const x = await s.api(`/api/tasks/${task.id}`); return x.artifacts.filter((a) => a.kind === 'qa').length === 2 && !x.jobs.some((j) => ['queued', 'running'].includes(j.status)) ? x : false; });
-  assert.equal(done.qa_status, 'review');
+  assert.equal(done.qa_status, 'pass');
   assert((await s.api(`/api/tasks/${task.id}/approve`, 'POST', {})).approved_at);
 
   const { tasks: [bad] } = await s.api('/api/commission', 'POST', order({ topic: 'FAILCASE unsupported client outcome story' }));
@@ -70,8 +74,14 @@ test('QA gate blocks unresolved [VERIFY] markers and a FAIL verdict; reasoning i
   const failed = await waitFor(async () => { const x = await s.api(`/api/tasks/${bad.id}`); return x.artifacts.some((a) => a.kind === 'qa') && x.lane_id === 'mpfresh:final_approval' ? x : false; });
   assert.equal(failed.qa_status, 'blocked');
   assert.match(failed.artifacts.find((a) => a.kind === 'qa').body, /BLOCK: The editorial QA model rated the draft FAIL/);
-  await assert.rejects(s.api(`/api/tasks/${bad.id}/approve`, 'POST', {}), /blocking issues/);
-  // A documented human override exists: a manual QA sign-off.
+  await assert.rejects(s.api(`/api/tasks/${bad.id}/approve`, 'POST', {}), /QA failed\. Approve anyway/);
+  // A person can approve anyway: the card goes to Ship to dev and the override is recorded.
+  const { tasks: [other] } = await s.api('/api/commission', 'POST', order({ topic: 'FAILCASE second unsupported story' }));
+  await s.api(`/api/tasks/${other.id}/pipeline`, 'POST', {});
+  await waitFor(async () => { const x = await s.api(`/api/tasks/${other.id}`); return x.qa_status === 'blocked' && x.lane_id === 'mpfresh:final_approval' && !x.jobs.some((j) => ['queued', 'running'].includes(j.status)) ? x : false; });
+  const overridden = await s.api(`/api/tasks/${other.id}/approve`, 'POST', { override: true });
+  assert.equal(overridden.lane_id, 'mpfresh:ship_dev'); assert.ok(overridden.events.some((e) => /Approved despite a failed QA/.test(e.message)));
+  // The other documented route: a manual QA sign-off.
   await s.api(`/api/tasks/${bad.id}/artifact`, 'POST', { kind: 'qa', body: 'Manual sign-off: source for the outcome is on file with the client approval email.' });
   assert((await s.api(`/api/tasks/${bad.id}/approve`, 'POST', {})).approved_at);
 });

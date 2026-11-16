@@ -10,8 +10,9 @@ import { VERSION } from './env.mjs';
 import {
   getDb, getBootstrap, getTask, commission, updateTask, moveTask, addComment, addArtifact, approveTask,
   markPublished, queueJob, taskStats, exportData, event, getBrandProfiles, saveBrandProfiles,
-  startPipeline, retryJob, getJob, setQaStatus, requestRevision, STAGES
+  startPipeline, retryJob, getJob, setQaStatus, requestRevision, repetitionCorpus, STAGES
 } from './db.mjs';
+import { deterministicQa, modelVerdict, qaStatusFor } from './qa-checks.mjs';
 import { modelCatalog, inspectTaskPrompt, cancelJob, liveOutput, workerInfo } from './agents.mjs';
 import {
   knowledgeStats, listKnowledge, getKnowledge, saveKnowledge, setKnowledgeEnabled, knowledgeHistory,
@@ -163,7 +164,7 @@ export async function handleApi(req, ctx = {}) {
     return json(202, { jobs: ids.map((id) => startPipeline(id, null, actor)) });
   }
 
-  const matched = path.match(/^\/api\/tasks\/([a-f0-9-]{36})(?:\/(move|comment|generate|pipeline|approve|publish|asset|archive|restore|artifact|context|sources|live|images|doc|revise|searchconsole))?$/);
+  const matched = path.match(/^\/api\/tasks\/([a-f0-9-]{36})(?:\/(move|comment|generate|pipeline|approve|publish|asset|archive|restore|artifact|context|sources|live|images|doc|revise|searchconsole|qa-recheck))?$/);
   if (matched) {
     const [, id, action] = matched;
     if (!getTask(id)) return fail(404, 'Task not found.');
@@ -202,7 +203,18 @@ export async function handleApi(req, ctx = {}) {
     if (action === 'pipeline' && method === 'POST') {
       const body = await parseJson(req); return json(202, { job: startPipeline(id, body.from || null, actor) });
     }
-    if (action === 'approve' && method === 'POST') return json(200, approveTask(id, actor));
+    if (action === 'approve' && method === 'POST') { const body = await parseJson(req, 4096); return json(200, approveTask(id, actor, { override: body.override === true })); }
+    // Re-score the latest QA under the current rules without a model call: fresh automatic checks plus the stored model verdict.
+    if (action === 'qa-recheck' && method === 'POST') {
+      const t = getTask(id), draft = t.artifacts.find((a) => a.kind === 'draft'), qa = t.artifacts.find((a) => a.kind === 'qa');
+      if (!draft || !qa) throw new HttpError(400, 'There is no draft and QA report to recheck.');
+      const verdict = modelVerdict(qa.body.split('## Local model review')[1] || qa.body);
+      const det = deterministicQa(t, draft.body, repetitionCorpus(id));
+      const { status, block } = qaStatusFor(det, verdict === 'FAIL' ? 'FAIL' : 'PASS');
+      setQaStatus(id, status);
+      event(id, 'qa', `QA rechecked (pass/fail rules, no model call): ${status === 'blocked' ? `FAIL: ${block.join(' ')}` : 'PASS'}`.slice(0, 900), actor);
+      return json(200, { status, verdict, block });
+    }
     if (action === 'publish' && method === 'POST') {
       const body = await parseJson(req); return json(200, markPublished(id, guardText(body.url, 8, 2000), actor));
     }

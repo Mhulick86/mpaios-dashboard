@@ -66,8 +66,8 @@ test('report formatting drives the approval gate', () => {
   const failed = formatQaReport({ block: [], review: [], metrics: { words: 10, chars: 60, hashtags: 0 } }, 'FAIL', 'model text');
   assert.equal(failed.status, 'blocked'); assert(hasBlockingFinding(failed.body));
   const review = formatQaReport({ block: [], review: ['Look here.'], metrics: { words: 10, chars: 60, hashtags: 0 } }, 'PASS', 'model text');
-  assert.equal(review.status, 'review'); assert(!hasBlockingFinding(review.body));
+  assert.equal(review.status, 'pass', 'notes do not fail a draft'); assert(!hasBlockingFinding(review.body)); assert.match(review.body, /- NOTE: Look here\./);
   const pass = formatQaReport({ block: [], review: [], metrics: { words: 10, chars: 60, hashtags: 0 } }, 'PASS', 'The word BLOCK: inside a sentence is not a finding line.');
   assert.equal(pass.status, 'pass'); assert(!hasBlockingFinding(pass.body));
-  assert.equal(formatQaReport({ block: [], review: [], metrics: { words: 1, chars: 1, hashtags: 0 } }, null, 'x').status, 'review');
+  assert.equal(formatQaReport({ block: [], review: [], metrics: { words: 1, chars: 1, hashtags: 0 } }, null, 'x').status, 'pass', 'pass or fail: no verdict line is not a fail');
 });

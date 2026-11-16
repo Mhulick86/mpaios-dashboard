@@ -122,9 +122,9 @@ Finish with the shot list as JSON in a \`\`\`json fence, exactly in this shape (
   if (kind === 'qa') return {
     system: `${COMMON}\nQA RULES: ${profiles.qa}\nROLE: Senior Editorial QA and Brand Compliance Reviewer. Return a concise, structured Markdown report. Explicitly flag unsupported claims, misleading language, fabricated source claims, sensitive data, brand mismatch, platform formatting and repetition. This is an advisory review, never a certification of legal compliance.`,
     user: `Review the current draft for publication readiness. You verify claims yourself; do not hand verification to a person. With web search and fetch, open the inline source links and confirm each supports its claim, and check specific uncited facts (statistics, platform policies, regulations, dates). For every claim you could not verify, give the exact fix: the source to cite (with its URL), softer wording, or a cut.
-Start with a line of the form "Verdict: PASS", "Verdict: REVIEW" or "Verdict: FAIL".
+Start with exactly one line: "Verdict: PASS" or "Verdict: FAIL". There is no middle verdict.
 - FAIL only when the page cannot ship as written: a fabricated or false claim, a claim outside the approved proof points, placeholders or internal notes in the copy, a truncated page, a city page with no real local content (doorway page), or a privacy or compliance violation.
-- REVIEW for improvements that do not stop publication; PASS when it is ready.
+- Otherwise PASS, and list any improvements as notes. A person reads the report and decides what happens next.
 Then return sections: verified claims (claim, source), claims that need a change (quote, problem, exact fix), brand voice and repetition, channel-specific checks, accessibility, and recommended edits. Only describe sources you actually retrieved.\n\n${c}`
   };
   throw new Error('Unsupported generation type');
