@@ -65,3 +65,11 @@ test('QA does not call the model when the automatic checks already fail the draf
   const qa = done.artifacts.find((a) => a.kind === 'qa');
   assert.match(qa.body, /Model review skipped/); assert.match(qa.body, /BLOCK: .*VERIFY/); assert.equal(done.qa_status, 'blocked');
 });
+
+test('every out-of-credit wording seen from the providers is recognized, and nothing else', async () => {
+  const { CREDIT_ERROR } = await import('../providers.mjs');
+  for (const m of ['OpenAI error: You have no credits remaining. Add credits to continue using the API.', 'You exceeded your current quota, please check your plan and billing details.', '{"error":{"code":"insufficient_quota"}}', 'Your credit balance is too low to access the Anthropic API.'])
+    assert.match(m, CREDIT_ERROR);
+  for (const m of ['The model declined this request.', 'OpenAI error: The server had an error processing your request.', 'Rate limit reached for requests per minute.'])
+    assert.doesNotMatch(m, CREDIT_ERROR);
+});

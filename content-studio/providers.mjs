@@ -41,6 +41,8 @@ const LMSTUDIO_BASE = (process.env.LM_STUDIO_BASE_URL || 'http://127.0.0.1:1234/
 export class ModelUnavailable extends Error { constructor(message) { super(message); this.transient = true; } }
 /** The provider account has no credit left. The job is paused (not failed) and resumes when credit is back (credit.mjs). */
 export class OutOfCredit extends Error { constructor(provider, message) { super(message); this.provider = provider; this.outOfCredit = true; } }
+/** Every wording seen for "the account has no credit" (OpenAI: insufficient_quota, "You have no credits remaining"; Anthropic: "credit balance is too low"). */
+export const CREDIT_ERROR = /insufficient_quota|exceeded your current quota|billing|no credits? remaining|add credits|credit balance is too low|out of (api )?credit/i;
 const creditMessage = (label, where) => `The ${label} account is out of credit. This work is paused: MAIOS checks every 6 hours and resumes it automatically once credit is back. To resume sooner, add credit at ${where}, or pick another provider for this stage in Settings > AI models & API keys.`;
 
 // ---------- settings ----------
@@ -205,7 +207,7 @@ async function callAnthropic({ model, apiKey, system, user, stage, t, onText }) 
       throw e;
     }
   } catch (e) {
-    if (/credit balance is too low|billing|insufficient.*(credit|quota)/i.test(String(e?.message))) throw new OutOfCredit('anthropic', creditMessage('Anthropic', 'console.anthropic.com (Plans & Billing)'));
+    if (CREDIT_ERROR.test(String(e?.message)) || /insufficient.*(credit|quota)/i.test(String(e?.message))) throw new OutOfCredit('anthropic', creditMessage('Anthropic', 'console.anthropic.com (Plans & Billing)'));
     if (e?.status === 401 || e?.status === 403) throw new Error(`Anthropic rejected the API key (HTTP ${e.status}). Check it in Settings.`);
     if (e?.status === 429 || e?.status >= 500 || e?.name === 'APIConnectionError') throw new ModelUnavailable(`Anthropic is unavailable right now: ${scrubKeys(e.message)}`);
     t.rethrow(e);
@@ -245,7 +247,7 @@ async function callOpenAI({ model, apiKey, system, user, stage, t, onText }) {
   } catch (e) { if (t.signal.aborted) t.rethrow(e); throw new ModelUnavailable(`Could not reach OpenAI (${e.cause?.code || e.message}).`); }
   if (!r.ok) {
     const err = await httpError(r, 'openai');
-    if (/insufficient_quota|exceeded your current quota|billing/i.test(err.message)) throw new OutOfCredit('openai', creditMessage('OpenAI', 'platform.openai.com (Billing)'));
+    if (CREDIT_ERROR.test(err.message)) throw new OutOfCredit('openai', creditMessage('OpenAI', 'platform.openai.com (Billing)'));
     throw err;
   }
   let text = '', truncated = false, served = model, searches = 0, usage = null;
@@ -262,7 +264,7 @@ async function callOpenAI({ model, apiKey, system, user, stage, t, onText }) {
       }
       else if (ev.type === 'response.failed' || ev.type === 'error') {
         const why = scrubKeys(ev.response?.error?.message || ev.error?.message || ev.message || 'generation failed');
-        if (/insufficient_quota|exceeded your current quota|billing/i.test(why)) throw new OutOfCredit('openai', creditMessage('OpenAI', 'platform.openai.com (Billing)'));
+        if (CREDIT_ERROR.test(why)) throw new OutOfCredit('openai', creditMessage('OpenAI', 'platform.openai.com (Billing)'));
         throw new Error(`OpenAI error: ${why}`);
       }
     }

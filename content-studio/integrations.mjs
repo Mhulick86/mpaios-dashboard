@@ -386,7 +386,7 @@ async function openaiImage(prompt, aspect) {
     if (unknownModel) err.message += ` Check the image model in Settings (tried ${chain.join(', ')}).`;
     const blockedPrompt = code === 'moderation_blocked' || /safety system|moderation/i.test(detail);
     if (!blockedPrompt && [400, 401, 403, 404].includes(r.status)) err.fatal = true;
-    if (r.status === 429 && /quota|billing|insufficient/i.test(detail)) { err.fatal = true; err.outOfCredit = 'openai'; err.message = 'The OpenAI account is out of credit. Image generation is paused: MAIOS checks every 6 hours and restarts it automatically once credit is back.'; }
+    if ((r.status === 429 || r.status === 402) && /quota|billing|insufficient|credits?/i.test(detail)) { err.fatal = true; err.outOfCredit = 'openai'; err.message = 'The OpenAI account is out of credit. Image generation is paused: MAIOS checks every 6 hours and restarts it automatically once credit is back.'; }
     throw err;
   }
 }

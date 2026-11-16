@@ -13,7 +13,7 @@
 import { getDb, getTask, event } from './db.mjs';
 import { runtime } from './runtime.mjs';
 import { clamp } from './env.mjs';
-import { creditProbe, stageModel } from './providers.mjs';
+import { creditProbe, stageModel, CREDIT_ERROR } from './providers.mjs';
 
 const KEY = 'credit_watch';
 export const CHECK_MS = () => clamp(process.env.CREDIT_CHECK_MS, 1000, 86400000, 6 * 3600000); // 6 hours; shorter only in tests
@@ -64,23 +64,24 @@ export function onImageResume(fn) { startImages = fn; }
  */
 function adoptEarlierCutoffs() {
   const db = getDb();
-  if (db.prepare("SELECT value FROM settings WHERE key='credit_watch_adopted'").get()) return 0;
-  const failed = db.prepare("SELECT * FROM jobs WHERE status='failed' AND (error LIKE '%out of API credit%' OR error LIKE '%credit balance is too low%' OR error LIKE '%out of credit%' OR error LIKE '%insufficient_quota%' OR error LIKE '%exceeded your current quota%') ORDER BY created_at DESC").all();
+  // v2: OpenAI's "You have no credits remaining" wording was missed by the first pass.
+  if (db.prepare("SELECT value FROM settings WHERE key='credit_watch_adopted_v2'").get()) return 0;
+  const failed = db.prepare("SELECT * FROM jobs WHERE status='failed' AND error IS NOT NULL ORDER BY created_at DESC").all().filter((j) => CREDIT_ERROR.test(j.error));
   let n = 0; const seen = new Set();
   for (const j of failed) {
     const key = `${j.task_id}:${j.kind}`; if (seen.has(key)) continue; seen.add(key);
     const later = db.prepare("SELECT 1 FROM jobs WHERE task_id=? AND kind=? AND created_at>? AND status IN ('done','queued','running') LIMIT 1").get(j.task_id, j.kind, j.created_at);
     if (later || !getTask(j.task_id)) continue;
-    const provider = /anthropic/i.test(j.error) ? 'anthropic' : 'openai';
+    const provider = /anthropic|credit balance is too low/i.test(j.error) ? 'anthropic' : 'openai';
     pauseJob(j, provider);
     n++;
   }
   // Image runs whose most recent run ended on a credit or quota error restart too.
   const runs = db.prepare("SELECT task_id, message FROM events WHERE event_type='images' AND id IN (SELECT id FROM events e2 WHERE e2.event_type='images' AND e2.task_id=events.task_id ORDER BY created_at DESC LIMIT 1)").all();
   for (const r of runs) {
-    if (/Image generation failed: .*(quota|credit|billing)/i.test(r.message) && getTask(r.task_id)) { pauseProvider('openai', { imagesFor: r.task_id }); n++; }
+    if (/Image generation failed: .*(quota|credit|billing)/i.test(r.message) && getTask(r.task_id) && !(read().providers?.openai?.images || []).includes(r.task_id)) { pauseProvider('openai', { imagesFor: r.task_id }); n++; }
   }
-  db.prepare("INSERT OR REPLACE INTO settings (key,value) VALUES ('credit_watch_adopted',?)").run(stamp());
+  db.prepare("INSERT OR REPLACE INTO settings (key,value) VALUES ('credit_watch_adopted_v2',?)").run(stamp());
   return n;
 }
 
