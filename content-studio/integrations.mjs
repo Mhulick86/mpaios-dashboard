@@ -1,6 +1,6 @@
 /**
  * Optional cloud integrations. Both are off until configured in Settings and neither is needed to run the studio.
- *  - Google Gemini turns the graphics agent's image prompts into real image files on the task.
+ *  - Image generation (OpenAI GPT Image by default, or Google Gemini) turns the graphics plan into real image files on the task.
  *  - Google Docs gives every draft a shareable document link for review.
  * Credentials live in the local SQLite settings table (or the environment). They are never sent back to the browser,
  * never written to events, and are not part of the JSON export.
@@ -47,12 +47,36 @@ function saveSetting(key, value) {
   else db.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').run(key, String(value));
 }
 const flag = (key, fallback) => { const v = setting(key); return v === '' ? fallback : v === '1'; };
-const imageModel = () => setting('gemini_image_model') || DEFAULT_IMAGE_MODEL;
+// OpenAI GPT Image: the default image provider whenever an OpenAI key exists. Sunburst is OpenAI's "most capable model
+// for image generation and editing"; if this account cannot use 2.6 yet, the next one in the chain is used and remembered.
+const OPENAI_BASE = (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
+export const DEFAULT_OPENAI_IMAGE_MODEL = 'gpt-image-2.6-sunburst';
+const OPENAI_IMAGE_CHAIN = ['gpt-image-2.6-sunburst', 'gpt-image-2.5-sunburst', 'gpt-image-2'];
+const OPENAI_IMAGE_TIMEOUT = clamp(process.env.OPENAI_IMAGE_TIMEOUT_MS, 10000, 600000, 240000);
+const IMAGE_PROVIDERS = { openai: 'OpenAI GPT Image', google: 'Google Gemini' };
+const IMAGE_QUALITIES = ['low', 'medium', 'high'];
+// GPT image models take three standard sizes; use the one closest to the shape the graphic needs.
+const openaiSize = (aspect) => { const [w, h] = String(aspect).split(':').map(Number); const r = w / h; return !r || Math.abs(r - 1) < 0.15 ? '1024x1024' : r > 1 ? '1536x1024' : '1024x1536'; };
+const imageProvider = () => { const v = setting('image_provider'); return v in IMAGE_PROVIDERS ? v : (providerKey('openai') || !providerKey('google') ? 'openai' : 'google'); };
+const imageQuality = () => (IMAGE_QUALITIES.includes(setting('image_quality')) ? setting('image_quality') : 'high');
+let resolvedOpenaiModel = null;
+const imageModel = () => imageProvider() === 'openai' ? (setting('image_model_openai') || resolvedOpenaiModel || DEFAULT_OPENAI_IMAGE_MODEL) : (setting('gemini_image_model') || DEFAULT_IMAGE_MODEL);
+const imageReady = () => !!providerKey(imageProvider());
+const keyHint = () => imageProvider() === 'openai' ? 'Add an OpenAI API key under Settings > AI models & API keys first.' : 'Add a Google (Gemini) API key in Settings first.';
 
 /** What the browser may know: whether things are configured, never the credentials themselves. */
 export function integrationStatus() {
+  const provider = imageProvider();
+  const images = {
+    provider, providerLabel: IMAGE_PROVIDERS[provider], configured: imageReady(), model: imageModel(), quality: imageQuality(),
+    providers: Object.entries(IMAGE_PROVIDERS).map(([id, label]) => ({ id, label, keyReady: !!providerKey(id) })),
+    suggestions: provider === 'openai' ? ['gpt-image-2.6-sunburst', 'gpt-image-2.6-flare', 'gpt-image-2.5-sunburst', 'gpt-image-2.5-flare', 'gpt-image-2'] : [DEFAULT_IMAGE_MODEL],
+    auto: flag('gemini_auto', true), count: imageCount(), maxCount: IMAGE_SPECS.length, text: imageText(), brandSystem: brandSystem()
+  };
   return {
-    gemini: { configured: !!providerKey('google'), model: imageModel(), auto: flag('gemini_auto', true), count: imageCount(), maxCount: IMAGE_SPECS.length, text: imageText(), brandSystem: brandSystem() },
+    // "gemini" is the original name of this block; the UI and older clients still read it.
+    gemini: images,
+    images,
     google: {
       available: !runtime.hosted, // the Google Docs connection uses a desktop sign-in flow; not offered on the hosted studio
       clientConfigured: !!(setting('google_client_id') && setting('google_client_secret')),
@@ -66,6 +90,22 @@ export function saveIntegrationSettings(patch = {}) {
   // Secrets are write-only: an empty field means "keep what is stored", so the form never has to echo them.
   if (text(patch.gemini_api_key, 300)) saveAiSettings({ provider: 'google', key: text(patch.gemini_api_key, 300) });
   if (patch.gemini_clear === true) { saveAiSettings({ provider: 'google', clear: true }); saveSetting('gemini_api_key', ''); }
+  if (patch.image_provider !== undefined) {
+    const p = text(patch.image_provider, 20);
+    if (p && !(p in IMAGE_PROVIDERS)) throw new IntegrationError('Image provider must be openai or google.');
+    saveSetting('image_provider', p);
+  }
+  if (patch.image_model !== undefined) {
+    const model = text(patch.image_model, 120);
+    if (model && !/^[a-z0-9][a-z0-9.\-_]*$/i.test(model)) throw new IntegrationError('Image model must be a model ID such as gpt-image-2.6-sunburst.');
+    saveSetting(imageProvider() === 'openai' ? 'image_model_openai' : 'gemini_image_model', model);
+    resolvedOpenaiModel = null;
+  }
+  if (patch.image_quality !== undefined) {
+    const q = text(patch.image_quality, 10);
+    if (q && !IMAGE_QUALITIES.includes(q)) throw new IntegrationError('Image quality must be low, medium or high.');
+    saveSetting('image_quality', q);
+  }
   if (patch.gemini_image_model !== undefined) {
     const model = text(patch.gemini_image_model, 120);
     if (model && !/^[a-z0-9][a-z0-9.\-_]*$/i.test(model)) throw new IntegrationError('Image model must be a Gemini model ID such as gemini-nano-banana-2.1.');
@@ -90,7 +130,7 @@ export function saveIntegrationSettings(patch = {}) {
 /** Strip anything that looks like a credential before an upstream error reaches a log, an event or the browser. */
 function scrub(message) {
   let out = String(message ?? '');
-  for (const v of [providerKey('google'), setting('google_client_secret'), setting('google_refresh_token')]) { if (v) out = out.split(v).join('[hidden]'); }
+  for (const v of [providerKey('google'), providerKey('openai'), setting('google_client_secret'), setting('google_refresh_token')]) { if (v) out = out.split(v).join('[hidden]'); }
   return out.replace(/ya29\.[\w.-]+/g, '[hidden]').slice(0, 400);
 }
 async function upstreamError(r, service) {
@@ -178,12 +218,48 @@ async function geminiImage(prompt, aspectRatio) {
   throw new IntegrationError(`Gemini returned no image (${String(why).slice(0, 60)}).`);
 }
 
+async function openaiImage(prompt, aspect) {
+  const key = providerKey('openai'); if (!key) throw new IntegrationError(keyHint());
+  const chosen = setting('image_model_openai');
+  const chain = chosen ? [chosen] : resolvedOpenaiModel ? [resolvedOpenaiModel] : OPENAI_IMAGE_CHAIN;
+  for (let i = 0; i < chain.length; i++) {
+    const model = chain[i];
+    let r;
+    try {
+      r = await fetch(`${OPENAI_BASE}/images/generations`, {
+        method: 'POST', signal: AbortSignal.timeout(OPENAI_IMAGE_TIMEOUT),
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, prompt: prompt.slice(0, 30000), size: openaiSize(aspect), quality: imageQuality(), output_format: 'png', n: 1 })
+      });
+    } catch (e) { throw new IntegrationError(e?.name === 'TimeoutError' ? 'OpenAI took too long to create the image.' : `Could not reach OpenAI (${e?.cause?.code || e?.message || 'network error'}).`); }
+    if (r.ok) {
+      const body = await r.json().catch(() => ({}));
+      const b64 = body?.data?.[0]?.b64_json;
+      if (!b64) throw new IntegrationError('OpenAI returned no image.');
+      if (!chosen) resolvedOpenaiModel = model;
+      return { mime: 'image/png', data: Buffer.from(b64, 'base64'), model };
+    }
+    let detail = '', code = '';
+    try { const b = await r.json(); detail = String(b?.error?.message || ''); code = String(b?.error?.code || ''); } catch { /* not JSON */ }
+    const unknownModel = r.status === 404 || code === 'model_not_found' || /model.*(does not exist|not found|not supported|do not have access)/i.test(detail);
+    if (unknownModel && i < chain.length - 1) continue; // this account cannot use it yet: try the next model
+    const err = new IntegrationError(scrub(`OpenAI returned HTTP ${r.status}${detail ? `: ${detail}` : ''}`));
+    if (/verif/i.test(detail)) err.message += ' GPT Image models need a verified OpenAI organization (platform.openai.com/settings/organization/general).';
+    if (unknownModel) err.message += ` Check the image model in Settings (tried ${chain.join(', ')}).`;
+    const blockedPrompt = code === 'moderation_blocked' || /safety system|moderation/i.test(detail);
+    if (!blockedPrompt && [400, 401, 403, 404].includes(r.status)) err.fatal = true;
+    if (r.status === 429 && /quota|billing|insufficient/i.test(detail)) { err.fatal = true; err.message += ' Add credit to the OpenAI account.'; }
+    throw err;
+  }
+}
+const generateImage = (prompt, aspect) => imageProvider() === 'openai' ? openaiImage(prompt, aspect) : geminiImage(prompt, aspect).then((img) => ({ ...img, model: imageModel() }));
+
 const imageRuns = new Map(); // taskId -> { status, done, total, failed, error, started_at }
 export const imageRun = (taskId) => imageRuns.get(taskId) || null;
 
 /** Generate the brand graphic set for the latest draft and attach each image to the task. Runs in the background. */
 export function startImageGeneration(taskId, actor = 'MAIOS') {
-  if (!providerKey('google')) throw new IntegrationError('Add a Google (Gemini) API key in Settings first.');
+  if (!imageReady()) throw new IntegrationError(keyHint());
   const task = getTask(taskId); if (!task) throw new IntegrationError('Task not found.');
   if (imageRuns.get(taskId)?.status === 'running') return imageRuns.get(taskId);
   const draft = task.artifacts.filter((a) => a.kind === 'draft').sort((a, b) => b.version - a.version)[0];
@@ -196,23 +272,28 @@ export function startImageGeneration(taskId, actor = 'MAIOS') {
   runtime.defer(async () => {
     if (imageRuns.get(taskId)?.status === 'running') return;
     imageRuns.set(taskId, run);
-    for (let i = 0; i < prompts.length; i++) {
-      const { label, prompt, aspect } = prompts[i];
-      try {
-        const img = await geminiImage(prompt, aspect);
-        const id = randomUUID(), file = `${id}.${IMAGE_EXT[img.mime]}`;
-        await assets().write(file, img.data);
-        const name = `AI image ${String(i + 1).padStart(2, '0')} · ${label}`;
-        await runtime.commit(() => {
-          getDb().prepare('INSERT INTO assets (id,task_id,name,mime,path,size,created_at) VALUES (?,?,?,?,?,?,?)').run(id, taskId, name, img.mime, file, img.data.length, stamp());
-          event(taskId, 'asset', `Image ${i + 1} of ${prompts.length} generated`, 'MAIOS', { name, model: imageModel() });
-        });
-        run.done++;
-      } catch (e) {
-        run.failed++; run.error = scrub(e?.message || e);
-        await runtime.commit(() => event(taskId, 'warning', `Image ${i + 1} of ${prompts.length} failed: ${run.error}`, 'MAIOS'));
-        if (e?.fatal) break; // a bad key, model or billing problem will fail every remaining image too
-      }
+    // OpenAI images take up to a couple of minutes each, so two run at a time to stay inside the hosting time limit.
+    const parallel = imageProvider() === 'openai' ? 2 : 1;
+    let stop = false;
+    for (let start = 0; start < prompts.length && !stop; start += parallel) {
+      await Promise.all(prompts.slice(start, start + parallel).map(async ({ label, prompt, aspect }, j) => {
+        const i = start + j;
+        try {
+          const img = await generateImage(prompt, aspect);
+          const id = randomUUID(), file = `${id}.${IMAGE_EXT[img.mime]}`;
+          await assets().write(file, img.data);
+          const name = `AI image ${String(i + 1).padStart(2, '0')} · ${label}`;
+          await runtime.commit(() => {
+            getDb().prepare('INSERT INTO assets (id,task_id,name,mime,path,size,created_at) VALUES (?,?,?,?,?,?,?)').run(id, taskId, name, img.mime, file, img.data.length, stamp());
+            event(taskId, 'asset', `Image ${i + 1} of ${prompts.length} generated`, 'MAIOS', { name, model: img.model });
+          });
+          run.done++;
+        } catch (e) {
+          run.failed++; run.error = scrub(e?.message || e);
+          await runtime.commit(() => event(taskId, 'warning', `Image ${i + 1} of ${prompts.length} failed: ${run.error}`, 'MAIOS'));
+          if (e?.fatal) stop = true; // a bad key, model or billing problem will fail every remaining image too
+        }
+      }));
     }
     run.status = run.done ? 'done' : 'failed';
     await runtime.commit(() => event(taskId, 'images', run.done ? `${run.done} of ${run.total} images attached${run.failed ? `, ${run.failed} failed` : ''}` : `Image generation failed: ${run.error}`, 'MAIOS'));
@@ -369,6 +450,17 @@ export function afterArtifact(taskId, kind) {
 
 /** Cheap credential check for the Settings screen: lists models, generates nothing, costs nothing. */
 export async function testGemini() {
+  if (imageProvider() === 'openai') {
+    const key = providerKey('openai'); if (!key) throw new IntegrationError(keyHint());
+    let r;
+    try { r = await fetch(`${OPENAI_BASE}/models`, { signal: AbortSignal.timeout(15000), headers: { Authorization: `Bearer ${key}` } }); }
+    catch (e) { throw new IntegrationError(`Could not reach OpenAI (${e?.cause?.code || e?.message || 'network error'}).`); }
+    if (!r.ok) throw await upstreamError(r, 'OpenAI');
+    const names = ((await r.json()).data || []).map((m) => String(m.id || '')).filter((n) => /^(gpt-image|chatgpt-image)/.test(n)).sort();
+    const model = imageModel(), usable = setting('image_model_openai') ? [model] : OPENAI_IMAGE_CHAIN;
+    const pick = usable.find((m) => names.includes(m));
+    return { ok: true, provider: 'openai', model: pick || model, modelAvailable: !!pick, imageModels: names.slice(0, 12) };
+  }
   const key = providerKey('google'); if (!key) throw new IntegrationError('Add a Google (Gemini) API key first.');
   let r;
   try { r = await fetch(`${GEMINI_BASE}/models?pageSize=1000`, { signal: AbortSignal.timeout(15000), headers: { 'x-goog-api-key': key } }); }

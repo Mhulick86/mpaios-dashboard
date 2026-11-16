@@ -70,7 +70,8 @@ test('Gemini generates the graphic set from the draft and attaches it, without e
   const s = await startStudio(t, { env: g.env });
   assert.equal((await s.api('/api/integrations')).gemini.configured, false);
   const { tasks: [task] } = await s.api('/api/commission', 'POST', order());
-  await assert.rejects(s.api(`/api/tasks/${task.id}/images`, 'POST', {}), /Gemini\) API key/);
+  // With no keys at all the default provider is OpenAI; saving a Gemini key (and no OpenAI key) switches to Gemini.
+  await assert.rejects(s.api(`/api/tasks/${task.id}/images`, 'POST', {}), /OpenAI API key/);
 
   const saved = await s.api('/api/integrations', 'PATCH', { gemini_api_key: 'AIza-test-secret-key', gemini_auto: true, gemini_image_count: 2 });
   assert.equal(saved.gemini.configured, true);
