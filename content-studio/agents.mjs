@@ -5,7 +5,7 @@ import {
 import { assembleKnowledge, getAgent, recordKnowledgeUsage } from './knowledge.mjs';
 import { deterministicQa, modelVerdict, formatQaReport } from './qa-checks.mjs';
 import { publish } from './events.mjs';
-import { afterArtifact } from './integrations.mjs';
+import { afterArtifact, imagePlanLimit } from './integrations.mjs';
 import { clamp } from './env.mjs';
 import { runtime } from './runtime.mjs';
 import { generate, aiStatus, ModelUnavailable, stageModel } from './providers.mjs';
@@ -96,8 +96,13 @@ function basePrompt(task, kind, options = {}) {
     };
   }
   if (kind === 'graphics') return {
-    system: `${COMMON}\nVISUAL BRAND RULES: ${profiles.visual}\nROLE: Visual Creative Director. You write unambiguous design-ready briefs and image prompts but do NOT claim to generate images. Focus on editorial relevance, modern brand typography, visual hierarchy, accessibility and factual data.`,
-    user: `Prepare ${task.graphics_count || 3} distinct visual concepts supporting this content. For each visual include: design type (carousel, diagram, comparison, product mockup, or illustration), section/slide placement, creative direction, detailed model-ready prompt, negative prompt, exact overlay text (if any), dimensions for ${task.channel}, accessibility alt text, and factual claim checks. Avoid decorative stock visuals. Include a graphical consistency checklist. Do not hallucinate existing logo files or claim assets are attached.\n\n${c}`
+    system: `${COMMON}\nVISUAL BRAND RULES: ${profiles.visual}\nROLE: Visual Creative Director and photo editor. You plan the images for a piece; you do NOT claim to generate them. Choose what genuinely helps a reader at each point: realistic photography of the people and moments the content describes, or an infographic or diagram where a section explains a process, comparison, framework or numbers.`,
+    user: `Plan the images for this piece: a hero image plus one image for each main (H2) section of the current draft, ${imagePlanLimit()} images at most. For each section decide what genuinely helps the reader:
+- photo (the default): a realistic photograph, as if taken on a 4K full-frame camera, of the real people and moment the section is about (who, setting, action, shot size, lens, light, mood). Healthcare: show staff, clinicians, admissions teams, leaders and families with dignity; no identifiable patients in treatment, nothing stigmatizing.
+- infographic or diagram: only when the section explains steps, a process, a comparison, a framework or figures. At most one image in three may be a graphic, and never the hero. Use only facts stated in the draft.
+For each image write: section, type, why that type fits, the scene (photo) or layout and labels (graphic), alt text, and a sensitivity or claim check. Then add a consistency checklist. Do not claim assets are attached.
+Finish with the shot list as JSON in a \`\`\`json fence, exactly in this shape (section is "Hero" or the exact H2 heading; type is photo, infographic or diagram; brief is one model-ready paragraph):
+{"images":[{"section":"Hero","type":"photo","brief":"...","alt":"..."}]}\n\n${c}`
   };
   if (kind === 'qa') return {
     system: `${COMMON}\nQA RULES: ${profiles.qa}\nROLE: Senior Editorial QA and Brand Compliance Reviewer. Return a concise, structured Markdown report. Explicitly flag unsupported claims, misleading language, fabricated source claims, sensitive data, brand mismatch, platform formatting and repetition. This is an advisory review, never a certification of legal compliance.`,

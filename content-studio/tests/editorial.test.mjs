@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { startStudio, waitFor } from './helpers.mjs';
 import { deterministicQa } from '../qa-checks.mjs';
-import { buildImagePrompts } from '../integrations.mjs';
+import { buildImagePrompts, parseShotList, suggestsGraphic } from '../integrations.mjs';
 
 const web = { channel: 'website', content_type: 'article', word_count: 500, primary_keyword: '', voice: 'company' };
 const filler = 'Treatment centers that own their reporting make faster budget decisions and keep their history when a vendor changes. '.repeat(30);
@@ -28,10 +28,27 @@ test('house editing rules: strip-outs, uncited figures, citations and links', ()
 });
 
 test('images are text-free unless words are explicitly allowed', () => {
-  const off = buildImagePrompts({ channel: 'website' }, 'Draft.', { brand: 'Brand.', count: 1, text: false })[0].prompt;
+  const off = buildImagePrompts({ channel: 'website' }, 'Draft.', { brand: 'Brand.', count: 1, text: false, style: 'graphics' })[0].prompt;
   assert.match(off, /Do NOT render any words, letters, numbers/);
-  const on = buildImagePrompts({ channel: 'website' }, 'Draft.', { brand: 'Brand.', count: 1, text: true })[0].prompt;
-  assert.match(on, /short realistic on-brand text/); assert(!/Do NOT render/.test(on));
+  const on = buildImagePrompts({ channel: 'website' }, 'Draft.', { brand: 'Brand.', count: 1, text: true, style: 'graphics' })[0].prompt;
+  assert.match(on, /correctly spelled labels/); assert(!/Do NOT render/.test(on));
+  // Photos never carry words, whatever the setting.
+  const photo = buildImagePrompts({ channel: 'website' }, '# T\n\nIntro.', { brand: 'Brand.', count: 1, text: true, style: 'auto', photo: 'PHOTO RULES: no text.' })[0];
+  assert.equal(photo.type, 'photo'); assert.match(photo.prompt, /^PHOTO RULES: no text\./); assert.doesNotMatch(photo.prompt, /labels/);
+});
+
+test('image choice per section: plan first, content as fallback, graphics capped and never the hero', () => {
+  const draft = '# Owned measurement\n\nIntro text.\n\n## The budget meeting\nA CFO and a CMO argue about attribution.\n\n## Five steps\n1. One\n2. Two\n3. Three\n\n## Costs compared\n| Rented | Owned |\n|---|---|\n| $10 | $4 |\n\n## The intake desk\nAdmissions staff answer calls.\n\n## FAQ\nQ and A.';
+  const opts = { brand: 'Brand.', count: 8, text: false, photo: 'Photo.' };
+  const auto = buildImagePrompts({ channel: 'website' }, draft, { ...opts, style: 'auto' });
+  assert.deepEqual(auto.map((p) => p.label), ['Hero photo', 'Photo · The budget meeting', 'Diagram · Five steps', 'Photo · Costs compared', 'Photo · The intake desk'], 'one graphic in five images; the table section falls back to a photo because of the cap; FAQ is skipped');
+  assert.equal(parseShotList('no json here'), null);
+  assert.equal(parseShotList('```json\n{"images":[{"type":"video","brief":"x"}]}\n```'), null, 'unknown types are dropped');
+  const plan = 'Notes\n```json\n{"images":[{"section":"Hero","type":"infographic","brief":"Hero brief"},{"section":"Costs compared","type":"infographic","brief":"Bar comparison"},{"section":"Five steps","type":"diagram","brief":"Steps"},{"section":"The intake desk","type":"photo","brief":"Night shift intake"}]}\n```';
+  const planned = buildImagePrompts({ channel: 'website' }, draft, { ...opts, style: 'auto', plan });
+  assert.deepEqual(planned.map((p) => [p.type, p.label]), [['photo', 'Hero photo'], ['infographic', 'Infographic · Costs compared'], ['photo', 'Photo · Five steps'], ['photo', 'Photo · The intake desk']], 'the hero is always a photo and only one graphic fits in four images');
+  assert.equal(planned[1].aspect, '4:5'); assert.match(planned[3].prompt, /ART DIRECTION FROM THE GRAPHICS PLAN: Night shift intake/);
+  assert.ok(suggestsGraphic({ heading: 'Plain', raw: 'Just a paragraph.', body: 'Just a paragraph.' }) === null);
 });
 
 test('send back for revision: note is kept, card returns to drafting, approval is withdrawn, a revised draft is written', async (t) => {
