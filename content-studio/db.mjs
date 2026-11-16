@@ -19,7 +19,8 @@ const fromJson = (v, fallback) => { try { return v ? JSON.parse(v) : fallback; }
 
 export const STAGES = ['brief', 'draft', 'graphics', 'qa'];
 const CHANNELS = ['website', 'linkedin', 'facebook', 'instagram', 'gbp', 'x'];
-const PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
+// MP FRESH taxonomy: P0-P6 for site pages, BP0-BP3 for blog posts and guides.
+export const PRIORITIES = ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'BP0', 'BP1', 'BP2', 'BP3'];
 const WEBSITE_TYPES = ['article', 'guide', 'landing'];
 const str = (v, max) => String(v ?? '').slice(0, max);
 const strList = (v, maxItems, maxLen) => (Array.isArray(v) ? v : []).map((x) => str(x, maxLen).trim()).filter(Boolean).slice(0, maxItems);
@@ -289,7 +290,7 @@ export function updateTask(id, patch, actor = 'Mike') {
     else if (key === 'source_urls') v = json(strList(v, 30, 2000));
     else if (key === 'word_count') v = Math.min(6000, Math.max(0, Number(v) || 0));
     else if (key === 'graphics_count') v = Math.min(12, Math.max(0, Number(v) || 0));
-    else if (key === 'priority') { if (!PRIORITIES.includes(v)) throw new Error('Priority must be P0, P1, P2 or P3.'); }
+    else if (key === 'priority') { if (!PRIORITIES.includes(v)) throw new Error('Priority must be P0 to P6, or BP0 to BP3.'); }
     else if (key === 'voice') { if (!['company', 'founder'].includes(v)) throw new Error('Voice must be company or founder.'); }
     else if (key === 'due_date') v = dateOrNull(v);
     else if (key === 'title') { v = String(v ?? '').trim().slice(0, 300); if (!v) throw new Error('Title cannot be empty.'); }

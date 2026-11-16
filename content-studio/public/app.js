@@ -311,7 +311,7 @@ function selectHtml(items, value) { return items.map((v) => `<option value="${ht
 function field(name, label, value, type = 'text', isFull = false) {
   const id = 'tf_' + name;
   if (type === 'textarea') return `<div class="detail-field ${isFull ? 'full' : ''}"><label class="field-label" for="${id}">${html(label)}</label><textarea id="${id}" name="${name}" rows="3">${html(value)}</textarea></div>`;
-  if (type === 'select_priority') return `<div class="detail-field"><label class="field-label" for="${id}">${html(label)}</label><select name="${name}" id="${id}">${selectHtml(['P0', 'P1', 'P2', 'P3'], value)}</select></div>`;
+  if (type === 'select_priority') return `<div class="detail-field"><label class="field-label" for="${id}">${html(label)}</label><select name="${name}" id="${id}">${selectHtml(['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'BP0', 'BP1', 'BP2', 'BP3'], value)}</select></div>`;
   if (type === 'select_voice') return `<div class="detail-field"><label class="field-label" for="${id}">${html(label)}</label><select name="${name}" id="${id}"><option value="company" ${value === 'company' ? 'selected' : ''}>Company</option><option value="founder" ${value === 'founder' ? 'selected' : ''}>Founder</option></select></div>`;
   return `<div class="detail-field ${isFull ? 'full' : ''}"><label class="field-label" for="${id}">${html(label)}</label><input id="${id}" name="${name}" type="${type}" value="${html(value ?? '')}" /></div>`;
 }
@@ -494,7 +494,7 @@ function commissionModal(preferredLane, requestedPlaybook) {
  <div class="modal-field full"><label>TARGET AUDIENCE</label><input name="audience" placeholder="CMOs, CEOs, hospital operators, healthcare executives" value="Marketing decision makers and business operators" /></div>
  <div class="modal-field"><label>PRIMARY KEYWORD</label><input name="primary_keyword" placeholder="e.g. data sovereignty" /></div>
  <div class="modal-field"><label>SECONDARY KEYWORDS</label><input name="secondary_keywords" placeholder="comma-separated" /></div>
- <div class="modal-field"><label>PRIORITY</label><select name="priority"><option value="P2">P2 · Normal</option><option value="P1">P1 · High</option><option value="P0">P0 · Critical</option><option value="P3">P3 · Low</option></select></div>
+ <div class="modal-field"><label>PRIORITY</label><select name="priority"><option value="P2">P2 · Normal</option><option value="P1">P1 · High</option><option value="P0">P0 · Critical</option><option value="P3">P3 · Low</option><option value="P4">P4</option><option value="P5">P5</option><option value="P6">P6</option><option value="BP0">BP0 · Blog critical</option><option value="BP1">BP1 · Blog high</option><option value="BP2">BP2 · Blog normal</option><option value="BP3">BP3 · Blog low</option></select></div>
  <div class="modal-field"><label>ASSIGNEE</label><select name="owner"><option>Emily</option><option>Rimsha</option><option>Mike</option><option>Jason</option><option>Unassigned</option></select></div>
  <div class="modal-field"><label>TARGET WEBSITE WORD COUNT</label><input type="number" name="word_count" value="1500" min="100" max="6000" /></div>
  <div class="modal-field"><label>GRAPHICS PER DELIVERABLE</label><input type="number" name="graphics_count" value="3" min="0" max="10" /></div>

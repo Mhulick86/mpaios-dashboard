@@ -100,3 +100,10 @@ mark.verify{background:#4a3a16;color:#ffd98a;padding:1px 5px;border-radius:4px;f
 #settingsModal ol { margin: 8px 0 14px 18px; line-height: 1.7; }
 #settingsModal select { width: 100%; }
 #settingsModal .settings-field select { background:#171f2d; border:1px solid #354057; border-radius:8px; padding:10px 12px; color:#eff2f7; font-size:12px; min-width:0; }
+
+/* P4-P6 and blog priorities (BP0-BP3) */
+.badge.P4,.badge.P5,.badge.P6{color:#abb6cb;background:#2b3040}
+.badge.BP0{color:#ffacaf;background:#3a2a3a;outline:1px dashed #6b4655}
+.badge.BP1{color:#f1c483;background:#352f30;outline:1px dashed #5f4f3d}
+.badge.BP2{color:#a8c9ec;background:#232f40;outline:1px dashed #3f5670}
+.badge.BP3{color:#abb6cb;background:#262b38;outline:1px dashed #434b60}
