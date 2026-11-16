@@ -56,19 +56,25 @@ test('hosted: passcode gate, cloud-style generation in the background, and no lo
     FAKE_BLOB_URL: `http://127.0.0.1:${blobPort}`, STUDIO_SECRET_KEY: randomBytes(32).toString('base64'), STUDIO_HOSTED: '1',
     LM_STUDIO_BASE_URL: `http://127.0.0.1:${modelPort}/v1`, STUDIO_MODEL_BRIEF: 'lmstudio:auto', STUDIO_MODEL_DRAFT: 'lmstudio:auto',
     STUDIO_MODEL_GRAPHICS: 'lmstudio:auto', STUDIO_MODEL_QA: 'lmstudio:auto', ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', GEMINI_API_KEY: '', GOOGLE_AI_API_KEY: '', GOOGLE_API_KEY: '',
-    AUTO_GENERATE_ON_MOVE: 'true', JOB_RETRY_BASE_MS: '200'
+    AUTO_GENERATE_ON_MOVE: 'true', JOB_RETRY_BASE_MS: '200', STUDIO_PASSCODE: 'correct horse battery'
   };
   const [a, b] = await Promise.all([instance(t, env), instance(t, env)]);
 
-  // Public custom domain: locked until a passcode exists, and the passcode can only be set from the protected host.
-  await assert.rejects(a.api('/api/bootstrap'), (e) => e.status === 401 && e.data.auth.passcodeSet === false);
-  await assert.rejects(a.api('/api/session/passcode', 'POST', { passcode: 'correct horse battery' }), /403/);
-  const set = await b.api('/api/session/passcode', 'POST', { passcode: 'correct horse battery' }, { host: 'mpaios.vercel.app' });
-  assert.equal(set.passcodeSet, true);
+  // Every address is locked, including *.vercel.app hosts: nothing is trusted by host name.
+  await assert.rejects(a.api('/api/bootstrap'), (e) => e.status === 401 && e.data.auth.passcodeSet === true);
+  await assert.rejects(a.api('/api/bootstrap', 'GET', undefined, { host: 'mpaios.vercel.app' }), /401/);
+  await assert.rejects(a.api('/api/session/passcode', 'POST', { passcode: 'a brand new passcode' }, { host: 'mpaios.vercel.app' }), /403/);
   await assert.rejects(a.api('/api/session', 'POST', { passcode: 'wrong passcode' }), /401/);
   await a.api('/api/session', 'POST', { passcode: 'correct horse battery' });
   assert.ok(a.cookie().startsWith('maios_studio=v1.'));
   b.setCookie(a.cookie()); // the same browser talking to another instance
+  // Changing the passcode signs every other browser out; the browser that changed it stays in.
+  const old = a.cookie();
+  await b.api('/api/session/passcode', 'POST', { passcode: 'second team passcode' });
+  await assert.rejects(a.api('/api/bootstrap'), /401/);
+  await assert.rejects(a.api('/api/session', 'POST', { passcode: 'correct horse battery' }), /401/);
+  await a.api('/api/session', 'POST', { passcode: 'second team passcode' });
+  assert.notEqual(a.cookie(), old);
   const boot = await b.api('/api/bootstrap');
   assert.equal(boot.settings.hosted, true); assert.equal(boot.ai.hosted, true);
   assert.ok(!boot.ai.models.some((m) => m.id.startsWith('lmstudio')), 'local models are not offered when hosted');
@@ -105,10 +111,11 @@ test('hosted: a cancel through one instance stops a generation running on anothe
   const mock = createMockModel({ delayMs: 120 }); const modelPort = await mock.listen(0); t.after(() => mock.close());
   const env = {
     FAKE_BLOB_URL: `http://127.0.0.1:${blobPort}`, STUDIO_SECRET_KEY: randomBytes(32).toString('base64'), STUDIO_HOSTED: '1',
-    LM_STUDIO_BASE_URL: `http://127.0.0.1:${modelPort}/v1`, STUDIO_MODEL_BRIEF: 'lmstudio:auto', STUDIO_MODEL_DRAFT: 'lmstudio:auto', AUTO_GENERATE_ON_MOVE: 'false'
+    LM_STUDIO_BASE_URL: `http://127.0.0.1:${modelPort}/v1`, STUDIO_MODEL_BRIEF: 'lmstudio:auto', STUDIO_MODEL_DRAFT: 'lmstudio:auto', AUTO_GENERATE_ON_MOVE: 'false', STUDIO_PASSCODE: 'cancel test passcode'
   };
   const [a, b] = await Promise.all([instance(t, env), instance(t, env)]);
-  const host = { host: 'mpaios.vercel.app' };
+  await a.api('/api/session', 'POST', { passcode: 'cancel test passcode' }); b.setCookie(a.cookie());
+  const host = {};
   const { tasks: [task] } = await a.api('/api/commission', 'POST', { topic: 'Cancel me', outputs: ['website'], voice: 'company', word_count: 600 }, host);
   await a.api(`/api/tasks/${task.id}/generate`, 'POST', { kind: 'draft' }, host);
   const running = await waitFor(async () => (await b.api(`/api/tasks/${task.id}/live`, 'GET', undefined, host)).jobs.find((j) => j.text.length > 20), 20000, 100);

@@ -99,11 +99,10 @@ function authGate(info) {
   if (gateOpen) return; gateOpen = true;
   $('#settingsBackdrop').hidden = false; $('#settingsModal').hidden = false;
   $('#settingsModal').innerHTML = info.passcodeSet
-    ? `<div class="eyebrow">CONTENT STUDIO</div><h2>Enter the studio passcode</h2><p>Content Studio holds your AI provider keys, so on this address it asks for the team passcode. This browser stays signed in for 90 days.</p>
+    ? `<div class="eyebrow">CONTENT STUDIO</div><h2>Enter the studio passcode</h2><p>Content Studio holds your AI provider keys, so it asks for the team passcode. This browser stays signed in for 90 days.</p>
       <form id="signInForm"><div class="settings-field"><label>PASSCODE</label><input type="password" name="passcode" autocomplete="current-password" required autofocus /></div><div class="settings-actions"><button type="submit" class="button primary">Open the studio</button></div></form>`
-    : `<div class="eyebrow">CONTENT STUDIO</div><h2>Set a passcode first</h2><p>Content Studio holds your AI provider keys, so on this public address it needs a passcode. Set it once from the protected address, which asks you to sign in to Vercel:</p>
-      <ol><li>Open <a href="${html(info.setupUrl || 'https://mpaios.vercel.app/content-studio')}" target="_blank" rel="noopener noreferrer">${html((info.setupUrl || 'https://mpaios.vercel.app/content-studio').replace(/^https:\/\//, ''))}</a>.</li><li>Open Settings (gear icon) and set the <strong>Studio passcode</strong>.</li><li>Come back here and enter it.</li></ol>
-      <div class="settings-actions"><button class="button primary" id="authRetry">I set it, continue</button></div>`;
+    : `<div class="eyebrow">CONTENT STUDIO</div><h2>Access is not configured</h2><p>Content Studio holds your AI provider keys, so it only opens with a passcode, and none is configured on this deployment. Add <code>STUDIO_PASSCODE</code> (at least 8 characters) to the Vercel project environment and redeploy.</p>
+      <div class="settings-actions"><button class="button primary" id="authRetry">Try again</button></div>`;
 }
 
 // ---------- Live updates (Server-Sent Events over fetch, so the access token stays in a header) ----------
@@ -455,8 +454,8 @@ function aiSettingsMarkup() {
 function passcodeMarkup() {
   if (!HOSTED) return '';
   const a = state.auth || {}, dot = (on) => `<span class="live-dot ${on ? 'on' : ''}"></span>`;
-  return `<div class="settings-section"><h3>Studio passcode</h3><p>On MAIOS's public address the studio asks for this passcode. On the protected mpaios.vercel.app address (Vercel sign-in) it opens without one.</p>
-   <div class="status-line">${dot(a.passcodeSet)}${a.passcodeSet ? 'Passcode set' : 'No passcode yet: the public address stays locked until you set one'}${a.signedIn ? ' · this browser is signed in' : ''}</div>
+  return `<div class="settings-section"><h3>Studio passcode</h3><p>Everyone opening the studio needs this passcode once per browser (sessions last 90 days).</p>
+   <div class="status-line">${dot(a.passcodeSet)}${a.passcodeSet ? 'Passcode set' : 'No passcode configured'}${a.signedIn ? ' · this browser is signed in' : ''}</div>
    <form id="passcodeForm" autocomplete="off"><div class="settings-field"><label>${a.passcodeSet ? 'NEW PASSCODE' : 'PASSCODE'}</label><input type="password" name="passcode" minlength="8" autocomplete="new-password" placeholder="At least 8 characters" /><span class="field-hint">Share it with the team. Changing it signs every browser out.</span></div>
    <div class="settings-actions">${a.signedIn ? '<button type="button" class="button ghost" id="signOut">Sign out</button>' : ''}<button type="submit" class="button primary">${a.passcodeSet ? 'Change passcode' : 'Set passcode'}</button></div></form></div>`;
 }

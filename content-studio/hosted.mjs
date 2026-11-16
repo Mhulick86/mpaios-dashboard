@@ -11,9 +11,9 @@
  * Generations run in the background after a response (Next's after()) and from a Vercel Cron backstop. Live
  * output is written to a small blob every 1.5s while a model writes, and the board polls for it.
  *
- * Access: the deployment's *.vercel.app addresses are behind Vercel Authentication, so requests there are trusted.
- * On the public custom domain the studio asks for a passcode, set once from the protected address, and keeps a
- * signed, HttpOnly session cookie.
+ * Access: every address asks for the team passcode (the production *.vercel.app alias is public, so no host is
+ * trusted). The first passcode comes from STUDIO_PASSCODE in the project environment; once someone changes it in
+ * Settings the saved one applies. A signed, HttpOnly session cookie keeps a browser signed in for 90 days.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
@@ -37,7 +37,7 @@ const stamp = () => new Date().toISOString();
  * @param seed    knowledge/seed.json contents (bundled by the caller; this file cannot read files next to itself)
  * @param cookiePath  where the API is mounted, e.g. /api/studio
  */
-export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'studio', maxRunning = clamp(process.env.WORKER_CONCURRENCY, 1, 8, 2), minStartMs = 240000, trustVercelHosts = process.env.STUDIO_TRUST_VERCEL_HOSTS !== '0' }) {
+export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'studio', maxRunning = clamp(process.env.WORKER_CONCURRENCY, 1, 8, 2), minStartMs = 240000 }) {
   process.env.NO_DEMO_SEED ??= '1'; // a real workspace starts with an empty board
   if (seed) setKnowledgeSeed(seed);
 
@@ -123,28 +123,29 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
 
   // ---------- Access ----------
   const setting = (key) => getDb().prepare('SELECT value FROM settings WHERE key=?').get(key)?.value || '';
-  const trusted = (host) => trustVercelHosts && /\.vercel\.app$/i.test(String(host || '').split(':')[0]);
+  const initial = () => (process.env.STUDIO_PASSCODE || '').trim();
+  const storedPasscode = () => setting('auth:passcode') || (initial().length >= 8 ? passcodeHash(initial()) : '');
   const cookie = (value, maxAge) => `${COOKIE}=${value}; Path=${cookiePath}; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
   function access(req) {
-    const stored = setting('auth:passcode');
+    const stored = storedPasscode();
     const signedIn = verifySession(req.cookie, stored);
-    return { ok: trusted(req.host) || signedIn, hosted: true, passcodeSet: !!stored, signedIn, trustedHost: trusted(req.host), setupUrl: process.env.STUDIO_SETUP_URL || 'https://mpaios.vercel.app/content-studio' };
+    return { ok: signedIn, hosted: true, passcodeSet: !!stored, signedIn };
   }
   let failures = 0;
   async function sessionRoute(req) {
     if (req.method === 'GET') return json(200, access(req));
     if (req.method === 'DELETE') return json(200, { ok: true }, { 'Set-Cookie': cookie('', 0) });
     const body = await parseJson(req, 4096);
-    const stored = setting('auth:passcode');
+    const stored = storedPasscode();
     if (req.method === 'POST' && req.path === '/api/session') {
-      if (!stored) throw new HttpError(400, 'No passcode has been set yet. Open the studio once from the protected mpaios.vercel.app address to set one.');
+      if (!stored) throw new HttpError(503, 'No studio passcode is configured. Set STUDIO_PASSCODE in the Vercel project environment.');
       if (!passcodeMatches(String(body.passcode || ''), stored)) { failures++; await sleep(Math.min(5000, 400 * failures)); throw new HttpError(401, 'That passcode is not right.'); }
       failures = 0;
       return json(200, { ...access(req), signedIn: true, ok: true }, { 'Set-Cookie': cookie(signSession(stored), 90 * 86400) });
     }
     if (req.method === 'POST' && req.path === '/api/session/passcode') {
       const now = access(req);
-      if (!now.trustedHost && !now.signedIn) throw new HttpError(403, 'Sign in first, or set the passcode from the protected mpaios.vercel.app address.');
+      if (!now.signedIn) throw new HttpError(403, 'Sign in with the current passcode first.');
       const passcode = String(body.passcode || '');
       if (passcode.length < 8 || passcode.length > 200) throw new HttpError(400, 'Use at least 8 characters.');
       const hash = passcodeHash(passcode);
@@ -163,7 +164,7 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
       return await commit(async () => {
         if (req.path === '/api/session' || req.path === '/api/session/passcode') return sessionRoute(req);
         const a = access(req);
-        if (!a.ok) return json(401, { error: a.passcodeSet ? 'Enter the studio passcode to continue.' : 'Set a studio passcode first from the protected mpaios.vercel.app address.', auth: a });
+        if (!a.ok) return json(401, { error: a.passcodeSet ? 'Enter the studio passcode to continue.' : 'No studio passcode is configured. Set STUDIO_PASSCODE in the Vercel project environment.', auth: a });
         if (req.path === '/api/events') return json(404, { error: 'Live events are not available on the hosted studio; the board polls instead.' });
         return handleApi(req);
       });
