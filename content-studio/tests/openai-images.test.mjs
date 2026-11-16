@@ -35,11 +35,20 @@ Service-line leaders defend budgets with platform dashboards they cannot audit, 
 ## Who owns the data
 When the agency owns the ad accounts and the call tracking, the hospital rents its own history. Ownership changes who can answer the board.
 
+## What finance asks for
+A finance partner wants the same numbers every month, traced to appointments the hospital can verify.
+
 ## Four steps to owned measurement
 1. Move ad accounts and call tracking into hospital ownership.
 2. Define a scheduled appointment as the conversion.
 3. Connect intake records to campaigns.
 4. Review the numbers monthly with finance.
+
+## What to measure first
+Start with one service line and one conversion path, measured end to end.
+
+## Where to start this quarter
+Pick the service line with the most spend and the least evidence.
 
 ## Frequently asked questions
 Is this only for large systems? No.
@@ -70,8 +79,8 @@ test('OpenAI GPT Image is the default image provider, falls back to a model the 
   assert.ok(ok.every((c) => c.quality === 'high' && c.output_format === 'png' && c.n === 1));
   // Without a graphics plan, the section content decides: photos of people, a diagram only for the numbered steps.
   const names = done.assets.map((a) => a.name).sort();
-  assert.deepEqual(names, ['AI image 01 · Hero photo', 'AI image 02 · Photo · Why budgets move without evidence', 'AI image 03 · Photo · Who owns the data', 'AI image 04 · Diagram · Four steps to owned measurement']);
-  const photo = ok.find((c) => c.prompt.includes('SECTION "Who owns the data"')).prompt;
+  assert.deepEqual(names, ['AI image 01 · Hero photo', 'AI image 02 · Photo · Why budgets move without evidence', 'AI image 03 · Diagram · Four steps to owned measurement', 'AI image 04 · Photo · What to measure first']);
+  const photo = ok.find((c) => c.prompt.includes('SECTION "What to measure first"')).prompt;
   assert.match(photo, /4K/); assert.match(photo, /real people/); assert.match(photo, /SHOT: A /); assert.match(photo, /#2CACE8/);
   assert.doesNotMatch(photo, /senior brand designer/, 'photos do not get the graphic brand system');
   const diagram = ok.find((c) => c.prompt.includes('Four steps')).prompt;
@@ -117,8 +126,9 @@ test('the graphics plan decides photo or diagram per section, and its art direct
   await s.api(`/api/tasks/${task.id}/generate`, 'POST', { kind: 'graphics' });
   const done = await waitFor(async () => { const x = await s.api(`/api/tasks/${task.id}`); return x.imageRun?.status === 'done' ? x : false; }, 20000);
   const planPrompt = s.mock.requests.find((r) => r.stage === 'graphics').user;
-  assert.match(planPrompt, /^Plan the images for this piece/); assert.match(planPrompt, /"images":\[/);
-  assert.deepEqual(done.assets.map((a) => a.name).sort(), ['AI image 01 · Hero photo', 'AI image 02 · Diagram · What ownership requires', 'AI image 03 · Photo · The decision in front of the reader']);
+  // A website plan covers exactly the images the page shows: the hero, then after the 1st and the middle H2 of five.
+  assert.match(planPrompt, /^Plan exactly 3 images, in page order: the hero, then one image for each of these H2 sections \(the page shows images only after them\): "The decision in front of the reader", "What ownership requires"\./); assert.match(planPrompt, /"images":\[/);
+  assert.deepEqual(done.assets.map((a) => a.name).sort(), ['AI image 01 · Hero photo', 'AI image 02 · Photo · The decision in front of the reader', 'AI image 03 · Diagram · What ownership requires']);
   const sent = o.calls.filter((c) => c.model === 'gpt-image-2.5-sunburst');
   assert.match(sent.find((c) => c.prompt.includes('What ownership requires')).prompt, /ART DIRECTION FROM THE GRAPHICS PLAN: Three linked blocks/);
   assert.match(sent.find((c) => c.prompt.includes('The decision in front of the reader')).prompt, /late afternoon light/);
@@ -126,5 +136,5 @@ test('the graphics plan decides photo or diagram per section, and its art direct
   await s.api('/api/integrations', 'PATCH', { image_style: 'photo' });
   await s.api(`/api/tasks/${task.id}/images`, 'POST', {});
   await waitFor(async () => (await s.api(`/api/tasks/${task.id}`)).assets.length === 6, 20000);
-  assert.ok((await s.api(`/api/tasks/${task.id}`)).assets.some((a) => a.name === 'AI image 02 · Photo · What ownership requires'));
+  assert.ok((await s.api(`/api/tasks/${task.id}`)).assets.some((a) => a.name === 'AI image 03 · Photo · What ownership requires'));
 });

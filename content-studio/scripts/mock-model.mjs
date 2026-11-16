@@ -15,7 +15,7 @@ const field = (prompt, name) => (prompt.match(new RegExp(`^${name}: (.*)$`, 'm')
 
 export function stageOf(prompt) {
   if (prompt.startsWith('Prepare a production-ready editorial brief')) return 'brief';
-  if (/^Prepare \d+ distinct visual concepts/.test(prompt) || prompt.startsWith('Plan the images for this piece')) return 'graphics';
+  if (/^Prepare \d+ distinct visual concepts/.test(prompt) || /^Plan (the images for this piece|exactly \d+ images?)/.test(prompt)) return 'graphics';
   if (prompt.startsWith('Review the current draft')) return 'qa';
   if (prompt.startsWith('Revise the CURRENT DRAFT')) return 'revise';
   return 'draft';

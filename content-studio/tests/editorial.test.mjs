@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { startStudio, waitFor } from './helpers.mjs';
 import { deterministicQa } from '../qa-checks.mjs';
-import { buildImagePrompts, parseShotList, suggestsGraphic } from '../integrations.mjs';
+import { buildImagePrompts, parseShotList, suggestsGraphic, pageImageSlots } from '../integrations.mjs';
 
 const web = { channel: 'website', content_type: 'article', word_count: 500, primary_keyword: '', voice: 'company' };
 const filler = 'Treatment centers that own their reporting make faster budget decisions and keep their history when a vendor changes. '.repeat(30);
@@ -46,15 +46,27 @@ test('images are text-free unless words are explicitly allowed', () => {
 test('image choice per section: plan first, content as fallback, graphics capped and never the hero', () => {
   const draft = '# Owned measurement\n\nIntro text.\n\n## The budget meeting\nA CFO and a CMO argue about attribution.\n\n## Five steps\n1. One\n2. Two\n3. Three\n\n## Costs compared\n| Rented | Owned |\n|---|---|\n| $10 | $4 |\n\n## The intake desk\nAdmissions staff answer calls.\n\n## FAQ\nQ and A.';
   const opts = { brand: 'Brand.', count: 8, text: false, photo: 'Photo.' };
-  const auto = buildImagePrompts({ channel: 'website' }, draft, { ...opts, style: 'auto' });
+  // Other channels: a hero plus one image per section.
+  const auto = buildImagePrompts({ channel: 'email' }, draft, { ...opts, style: 'auto' });
   assert.deepEqual(auto.map((p) => p.label), ['Hero photo', 'Photo · The budget meeting', 'Diagram · Five steps', 'Photo · Costs compared', 'Photo · The intake desk'], 'one graphic in five images; the table section falls back to a photo because of the cap; FAQ is skipped');
   assert.equal(parseShotList('no json here'), null);
   assert.equal(parseShotList('```json\n{"images":[{"type":"video","brief":"x"}]}\n```'), null, 'unknown types are dropped');
   const plan = 'Notes\n```json\n{"images":[{"section":"Hero","type":"infographic","brief":"Hero brief"},{"section":"Costs compared","type":"infographic","brief":"Bar comparison"},{"section":"Five steps","type":"diagram","brief":"Steps"},{"section":"The intake desk","type":"photo","brief":"Night shift intake"}]}\n```';
-  const planned = buildImagePrompts({ channel: 'website' }, draft, { ...opts, style: 'auto', plan });
+  const planned = buildImagePrompts({ channel: 'email' }, draft, { ...opts, style: 'auto', plan });
   assert.deepEqual(planned.map((p) => [p.type, p.label]), [['photo', 'Hero photo'], ['infographic', 'Infographic · Costs compared'], ['photo', 'Photo · Five steps'], ['photo', 'Photo · The intake desk']], 'the hero is always a photo and only one graphic fits in four images');
   assert.equal(planned[1].aspect, '4:5'); assert.match(planned[3].prompt, /ART DIRECTION FROM THE GRAPHICS PLAN: Night shift intake/);
   assert.ok(suggestsGraphic({ heading: 'Plain', raw: 'Just a paragraph.', body: 'Just a paragraph.' }) === null);
+
+  // Website pages: only the images the page template shows (hero, then after the 1st, middle and second-to-last H2),
+  // all landscape. Four sections give two section slots: "The budget meeting" and "Costs compared".
+  assert.deepEqual(pageImageSlots(draft).slots, ['Hero', 'The budget meeting', 'Costs compared']);
+  const web = buildImagePrompts({ channel: 'website' }, draft, { ...opts, style: 'auto' });
+  assert.deepEqual(web.map((p) => p.label), ['Hero photo', 'Photo · The budget meeting', 'Infographic · Costs compared']);
+  const webPlanned = buildImagePrompts({ channel: 'website' }, draft, { ...opts, style: 'auto', plan });
+  assert.deepEqual(webPlanned.map((p) => [p.type, p.label]), [['photo', 'Hero photo'], ['photo', 'Photo · The budget meeting'], ['infographic', 'Infographic · Costs compared']], 'planned images for sections the page does not show are not generated');
+  assert.equal(webPlanned[2].aspect, '3:2'); assert.match(webPlanned[2].prompt, /ART DIRECTION FROM THE GRAPHICS PLAN: Bar comparison/); assert.match(webPlanned[2].prompt, /reads on a phone screen/);
+  const six = '# T\n\nLead.\n\n' + ['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((h) => `## Section ${h}\nBody ${h}.`).join('\n\n') + '\n\n## Sources\nx\n\n## FAQ\ny';
+  assert.deepEqual(pageImageSlots(six).slots, ['Hero', 'Section A', 'Section D', 'Section F'], 'seven sections: after the 1st, the middle (index 3) and the second-to-last');
 });
 
 test('send back for revision: note is kept, card returns to drafting, approval is withdrawn, a revised draft is written', async (t) => {

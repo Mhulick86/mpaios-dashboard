@@ -214,6 +214,22 @@ export function draftSections(md) {
   }).filter((x) => x.heading && x.body && !SKIP_SECTION.test(x.heading));
   return { title, intro, sections };
 }
+// The website template (mp-site MarkdownPage) shows a hero image, then one image after the 1st, the middle and the
+// second-to-last H2 section (pages with 2, 4 and 6+ sections). The site importer drops these H2 sections and the FAQ
+// before counting (keep in step with mp-site scripts/studio-ship.mjs DROP_SECTION).
+const SITE_DROP = /^(suggested\s+)?(internal links?|schema( markup)?|seo( metadata)?|meta( title| description| data)?|notes?\b|production notes|editor('s)? notes|notes? for (the )?(editor|designer|developer)|graphics?\b|visuals?\b|images?\b|image (notes|suggestions|prompts)|sources?|references|change ?log|qa\b|fact[- ]check)|not for publication|^(faq|faqs|frequently asked questions)\b/i;
+/**
+ * Where a website page shows images: ['Hero', ...section headings that get an image]. Images beyond these are never
+ * shown, so they are not planned or generated. `sections` are the page's H2 sections as the site will have them.
+ */
+export function pageImageSlots(md) {
+  const parts = String(md || '').replace(/\r/g, '').split(/^##\s+/m).slice(1);
+  const sections = parts.map((p) => { const [head, ...rest] = p.split('\n'); const raw = rest.join('\n'); return { heading: plain(head).replace(/[:.;,]+$/, ''), raw, body: plain(raw) }; })
+    .filter((x) => x.heading && !SITE_DROP.test(x.heading));
+  const n = sections.length, idx = [];
+  if (n >= 2) idx.push(0); if (n >= 4) idx.push(Math.floor(n / 2)); if (n >= 6) idx.push(n - 2);
+  return { slots: ['Hero', ...[...new Set(idx)].map((i) => sections[i].heading)], sections };
+}
 /** Fallback when there is no usable shot list: does this section explain something a graphic shows better than a photo? */
 export function suggestsGraphic(section) {
   const items = (section.raw.match(/^\s*(\d+[.)]|[-*])\s+/gm) || []).length;
@@ -267,7 +283,17 @@ export function buildImagePrompts(task, draftBody, { brand = brandSystem(), coun
   // Shot list: the graphics plan's when it has one, otherwise hero + one per section, with graphics where the content calls for them.
   const planned = parseShotList(plan);
   let shots;
-  if (planned) {
+  if (task.channel === 'website') {
+    // Exactly the images the page will show, in page order, using the plan's direction for each slot when it has one.
+    const page = pageImageSlots(draftBody);
+    shots = page.slots.map((name, i) => {
+      const sec = i ? page.sections.find((s) => same(s.heading, name)) || null : null;
+      const p = planned?.find((x) => (i ? same(x.section, name) : /^hero$/i.test(x.section)));
+      if (p) return { ...p, section: name, sec };
+      const g = i && style === 'auto' && sec ? suggestsGraphic(sec) : null;
+      return { section: name, type: g ? g.type : 'photo', brief: '', sec };
+    });
+  } else if (planned) {
     shots = planned.map((x) => ({ ...x, sec: /^hero$/i.test(x.section) ? null : sections.find((s) => same(s.heading, x.section)) || null }));
   } else {
     shots = [{ section: 'Hero', type: 'photo', brief: '', sec: null }, ...sections.map((sec) => {
@@ -294,8 +320,11 @@ export function buildImagePrompts(task, draftBody, { brand = brandSystem(), coun
         prompt: `${photo}\n\n${context}\n\n${subject}${brief}\n\nSHOT: ${shot}` };
     }
     const kind = x.type === 'diagram' ? 'clean diagram' : 'infographic';
-    return { index: i + 1, type: x.type, label: `${x.type === 'diagram' ? 'Diagram' : 'Infographic'} · ${label}`, aspect: shape(x.type === 'diagram' ? '3:2' : '4:5'), alt: x.alt,
-      prompt: `${brand}\n\n${context}\n\n${subject}${brief}\n\nCREATE: one ${kind} that explains this section (its steps, comparison, framework or figures) at a glance. Flat, modern, on-brand, generous whitespace, high contrast. Use only facts stated in the section; never invent numbers. ${textRule}` };
+    // On the website every image is landscape and full width, and most readers see it on a phone about 350px wide.
+    const web = task.channel === 'website';
+    const legible = web ? ' Landscape layout that reads on a phone screen: at most six short labels in large type, no paragraphs or small print, nothing important near the edges.' : '';
+    return { index: i + 1, type: x.type, label: `${x.type === 'diagram' ? 'Diagram' : 'Infographic'} · ${label}`, aspect: shape(web || x.type === 'diagram' ? '3:2' : '4:5'), alt: x.alt,
+      prompt: `${brand}\n\n${context}\n\n${subject}${brief}\n\nCREATE: one ${kind} that explains this section (its steps, comparison, framework or figures) at a glance. Flat, modern, on-brand, generous whitespace, high contrast.${legible} Use only facts stated in the section; never invent numbers. ${textRule}` };
   });
 }
 
