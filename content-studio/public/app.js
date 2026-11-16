@@ -151,7 +151,7 @@ function onServerEvent(type, d) {
 /** Hosted: no event stream on Vercel functions, so poll the board and, while something runs, the live output. */
 function startPolling() {
   let lastJobs = '';
-  const active = () => state.data.jobs.some((j) => ['queued', 'running'].includes(j.status));
+  const active = () => state.data.jobs.some((j) => ['queued', 'running'].includes(j.status)) || (state.data.imageRuns || []).some((r) => r.status === 'running');
   const tick = async () => {
     try {
       if (document.visibilityState !== 'hidden' && !gateOpen) {
@@ -159,7 +159,9 @@ function startPolling() {
         if (state.view === 'activity' && active()) renderRuns();
         if (state.selected) {
           const sig = state.data.jobs.filter((j) => j.task_id === state.selected).map((j) => j.id + j.status).join();
-          if (sig !== lastJobs) { lastJobs = sig; scheduleDrawerReload(0); }
+          const run = imageRunFor(state.selected);
+          const imgSig = run ? `${run.status}${run.done}${run.failed}` : '';
+          if (sig + imgSig !== lastJobs) { lastJobs = sig + imgSig; scheduleDrawerReload(0); }
           if (state.data.jobs.some((j) => j.task_id === state.selected && j.status === 'running')) await seedLive(state.selected);
         }
       }
@@ -197,12 +199,20 @@ const isOverdue = (t) => t.due_date && !t.published_at && !/ship_dev|ready_post/
 const qaChip = (t, cls = 'card-tag') => { const q = QA_LABEL[t.qa_status]; return q ? `<span class="${cls} qa-${q[1]}">${q[0]}</span>` : ''; };
 
 // ---------- Board ----------
+const imageRunFor = (taskId) => (state.data.imageRuns || []).find((r) => r.task_id === taskId);
+function imageChip(t) {
+  const r = imageRunFor(t.id); if (!r) return '';
+  if (r.status === 'running') return `<span class="card-tag running"><span class="live-dot on"></span>Creating images ${Math.min(r.total, r.done + r.failed)}/${r.total}</span>`;
+  if (r.status === 'done' && /graphics|graphic_review/.test(t.lane_id)) return `<span class="card-tag qa-ok">${r.done} image${r.done === 1 ? '' : 's'} to review</span>`;
+  if (r.status === 'failed' && /graphics|graphic_review/.test(t.lane_id)) return '<span class="card-tag qa-bad">Images failed</span>';
+  return '';
+}
 function cardMarkup(t) {
   const done = artifactKinds(t.id), job = activeJob(t.id), notes = commentCount(t.id);
   return `<article class="task-card ${job?.status === 'running' ? 'is-running' : ''}" draggable="true" data-task-id="${html(t.id)}" tabindex="0" role="button" aria-label="Open ${html(t.title)}">
     <div class="card-top"><span class="card-type"><span class="type-dot">${kindIcon[t.content_type] || '▤'}</span>${html(titleCase(t.content_type))}</span><span class="badge ${html(t.priority)}">${html(t.priority)}</span></div>
     <h3>${html(t.title)}</h3>
-    <div class="card-tags"><span class="card-tag">${html(channelLabel[t.channel] || t.channel)}</span>${t.voice === 'founder' ? '<span class="card-tag">Founder voice</span>' : ''}${t.demo ? '<span class="card-tag sample">SAMPLE</span>' : ''}${job ? `<span class="card-tag running"><span class="live-dot on"></span>${html(job.status === 'running' ? stageVerb[job.kind] : prettyKind[job.kind] + ' queued')}${job.options?.chain ? ' · autopilot' : ''}</span>` : ''}${qaChip(t)}${t.approved_at ? '<span class="card-tag qa-ok">✓ Approved</span>' : ''}${t.published_url ? '<span class="card-tag qa-ok">Live</span>' : ''}</div>
+    <div class="card-tags"><span class="card-tag">${html(channelLabel[t.channel] || t.channel)}</span>${t.voice === 'founder' ? '<span class="card-tag">Founder voice</span>' : ''}${t.demo ? '<span class="card-tag sample">SAMPLE</span>' : ''}${job ? '' : imageChip(t)}${job ? `<span class="card-tag running"><span class="live-dot on"></span>${html(job.status === 'running' ? stageVerb[job.kind] : prettyKind[job.kind] + ' queued')}${job.options?.chain ? ' · autopilot' : ''}</span>` : ''}${qaChip(t)}${t.approved_at ? '<span class="card-tag qa-ok">✓ Approved</span>' : ''}${t.published_url ? '<span class="card-tag qa-ok">Live</span>' : ''}</div>
     <div class="card-footer"><div class="card-owner"><span class="avatar ${t.owner === 'Mike' ? 'gold' : t.owner === 'Emily' ? 'teal' : ''}">${html(initials(t.owner))}</span><span>${html(t.owner)}</span></div><div class="card-progress" title="Brief / Draft / Graphics / QA">${STAGES.map((k) => `<span class="progress-mark ${done.includes(k) ? 'done' : ''} ${job?.kind === k ? 'active' : ''}" title="${prettyKind[k]}"></span>`).join('')}</div><span class="card-time ${isOverdue(t) ? 'overdue' : ''}">${notes ? `<span title="${notes} comment${notes > 1 ? 's' : ''}">✎ ${notes}</span> ` : ''}${t.due_date ? html(dateFmt(t.due_date)) : notes ? '' : '⋯'}</span></div>
   </article>`;
 }

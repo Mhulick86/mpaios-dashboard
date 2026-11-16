@@ -363,13 +363,45 @@ async function openaiImage(prompt, aspect) {
 const generateImage = (prompt, aspect) => imageProvider() === 'openai' ? openaiImage(prompt, aspect) : geminiImage(prompt, aspect).then((img) => ({ ...img, model: imageModel() }));
 
 const imageRuns = new Map(); // taskId -> { status, done, total, failed, error, started_at }
-export const imageRun = (taskId) => imageRuns.get(taskId) || null;
+/**
+ * Progress of the latest image run, read from the task's events in the shared database, so every server instance
+ * (and every browser) sees the same thing, not just the instance that is making the images.
+ */
+function summarizeRun(events) { // events newest first
+  const startAt = events.findIndex((e) => e.event_type === 'images' && /^Generating \d+ image/.test(e.message));
+  if (startAt < 0) return null;
+  const start = events[startAt], after = events.slice(0, startAt);
+  const total = Number(start.message.match(/^Generating (\d+)/)[1]);
+  const done = after.filter((e) => e.event_type === 'asset' && /^Image \d+ of \d+ generated/.test(e.message)).length;
+  const failures = after.filter((e) => e.event_type === 'warning' && /^Image \d+ of \d+ failed/.test(e.message));
+  const end = after.find((e) => e.event_type === 'images');
+  const error = failures[0]?.message.replace(/^Image \d+ of \d+ failed: /, '') || '';
+  if (end) return { status: /images attached/.test(end.message) ? 'done' : 'failed', done, failed: failures.length, total, error: error || (/failed/i.test(end.message) ? end.message.replace(/^Image generation failed: /, '') : ''), started_at: start.created_at, finished_at: end.created_at };
+  // A run cut off by a server restart or time limit never writes its last event.
+  const stale = Date.now() - Date.parse(start.created_at) > 20 * 60000;
+  return { status: stale ? 'failed' : 'running', done, failed: failures.length, total, error: stale ? 'Image generation stopped before it finished. Generate the images again.' : error, started_at: start.created_at };
+}
+const RUN_EVENTS = "event_type IN ('images','asset','warning')";
+export function imageRun(taskId) {
+  const events = getDb().prepare(`SELECT event_type,message,created_at FROM events WHERE task_id=? AND ${RUN_EVENTS} ORDER BY created_at DESC LIMIT 60`).all(taskId);
+  return summarizeRun(events) || imageRuns.get(taskId) || null;
+}
+/** Latest image run per task for runs started in the last day: drives the board cards. */
+export function recentImageRuns() {
+  const since = new Date(Date.now() - 86400000).toISOString();
+  const rows = getDb().prepare(`SELECT task_id,event_type,message,created_at FROM events WHERE created_at>=? AND ${RUN_EVENTS} ORDER BY created_at DESC LIMIT 2000`).all(since);
+  const byTask = new Map();
+  for (const r of rows) { if (!byTask.has(r.task_id)) byTask.set(r.task_id, []); byTask.get(r.task_id).push(r); }
+  const out = [];
+  for (const [taskId, events] of byTask) { const run = summarizeRun(events); if (run) out.push({ task_id: taskId, ...run }); }
+  return out;
+}
 
 /** Generate the brand graphic set for the latest draft and attach each image to the task. Runs in the background. */
 export function startImageGeneration(taskId, actor = 'MAIOS') {
   if (!imageReady()) throw new IntegrationError(keyHint());
   const task = getTask(taskId); if (!task) throw new IntegrationError('Task not found.');
-  if (imageRuns.get(taskId)?.status === 'running') return imageRuns.get(taskId);
+  if (imageRun(taskId)?.status === 'running') return imageRun(taskId); // also when another instance is making them
   const draft = task.artifacts.filter((a) => a.kind === 'draft').sort((a, b) => b.version - a.version)[0];
   if (!draft) throw new IntegrationError('Write the draft first. The graphics are generated from it.');
   const plan = task.artifacts.filter((a) => a.kind === 'graphics').sort((a, b) => b.version - a.version)[0];

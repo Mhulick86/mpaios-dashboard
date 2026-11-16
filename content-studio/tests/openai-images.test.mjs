@@ -60,6 +60,9 @@ test('OpenAI GPT Image is the default image provider, falls back to a model the 
   await s.api(`/api/tasks/${task.id}/images`, 'POST', {});
   const done = await waitFor(async () => { const x = await s.api(`/api/tasks/${task.id}`); return x.imageRun?.status === 'done' ? x : false; }, 20000);
   assert.equal(done.imageRun.done, 4); assert.equal(done.assets.filter((a) => a.name.startsWith('AI image')).length, 4);
+  // Progress comes from shared task events, so any server instance and the board card can show it.
+  const card = (await s.api('/api/bootstrap')).imageRuns.find((r) => r.task_id === task.id);
+  assert.deepEqual([card.status, card.done, card.total, card.failed], ['done', 4, 4, 0]);
   const ok = o.calls.filter((c) => c.model === 'gpt-image-2.5-sunburst');
   assert.equal(o.calls.filter((c) => c.model === 'gpt-image-2.6-sunburst').length >= 1, true, '2.6 was tried first');
   assert.equal(ok.length, 4);

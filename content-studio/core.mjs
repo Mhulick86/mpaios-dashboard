@@ -19,7 +19,7 @@ import {
 } from './knowledge.mjs';
 import {
   integrationStatus, saveIntegrationSettings, testGemini, startImageGeneration, imageRun,
-  googleAuthStart, googleAuthFinish, disconnectGoogle, syncDoc, taskDocs, allDocs, afterArtifact
+  googleAuthStart, googleAuthFinish, disconnectGoogle, syncDoc, taskDocs, allDocs, afterArtifact, recentImageRuns
 } from './integrations.mjs';
 import { aiStatus, saveAiSettings, testProvider } from './providers.mjs';
 import { searchConsoleStatus, saveSearchConsole, testSearchConsole, searchConsoleContext } from './searchconsole.mjs';
@@ -85,7 +85,7 @@ export async function handleApi(req, ctx = {}) {
   const { method, path, query } = req;
   const actor = actorFrom(req);
   if (method === 'GET' && path === '/api/health') return json(200, { ok: true, version: VERSION, stats: taskStats(), knowledge: knowledgeStats(), worker: workerInfo(), backend: runtime.hosted ? 'maios-hosted' : 'local-sqlite-fts5-and-node' });
-  if (method === 'GET' && path === '/api/bootstrap') return json(200, { ...getBootstrap(), docs: allDocs(), integrations: integrationStatus(), stats: taskStats(), ai: aiStatus(), searchConsole: searchConsoleStatus(), settings: settingsView() });
+  if (method === 'GET' && path === '/api/bootstrap') return json(200, { ...getBootstrap(), docs: allDocs(), imageRuns: recentImageRuns(), integrations: integrationStatus(), stats: taskStats(), ai: aiStatus(), searchConsole: searchConsoleStatus(), settings: settingsView() });
   if (method === 'GET' && path === '/api/models') return json(200, await modelCatalog());
 
   // AI providers: keys are write-only from the browser's point of view. Status shows only whether one is set and its last 4 characters.
