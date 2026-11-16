@@ -13,7 +13,8 @@ import { clamp } from './env.mjs';
 export const PROVIDERS = {
   anthropic: { label: 'Anthropic (Claude)', env: ['ANTHROPIC_API_KEY'], keyHint: 'sk-ant-...', docs: 'https://console.anthropic.com/settings/keys' },
   openai: { label: 'OpenAI', env: ['OPENAI_API_KEY'], keyHint: 'sk-...', docs: 'https://platform.openai.com/api-keys' },
-  google: { label: 'Google (Gemini)', env: ['GEMINI_API_KEY', 'GOOGLE_AI_API_KEY', 'GOOGLE_API_KEY'], keyHint: 'AIza...', docs: 'https://aistudio.google.com/apikey' }
+  google: { label: 'Google (Gemini)', env: ['GEMINI_API_KEY', 'GOOGLE_AI_API_KEY', 'GOOGLE_API_KEY'], keyHint: 'AIza...', docs: 'https://aistudio.google.com/apikey' },
+  xai: { label: 'xAI (Grok)', env: ['XAI_API_KEY'], keyHint: 'xai-...', docs: 'https://console.x.ai/team/default/api-keys' }
 };
 /** Curated choices for the stage dropdowns. Any other model ID can be typed in. Prices are USD per 1M tokens (Nov 2026). */
 export const MODELS = [
@@ -26,8 +27,28 @@ export const MODELS = [
   { id: 'openai:gpt-4o', provider: 'openai', label: 'GPT-4o', price: '$2.50 / $10', note: 'What the n8n brief used' },
   { id: 'google:gemini-3.8-flash', provider: 'google', label: 'Gemini 3.8 Flash', price: '$0.75 / $3.75' },
   { id: 'google:gemini-3.1-pro-preview', provider: 'google', label: 'Gemini 3.1 Pro (preview)', price: '$2 / $12' },
-  { id: 'google:gemini-3.5-flash-lite', provider: 'google', label: 'Gemini 3.5 Flash-Lite', price: '$0.30 / $2.50' }
+  { id: 'google:gemini-3.5-flash-lite', provider: 'google', label: 'Gemini 3.5 Flash-Lite', price: '$0.30 / $2.50' },
+  { id: 'xai:grok-4.7', provider: 'xai', label: 'Grok 4.7', price: '$2 / $6', note: 'Most capable Grok model' },
+  { id: 'xai:grok-4.3', provider: 'xai', label: 'Grok 4.3', price: '$1.25 / $2.50' },
+  { id: 'xai:grok-4.20-0309-non-reasoning', provider: 'xai', label: 'Grok 4.20 (no reasoning)', price: '$1.25 / $2.50', note: 'Fast' }
 ];
+/**
+ * The backup: when a stage's provider is out of credit, its work runs on this provider instead of waiting (credit.mjs).
+ * Setting "backup_provider": a provider id, "none", or unset (then xAI whenever an xAI key is saved).
+ */
+export const BACKUP_MODELS = {
+  xai: { brief: 'xai:grok-4.3', draft: 'xai:grok-4.7', graphics: 'xai:grok-4.20-0309-non-reasoning', qa: 'xai:grok-4.7' },
+  openai: { brief: 'openai:gpt-6.1-terra', draft: 'openai:gpt-6.1-sol', graphics: 'openai:gpt-6.1-terra', qa: 'openai:gpt-6.1-sol' },
+  anthropic: { brief: 'anthropic:claude-sonnet-5-5', draft: 'anthropic:claude-sonnet-5-5', graphics: 'anthropic:claude-haiku-5-5', qa: 'anthropic:claude-sonnet-5-5' },
+  google: { brief: 'google:gemini-3.8-flash', draft: 'google:gemini-3.1-pro-preview', graphics: 'google:gemini-3.8-flash', qa: 'google:gemini-3.1-pro-preview' }
+};
+export function backupProvider() {
+  const set = getSetting('backup_provider');
+  const id = set === 'none' ? '' : set || 'xai';
+  return id && PROVIDERS[id] && providerKey(id) ? id : '';
+}
+export const backupModel = (stage) => { const p = backupProvider(); return p ? BACKUP_MODELS[p]?.[stage] || '' : ''; };
+export const providerOfModel = (id) => String(id || '').split(':')[0];
 export const STAGE_DEFAULTS = { brief: 'anthropic:claude-sonnet-5-5', draft: 'anthropic:claude-sonnet-5-5', graphics: 'anthropic:claude-haiku-5-5', qa: 'anthropic:claude-sonnet-5-5' };
 const STAGE_EFFORT = { brief: 'medium', draft: 'high', graphics: 'low', qa: 'medium' };
 const MAX_OUTPUT = clamp(process.env.STUDIO_MAX_OUTPUT_TOKENS, 1024, 64000, 32000);
@@ -42,7 +63,7 @@ export class ModelUnavailable extends Error { constructor(message) { super(messa
 /** The provider account has no credit left. The job is paused (not failed) and resumes when credit is back (credit.mjs). */
 export class OutOfCredit extends Error { constructor(provider, message) { super(message); this.provider = provider; this.outOfCredit = true; } }
 /** Every wording seen for "the account has no credit" (OpenAI: insufficient_quota, "You have no credits remaining"; Anthropic: "credit balance is too low"). */
-export const CREDIT_ERROR = /insufficient_quota|exceeded your current quota|billing|no credits? remaining|add credits|credit balance is too low|out of (api )?credit/i;
+export const CREDIT_ERROR = /insufficient_quota|exceeded your current quota|billing|no credits? remaining|add credits|credit balance is too low|out of (api )?credit|used all available credits|purchase more credits|spending limit/i;
 const creditMessage = (label, where) => `The ${label} account is out of credit. This work is paused: MAIOS checks every 6 hours and resumes it automatically once credit is back. To resume sooner, add credit at ${where}, or pick another provider for this stage in Settings > AI models & API keys.`;
 
 // ---------- settings ----------
@@ -80,7 +101,9 @@ export function aiStatus() {
       source: saved ? 'saved' : envName ? 'environment' : (id === 'google' && getSetting('gemini_api_key')) ? 'saved' : 'none', last4: saved ? saved.slice(-4) : '' };
   });
   const models = runtime.hosted ? MODELS : [...MODELS, { id: 'lmstudio:auto', provider: 'lmstudio', label: 'LM Studio (local model)', price: 'free', note: 'Only when LM Studio runs on this computer' }];
-  return { providers, models, stages: Object.fromEntries(Object.keys(STAGE_DEFAULTS).map((s) => [s, stageModel(s)])), defaults: STAGE_DEFAULTS, hosted: runtime.hosted };
+  const set = getSetting('backup_provider');
+  return { providers, models, stages: Object.fromEntries(Object.keys(STAGE_DEFAULTS).map((s) => [s, stageModel(s)])), defaults: STAGE_DEFAULTS, hosted: runtime.hosted,
+    backup: { provider: backupProvider(), setting: set || 'auto', models: backupProvider() ? BACKUP_MODELS[backupProvider()] : null } };
 }
 export function saveAiSettings(patch = {}) {
   if (patch.provider !== undefined) {
@@ -93,6 +116,11 @@ export function saveAiSettings(patch = {}) {
       setSetting(`cred:${provider}`, encrypt(key));
       if (provider === 'google') setSetting('gemini_api_key', ''); // drop the legacy plain-text copy
     }
+  }
+  if (patch.backup !== undefined) {
+    const b = String(patch.backup || '');
+    if (b && b !== 'none' && b !== 'auto' && !PROVIDERS[b]) throw new Error('Unknown backup provider.');
+    setSetting('backup_provider', b === 'auto' ? '' : b);
   }
   if (patch.stages && typeof patch.stages === 'object') {
     for (const [stage, id] of Object.entries(patch.stages)) {
@@ -214,63 +242,82 @@ async function callAnthropic({ model, apiKey, system, user, stage, t, onText }) 
   }
 }
 export const researchStatus = () => ({ stages: [...RESEARCH_STAGES], enabled: process.env.STUDIO_WEB_RESEARCH !== '0', anthropicUnavailable: researchOff, openaiUnavailable: openaiResearchOff });
-// OpenAI's Responses API web_search tool: the writer and QA verify claims and cite sources (url_citation annotations).
+// The Responses API, as OpenAI serves it and xAI (Grok) serves it at api.x.ai: the writer and QA verify claims with the
+// web_search tool and cite sources. One caller for both; the differences are in RESPONSES.
+const XAI_BASE = (process.env.XAI_BASE_URL || 'https://api.x.ai/v1').replace(/\/+$/, '');
+const RESPONSES = {
+  openai: { base: () => OPENAI_BASE, label: 'OpenAI', billing: 'platform.openai.com (Billing)', reasoning: () => true, smallSearch: true },
+  // xAI documents reasoning effort for Grok 4.7 only, and no search_context_size option.
+  xai: { base: () => XAI_BASE, label: 'xAI', billing: 'console.x.ai (Billing)', reasoning: (model) => /^grok-4\.7/.test(model), smallSearch: false }
+};
+const RESPONSES_EFFORT = { brief: 'low', draft: 'medium', graphics: 'low', qa: 'medium' };
+const researchOffFor = {};          // provider -> why web search is off for it
+const noReasoning = new Set();      // provider:model pairs that rejected the reasoning parameter
+const noSmallSearch = new Set();    // providers that rejected search_context_size
 let openaiResearchOff = '';
-const OPENAI_EFFORT = { brief: 'low', draft: 'medium', graphics: 'low', qa: 'medium' };
-const openaiNoReasoning = new Set(); // models that rejected the reasoning parameter
-let openaiSearchSmall = true;        // false once the API rejects search_context_size
-async function callOpenAI({ model, apiKey, system, user, stage, t, onText }) {
-  const useResearch = RESEARCH_STAGES.has(stage) && !openaiResearchOff && process.env.STUDIO_WEB_RESEARCH !== '0';
+async function callResponses(provider, { model, apiKey, system, user, stage, t, onText }) {
+  const cfg = RESPONSES[provider];
+  const useResearch = RESEARCH_STAGES.has(stage) && !researchOffFor[provider] && process.env.STUDIO_WEB_RESEARCH !== '0';
   // Token savings: reasoning effort per stage (reasoning tokens are billed as output) and a small search context
   // (search results are billed as input). A model that rejects either parameter is retried without it, once.
-  const effort = OPENAI_EFFORT[stage];
-  const request = (withTools) => fetch(`${OPENAI_BASE}/responses`, {
+  const effort = cfg.reasoning(model) && !noReasoning.has(`${provider}:${model}`) ? RESPONSES_EFFORT[stage] : '';
+  const small = cfg.smallSearch && !noSmallSearch.has(provider);
+  const request = (withTools, withEffort, withSmall) => fetch(`${cfg.base()}/responses`, {
     method: 'POST', signal: t.signal,
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model, instructions: system, input: user, max_output_tokens: MAX_OUTPUT, stream: true,
-      ...(effort && !openaiNoReasoning.has(model) ? { reasoning: { effort } } : {}),
-      ...(withTools ? { tools: [openaiSearchSmall ? { type: 'web_search', search_context_size: 'low' } : { type: 'web_search' }] } : {})
+      ...(withEffort ? { reasoning: { effort: withEffort } } : {}),
+      ...(withTools ? { tools: [withSmall ? { type: 'web_search', search_context_size: 'low' } : { type: 'web_search' }] } : {})
     })
   });
-  let r, withTools = useResearch;
+  let r, withTools = useResearch, withEffort = effort, withSmall = small;
   try {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      r = await request(withTools);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      r = await request(withTools, withEffort, withSmall);
       if (r.ok || r.status !== 400) break;
       const body = await r.text();
-      if (/reasoning/i.test(body) && effort && !openaiNoReasoning.has(model)) { openaiNoReasoning.add(model); continue; }
-      if (withTools && /search_context_size/i.test(body) && openaiSearchSmall) { openaiSearchSmall = false; continue; }
-      if (withTools && /web_search|tool/i.test(body)) { openaiResearchOff = scrubKeys(body).slice(0, 200); console.error('OpenAI web search unavailable, continuing without it:', openaiResearchOff); withTools = false; continue; }
+      if (/reasoning/i.test(body) && withEffort) { noReasoning.add(`${provider}:${model}`); withEffort = ''; continue; }
+      if (withTools && withSmall && /search_context_size/i.test(body)) { noSmallSearch.add(provider); withSmall = false; continue; }
+      if (withTools && /web_search|tool/i.test(body)) {
+        researchOffFor[provider] = scrubKeys(body).slice(0, 200); if (provider === 'openai') openaiResearchOff = researchOffFor[provider];
+        console.error(`${cfg.label} web search unavailable, continuing without it:`, researchOffFor[provider]); withTools = false; continue;
+      }
       r = new Response(body, { status: 400 }); break;
     }
-  } catch (e) { if (t.signal.aborted) t.rethrow(e); throw new ModelUnavailable(`Could not reach OpenAI (${e.cause?.code || e.message}).`); }
+  } catch (e) { if (t.signal.aborted) t.rethrow(e); throw new ModelUnavailable(`Could not reach ${cfg.label} (${e.cause?.code || e.message}).`); }
   if (!r.ok) {
-    const err = await httpError(r, 'openai');
-    if (CREDIT_ERROR.test(err.message)) throw new OutOfCredit('openai', creditMessage('OpenAI', 'platform.openai.com (Billing)'));
+    const err = await httpError(r, provider);
+    if (CREDIT_ERROR.test(err.message)) throw new OutOfCredit(provider, creditMessage(cfg.label, cfg.billing));
     throw err;
   }
-  let text = '', truncated = false, served = model, searches = 0, usage = null;
+  let text = '', truncated = false, served = model, searches = 0, usage = null, final = null;
   try {
     for await (const ev of sseEvents(r, t)) {
       if (ev.type === 'response.output_text.delta' && typeof ev.delta === 'string') { text += ev.delta; onText?.(text); }
+      else if (typeof ev.choices?.[0]?.delta?.content === 'string') { text += ev.choices[0].delta.content; onText?.(text); } // chat-style stream
       else if (ev.type === 'response.web_search_call.completed') searches++;
-      else if (ev.type === 'response.completed' || ev.type === 'response.incomplete') {
-        served = ev.response?.model || served; truncated = ev.type === 'response.incomplete';
-        const u = ev.response?.usage;
+      else if (ev.type === 'response.completed' || ev.type === 'response.incomplete' || (!ev.type && ev.object === 'response')) {
+        final = ev.response || ev;
+        served = final.model || served; truncated = ev.type === 'response.incomplete' || final.status === 'incomplete';
+        const u = final.usage;
         if (u) usage = { input_tokens: u.input_tokens, output_tokens: u.output_tokens, cached_input_tokens: u.input_tokens_details?.cached_tokens || 0, reasoning_tokens: u.output_tokens_details?.reasoning_tokens || 0 };
-        const calls = (ev.response?.output || []).filter((o) => o.type === 'web_search_call').length;
+        const calls = (final.output || []).filter((o) => o.type === 'web_search_call').length;
         if (calls > searches) searches = calls;
       }
       else if (ev.type === 'response.failed' || ev.type === 'error') {
         const why = scrubKeys(ev.response?.error?.message || ev.error?.message || ev.message || 'generation failed');
-        if (CREDIT_ERROR.test(why)) throw new OutOfCredit('openai', creditMessage('OpenAI', 'platform.openai.com (Billing)'));
-        throw new Error(`OpenAI error: ${why}`);
+        if (CREDIT_ERROR.test(why)) throw new OutOfCredit(provider, creditMessage(cfg.label, cfg.billing));
+        throw new Error(`${cfg.label} error: ${why}`);
       }
     }
   } catch (e) { t.rethrow(e); }
+  // A provider that streams only the finished response: take the text from it.
+  if (!text && final?.output) text = final.output.flatMap((o) => o.content || []).filter((c) => c.type === 'output_text').map((c) => c.text).join('');
   return { output: text, model: served, truncated, usage, research: withTools ? { searches, fetches: 0 } : null };
 }
+const callOpenAI = (args) => callResponses('openai', args);
+const callXai = (args) => callResponses('xai', args);
 async function callGemini({ model, apiKey, system, user, t, onText }) {
   let r;
   try {
@@ -326,13 +373,13 @@ async function callLmStudio({ model, system, user, t, onText }) {
 }
 
 /** Generate one stage with the model chosen for it. Streams text to onText as it arrives. */
-export async function generate({ stage, system, user, signal, onText }) {
-  const { provider, model } = parseModel(stageModel(stage));
+export async function generate({ stage, system, user, signal, onText, model: chosen = '' }) {
+  const { provider, model } = parseModel(chosen || stageModel(stage));
   const apiKey = provider === 'lmstudio' ? '' : providerKey(provider);
   if (provider !== 'lmstudio' && !apiKey) throw new Error(`No ${PROVIDERS[provider].label} API key. Add one in Settings > AI models and keys.`);
   const t = timers(signal);
   try {
-    const call = { anthropic: callAnthropic, openai: callOpenAI, google: callGemini, lmstudio: callLmStudio }[provider];
+    const call = { anthropic: callAnthropic, openai: callOpenAI, google: callGemini, xai: callXai, lmstudio: callLmStudio }[provider];
     const out = await call({ model, apiKey, system, user, stage, t, onText });
     return { ...out, research: out.research || null, model: `${provider === 'lmstudio' ? 'lmstudio' : provider}/${out.model}` };
   } finally { t.done(); }
@@ -347,7 +394,7 @@ export async function creditProbe(provider, model = '') {
   const use = model || (stageFor ? parseModel(stageModel(stageFor)).model : '');
   let r;
   try {
-    if (provider === 'openai') r = await fetch(`${OPENAI_BASE}/responses`, { method: 'POST', signal: AbortSignal.timeout(60000), headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` }, body: JSON.stringify({ model: use || 'gpt-6.1-terra', input: 'Reply OK.', max_output_tokens: 16 }) });
+    if (provider === 'openai' || provider === 'xai') r = await fetch(`${RESPONSES[provider].base()}/responses`, { method: 'POST', signal: AbortSignal.timeout(60000), headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` }, body: JSON.stringify({ model: use || (provider === 'xai' ? 'grok-4.3' : 'gpt-6.1-terra'), input: 'Reply OK.', max_output_tokens: 16 }) });
     else if (provider === 'anthropic') r = await fetch(`${ANTHROPIC_BASE || 'https://api.anthropic.com'}/v1/messages`, { method: 'POST', signal: AbortSignal.timeout(60000), headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: use || 'claude-haiku-5-5', max_tokens: 1, messages: [{ role: 'user', content: 'OK' }] }) });
     else return { ok: true };
   } catch (e) { return { ok: false, message: `Could not reach ${PROVIDERS[provider].label} (${e.cause?.code || e.message}).` }; }
@@ -361,7 +408,8 @@ export async function testProvider(provider) {
   const req = {
     anthropic: () => fetch(`${ANTHROPIC_BASE || 'https://api.anthropic.com'}/v1/models?limit=1`, { headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' } }),
     openai: () => fetch(`${OPENAI_BASE}/models`, { headers: { Authorization: `Bearer ${apiKey}` } }),
-    google: () => fetch(`${GEMINI_BASE}/models?pageSize=1`, { headers: { 'x-goog-api-key': apiKey } })
+    google: () => fetch(`${GEMINI_BASE}/models?pageSize=1`, { headers: { 'x-goog-api-key': apiKey } }),
+    xai: () => fetch(`${XAI_BASE}/models`, { headers: { Authorization: `Bearer ${apiKey}` } })
   }[provider];
   if (!req) throw new Error('Unknown provider.');
   let r; try { r = await req(); } catch (e) { throw new Error(`Could not reach ${PROVIDERS[provider].label} (${e.cause?.code || e.message}).`); }

@@ -9,7 +9,7 @@ import { afterArtifact, imagePlanLimit, pageImageSlots } from './integrations.mj
 import { clamp } from './env.mjs';
 import { runtime } from './runtime.mjs';
 import { generate, aiStatus, ModelUnavailable, stageModel } from './providers.mjs';
-import { pauseJob } from './credit.mjs';
+import { handleCutoff, routeModel } from './credit.mjs';
 import { searchConsoleContext } from './searchconsole.mjs';
 
 const CONCURRENCY = clamp(process.env.WORKER_CONCURRENCY, 1, 8, 1);
@@ -32,8 +32,8 @@ export function stripReasoning(text, partial = false) {
   return partial ? out.replace(/^\s+/, '') : out.trim();
 }
 
-async function complete(system, user, kind, { signal, onText } = {}) {
-  const out = await generate({ stage: kind, system, user, signal, onText });
+async function complete(system, user, kind, { signal, onText, model = '' } = {}) {
+  const out = await generate({ stage: kind, system, user, signal, onText, model });
   const output = stripReasoning(out.output);
   if (!output) throw new Error('The model returned no text. Try again, or pick a different model for this stage in Settings.');
   return { model: out.model, output, usage: out.usage ?? null, truncated: !!out.truncated, research: out.research || null };
@@ -255,7 +255,8 @@ export async function runGeneration(job, signal) {
   let output;
   if (preQa?.block.length) output = { output: QA_SKIPPED, model: 'automatic checks', usage: null, truncated: false, research: null };
   else {
-    try { output = await complete(prompt.system, prompt.user, kind, { signal, onText: reporter.onText }); }
+    // The stage's own model, or the backup's while the stage's provider is out of credit.
+    try { output = await complete(prompt.system, prompt.user, kind, { signal, onText: reporter.onText, model: routeModel(kind) }); }
     finally { await reporter.flush(); }
   }
   return runtime.commit(() => {
@@ -293,7 +294,7 @@ export async function runOne(job, ctl) {
       const current = getJob(job.id);
       if (!current || current.status === 'done' || current.status === 'cancelled') return;
       if (e?.cancelled) finishJob(job.id, 'cancelled', message);
-      else if (e?.outOfCredit) pauseJob(job, e.provider);
+      else if (e?.outOfCredit) handleCutoff(job, e.provider);
       else if (e?.transient && job.attempts < MAX_ATTEMPTS) {
         const delay = RETRY_BASE_MS * 3 ** (job.attempts - 1);
         requeueJob(job.id, delay, `${message} Retrying in ${Math.round(delay / 1000)}s (attempt ${job.attempts} of ${MAX_ATTEMPTS}).`);

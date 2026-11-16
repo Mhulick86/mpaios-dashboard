@@ -13,11 +13,11 @@
 import { getDb, getTask, event } from './db.mjs';
 import { runtime } from './runtime.mjs';
 import { clamp } from './env.mjs';
-import { creditProbe, stageModel, CREDIT_ERROR } from './providers.mjs';
+import { creditProbe, stageModel, CREDIT_ERROR, backupModel, backupProvider, providerOfModel } from './providers.mjs';
 
 const KEY = 'credit_watch';
 export const CHECK_MS = () => clamp(process.env.CREDIT_CHECK_MS, 1000, 86400000, 6 * 3600000); // 6 hours; shorter only in tests
-const LABEL = { openai: 'OpenAI', anthropic: 'Anthropic', google: 'Google' };
+const LABEL = { openai: 'OpenAI', anthropic: 'Anthropic', google: 'Google', xai: 'xAI (Grok)' };
 const stamp = () => new Date().toISOString();
 const providerOf = (stage) => String(stageModel(stage) || '').split(':')[0];
 export const pausedPrefix = (provider) => `Paused (${provider}): `;
@@ -28,6 +28,32 @@ function read() {
 function write(state) { getDb().prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').run(KEY, JSON.stringify(state)); }
 const pausedJobs = (provider) => getDb().prepare("SELECT id,task_id,kind FROM jobs WHERE status='queued' AND error LIKE ?").all(`${pausedPrefix(provider)}%`);
 
+export const isPaused = (provider) => !!read().providers?.[provider];
+/**
+ * The model a stage's next job should use: its own, or, while its provider is paused for credit, the backup provider's
+ * model for that stage (when a backup is set up and is not paused itself).
+ */
+export function routeModel(stage) {
+  const primary = stageModel(stage), p = providerOfModel(primary);
+  if (!isPaused(p)) return primary;
+  const backup = backupModel(stage);
+  return backup && providerOfModel(backup) !== p && !isPaused(providerOfModel(backup)) ? backup : primary;
+}
+/**
+ * A generation job hit a credit cutoff on `provider` (call inside a commit): run it on the backup right away when one is
+ * available, otherwise keep it queued until the 6-hourly check finds credit (on its own provider or the backup).
+ */
+export function handleCutoff(job, provider) {
+  pauseProvider(provider);
+  const next = routeModel(job.kind), to = providerOfModel(next);
+  if (to !== provider && !isPaused(to)) {
+    getDb().prepare("UPDATE jobs SET status='queued',started_at=NULL,run_after=?,error=NULL WHERE id=?").run(stamp(), job.id);
+    event(job.task_id, 'switched', `${LABEL[provider] || provider} is out of credit: this ${job.kind} continues on ${LABEL[to] || to} (the backup).`, 'MAIOS', { from: provider, to, model: next });
+    return 'backup';
+  }
+  pauseJob(job, providerOfModel(stageModel(job.kind)) || provider);
+  return 'paused';
+}
 /** For the board: which providers are paused, since when, the next check, and how much work is waiting. */
 export function creditStatus() {
   return Object.entries(read().providers || {}).map(([provider, p]) => ({
@@ -55,8 +81,8 @@ export function pauseJob(job, provider, model = '') {
   return next;
 }
 
-let startImages = null; // set by integrations.mjs (avoids an import cycle)
-export function onImageResume(fn) { startImages = fn; }
+let startImages = null, imageProviderNow = null; // set by integrations.mjs (avoids an import cycle)
+export function onImageResume(fn, currentImageProvider) { startImages = fn; imageProviderNow = currentImageProvider || null; }
 
 /**
  * Work stopped by a credit cutoff before this module existed: failed jobs whose error is a credit error, with no later
@@ -89,18 +115,19 @@ function adoptEarlierCutoffs() {
 export async function creditWatchTick() {
   await runtime.commit(() => {
     adoptEarlierCutoffs();
-    // A paused job whose stage now runs on a provider that is not paused (the model was changed) goes ahead now.
-    const state = read(), paused = new Set(Object.keys(state.providers || {}));
-    for (const provider of ['openai', 'anthropic', 'google']) {
+    // A paused job goes ahead as soon as it has somewhere to run: its stage now uses a provider that is not paused (the
+    // model was changed), or the backup is available.
+    const state = read();
+    for (const provider of Object.keys(LABEL)) {
       for (const j of pausedJobs(provider)) {
-        const now = providerOf(j.kind);
-        if (now !== provider && !paused.has(now)) getDb().prepare('UPDATE jobs SET run_after=?,error=NULL WHERE id=?').run(stamp(), j.id);
+        if (!isPaused(providerOfModel(routeModel(j.kind)))) getDb().prepare('UPDATE jobs SET run_after=?,error=NULL WHERE id=?').run(stamp(), j.id);
       }
     }
-    // A provider with nothing left waiting (its jobs moved to another provider) needs no more checks.
+    // A provider nothing depends on any more (no paused work, not a stage's provider, not the backup) needs no checks.
+    const inUse = new Set([...['brief', 'draft', 'graphics', 'qa'].map(providerOf), backupProvider(), imageProviderNow?.()].filter(Boolean));
     let changed = false;
     for (const [provider, p] of Object.entries(state.providers || {})) {
-      if (!pausedJobs(provider).length && !(p.images || []).length) { delete state.providers[provider]; changed = true; }
+      if (!pausedJobs(provider).length && !(p.images || []).length && !inUse.has(provider)) { delete state.providers[provider]; changed = true; }
     }
     if (changed) write(state);
   });

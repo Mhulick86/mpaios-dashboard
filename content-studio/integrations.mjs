@@ -8,8 +8,8 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { runtime } from './runtime.mjs';
 import { assets } from './assets.mjs';
-import { providerKey, saveAiSettings } from './providers.mjs';
-import { pauseProvider, onImageResume } from './credit.mjs';
+import { providerKey, saveAiSettings, backupProvider, CREDIT_ERROR } from './providers.mjs';
+import { pauseProvider, onImageResume, isPaused } from './credit.mjs';
 import { join } from 'node:path';
 import { getDb, getTask, event } from './db.mjs';
 import { clamp } from './env.mjs';
@@ -54,16 +54,22 @@ const OPENAI_BASE = (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1')
 export const DEFAULT_OPENAI_IMAGE_MODEL = 'gpt-image-2.6-sunburst';
 const OPENAI_IMAGE_CHAIN = ['gpt-image-2.6-sunburst', 'gpt-image-2.5-sunburst', 'gpt-image-2'];
 const OPENAI_IMAGE_TIMEOUT = clamp(process.env.OPENAI_IMAGE_TIMEOUT_MS, 10000, 600000, 240000);
-const IMAGE_PROVIDERS = { openai: 'OpenAI GPT Image', google: 'Google Gemini' };
+const IMAGE_PROVIDERS = { openai: 'OpenAI GPT Image', google: 'Google Gemini', xai: 'xAI Grok Imagine' };
+const XAI_BASE = (process.env.XAI_BASE_URL || 'https://api.x.ai/v1').replace(/\/+$/, '');
+const DEFAULT_XAI_IMAGE_MODEL = 'grok-imagine-image-2.0';
 const IMAGE_QUALITIES = ['low', 'medium', 'high'];
 // GPT image models take three standard sizes; use the one closest to the shape the graphic needs.
 const openaiSize = (aspect) => { const [w, h] = String(aspect).split(':').map(Number); const r = w / h; return !r || Math.abs(r - 1) < 0.15 ? '1024x1024' : r > 1 ? '1536x1024' : '1024x1536'; };
 const imageProvider = () => { const v = setting('image_provider'); return v in IMAGE_PROVIDERS ? v : (providerKey('openai') || !providerKey('google') ? 'openai' : 'google'); };
 const imageQuality = () => (IMAGE_QUALITIES.includes(setting('image_quality')) ? setting('image_quality') : 'high');
 let resolvedOpenaiModel = null;
-const imageModel = () => imageProvider() === 'openai' ? (setting('image_model_openai') || resolvedOpenaiModel || DEFAULT_OPENAI_IMAGE_MODEL) : (setting('gemini_image_model') || DEFAULT_IMAGE_MODEL);
+const modelFor = (provider) => provider === 'openai' ? (setting('image_model_openai') || resolvedOpenaiModel || DEFAULT_OPENAI_IMAGE_MODEL)
+  : provider === 'xai' ? (setting('image_model_xai') || DEFAULT_XAI_IMAGE_MODEL) : (setting('gemini_image_model') || DEFAULT_IMAGE_MODEL);
+const imageModel = () => modelFor(imageProvider());
 const imageReady = () => !!providerKey(imageProvider());
-const keyHint = () => imageProvider() === 'openai' ? 'Add an OpenAI API key under Settings > AI models & API keys first.' : 'Add a Google (Gemini) API key in Settings first.';
+const keyHint = () => `Add ${{ openai: 'an OpenAI', xai: 'an xAI (Grok)', google: 'a Google (Gemini)' }[imageProvider()]} API key under Settings > AI models & API keys first.`;
+/** The backup for images: the backup provider, when it makes images, has a key and is not the main image provider. */
+const imageBackup = () => { const b = backupProvider(); return b && b in IMAGE_PROVIDERS && b !== imageProvider() && providerKey(b) ? b : ''; };
 
 /** What the browser may know: whether things are configured, never the credentials themselves. */
 export function integrationStatus() {
@@ -71,7 +77,8 @@ export function integrationStatus() {
   const images = {
     provider, providerLabel: IMAGE_PROVIDERS[provider], configured: imageReady(), model: imageModel(), quality: imageQuality(),
     providers: Object.entries(IMAGE_PROVIDERS).map(([id, label]) => ({ id, label, keyReady: !!providerKey(id) })),
-    suggestions: provider === 'openai' ? ['gpt-image-2.6-sunburst', 'gpt-image-2.6-flare', 'gpt-image-2.5-sunburst', 'gpt-image-2.5-flare', 'gpt-image-2'] : [DEFAULT_IMAGE_MODEL],
+    suggestions: provider === 'openai' ? ['gpt-image-2.6-sunburst', 'gpt-image-2.6-flare', 'gpt-image-2.5-sunburst', 'gpt-image-2.5-flare', 'gpt-image-2'] : provider === 'xai' ? ['grok-imagine-image-2.0', 'grok-imagine-image'] : [DEFAULT_IMAGE_MODEL],
+    backup: imageBackup() ? { provider: imageBackup(), label: IMAGE_PROVIDERS[imageBackup()], model: modelFor(imageBackup()) } : null,
     style: imageStyle(), styles: Object.entries(IMAGE_STYLES).map(([id, label]) => ({ id, label })), photoStyle: photoStyle(),
     auto: flag('gemini_auto', true), count: imageCount(), maxCount: MAX_IMAGES, text: imageText(), brandSystem: brandSystem()
   };
@@ -94,13 +101,13 @@ export function saveIntegrationSettings(patch = {}) {
   if (patch.gemini_clear === true) { saveAiSettings({ provider: 'google', clear: true }); saveSetting('gemini_api_key', ''); }
   if (patch.image_provider !== undefined) {
     const p = text(patch.image_provider, 20);
-    if (p && !(p in IMAGE_PROVIDERS)) throw new IntegrationError('Image provider must be openai or google.');
+    if (p && !(p in IMAGE_PROVIDERS)) throw new IntegrationError('Image provider must be openai, google or xai.');
     saveSetting('image_provider', p);
   }
   if (patch.image_model !== undefined) {
     const model = text(patch.image_model, 120);
     if (model && !/^[a-z0-9][a-z0-9.\-_]*$/i.test(model)) throw new IntegrationError('Image model must be a model ID such as gpt-image-2.6-sunburst.');
-    saveSetting(imageProvider() === 'openai' ? 'image_model_openai' : 'gemini_image_model', model);
+    saveSetting({ openai: 'image_model_openai', xai: 'image_model_xai' }[imageProvider()] || 'gemini_image_model', model);
     resolvedOpenaiModel = null;
   }
   if (patch.image_style !== undefined) {
@@ -386,11 +393,41 @@ async function openaiImage(prompt, aspect) {
     if (unknownModel) err.message += ` Check the image model in Settings (tried ${chain.join(', ')}).`;
     const blockedPrompt = code === 'moderation_blocked' || /safety system|moderation/i.test(detail);
     if (!blockedPrompt && [400, 401, 403, 404].includes(r.status)) err.fatal = true;
-    if ((r.status === 429 || r.status === 402) && /quota|billing|insufficient|credits?/i.test(detail)) { err.fatal = true; err.outOfCredit = 'openai'; err.message = 'The OpenAI account is out of credit. Image generation is paused: MAIOS checks every 6 hours and restarts it automatically once credit is back.'; }
+    if (CREDIT_ERROR.test(detail) || ((r.status === 429 || r.status === 402) && /quota|billing|insufficient|credits?/i.test(detail))) { err.fatal = true; err.outOfCredit = 'openai'; err.message = 'The OpenAI account is out of credit. Image generation is paused: MAIOS checks every 6 hours and restarts it automatically once credit is back.'; }
     throw err;
   }
 }
-const generateImage = (prompt, aspect) => imageProvider() === 'openai' ? openaiImage(prompt, aspect) : geminiImage(prompt, aspect).then((img) => ({ ...img, model: imageModel() }));
+// xAI Grok Imagine: aspect ratios it accepts; the others map to the closest one.
+const XAI_ASPECTS = new Set(['1:1', '3:4', '4:3', '9:16', '16:9', '2:3', '3:2', '21:9', '2:1', '1:2']);
+async function xaiImage(prompt, aspect) {
+  const key = providerKey('xai'); if (!key) throw new IntegrationError('Add an xAI (Grok) API key under Settings > AI models & API keys first.');
+  const model = modelFor('xai');
+  const ratio = XAI_ASPECTS.has(aspect) ? aspect : ({ '4:5': '3:4', '5:4': '4:3' }[aspect] || 'auto');
+  let r;
+  try {
+    r = await fetch(`${XAI_BASE}/images/generations`, {
+      method: 'POST', signal: AbortSignal.timeout(OPENAI_IMAGE_TIMEOUT),
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      // xAI quality is low or medium (no high); 2k resolution keeps photos sharp at full content width.
+      body: JSON.stringify({ model, prompt: prompt.slice(0, 8000), n: 1, aspect_ratio: ratio, resolution: '2k', ...(/2\.0/.test(model) ? { quality: imageQuality() === 'low' ? 'low' : 'medium' } : {}), response_format: 'b64_json' })
+    });
+  } catch (e) { throw new IntegrationError(e?.name === 'TimeoutError' ? 'xAI took too long to create the image.' : `Could not reach xAI (${e?.cause?.code || e?.message || 'network error'}).`); }
+  if (r.ok) {
+    const body = await r.json().catch(() => ({}));
+    const item = body?.data?.[0];
+    if (!item?.b64_json) throw new IntegrationError('xAI returned no image.');
+    const mime = IMAGE_EXT[item.mime_type] ? item.mime_type : 'image/jpeg';
+    return { mime, data: Buffer.from(String(item.b64_json).replace(/^data:[^,]+,/, ''), 'base64'), model };
+  }
+  let detail = ''; try { const b = await r.json(); detail = String(b?.error?.message || b?.error || b?.message || ''); } catch { /* not JSON */ }
+  const err = new IntegrationError(scrub(`xAI returned HTTP ${r.status}${detail ? `: ${detail}` : ''}`));
+  const blockedPrompt = /moderation|safety|content policy/i.test(detail);
+  if (!blockedPrompt && [400, 401, 403, 404].includes(r.status)) err.fatal = true;
+  if (CREDIT_ERROR.test(detail)) { err.fatal = true; err.outOfCredit = 'xai'; err.message = 'The xAI account is out of credit. Image generation is paused: MAIOS checks every 6 hours and restarts it automatically once credit is back.'; }
+  throw err;
+}
+const generateImage = (prompt, aspect, provider = imageProvider()) => provider === 'openai' ? openaiImage(prompt, aspect)
+  : provider === 'xai' ? xaiImage(prompt, aspect) : geminiImage(prompt, aspect).then((img) => ({ ...img, model: modelFor('google') }));
 
 const imageRuns = new Map(); // taskId -> { status, done, total, failed, error, started_at }
 /**
@@ -427,7 +464,7 @@ export function recentImageRuns() {
   return out;
 }
 
-onImageResume((taskId, actor) => startImageGeneration(taskId, actor));
+onImageResume((taskId, actor) => startImageGeneration(taskId, actor), () => imageProvider());
 /** Generate the brand graphic set for the latest draft and attach each image to the task. Runs in the background. */
 export function startImageGeneration(taskId, actor = 'MAIOS') {
   if (!imageReady()) throw new IntegrationError(keyHint());
@@ -437,21 +474,32 @@ export function startImageGeneration(taskId, actor = 'MAIOS') {
   if (!draft) throw new IntegrationError('Write the draft first. The graphics are generated from it.');
   const plan = task.artifacts.filter((a) => a.kind === 'graphics').sort((a, b) => b.version - a.version)[0];
   const prompts = buildImagePrompts(task, draft.body, { plan: plan?.body || '' });
+  // While the image provider is out of credit, a run starts on the backup (when there is one with credit).
+  let use = isPaused(imageProvider()) && imageBackup() && !isPaused(imageBackup()) ? imageBackup() : imageProvider();
   const run = { status: 'running', done: 0, failed: 0, total: prompts.length, error: '', started_at: stamp() };
-  event(taskId, 'images', `Generating ${prompts.length} image${prompts.length > 1 ? 's' : ''} with ${imageModel()}`, actor, { draftVersion: draft.version });
+  event(taskId, 'images', `Generating ${prompts.length} image${prompts.length > 1 ? 's' : ''} with ${modelFor(use)}`, actor, { draftVersion: draft.version });
   // Registered when the work actually starts: hosted, a request can be re-run after a concurrent write, and only the
   // attempt that saved schedules its background work.
   runtime.defer(async () => {
     if (imageRuns.get(taskId)?.status === 'running') return;
     imageRuns.set(taskId, run);
     // OpenAI images take up to a couple of minutes each, so two run at a time to stay inside the hosting time limit.
-    const parallel = imageProvider() === 'openai' ? 2 : 1;
+    const parallel = use === 'google' ? 1 : 2;
     let stop = false;
     for (let start = 0; start < prompts.length && !stop; start += parallel) {
       await Promise.all(prompts.slice(start, start + parallel).map(async ({ label, prompt, aspect }, j) => {
         const i = start + j;
         try {
-          const img = await generateImage(prompt, aspect);
+          let img;
+          try { img = await generateImage(prompt, aspect, use); }
+          catch (e) {
+            // Out of credit mid-run: carry on with the backup provider when there is one with credit.
+            const b = imageBackup();
+            if (!e?.outOfCredit || !b || e.outOfCredit === b || isPaused(b)) throw e;
+            await runtime.commit(() => { pauseProvider(e.outOfCredit); if (use !== b) event(taskId, 'switched', `${IMAGE_PROVIDERS[e.outOfCredit] || e.outOfCredit} is out of credit: the remaining images use ${IMAGE_PROVIDERS[b]} (the backup).`, 'MAIOS', { from: e.outOfCredit, to: b }); });
+            use = b;
+            img = await generateImage(prompt, aspect, b);
+          }
           const id = randomUUID(), file = `${id}.${IMAGE_EXT[img.mime]}`;
           await assets().write(file, img.data);
           const name = `AI image ${String(i + 1).padStart(2, '0')} · ${label}`.slice(0, 200);
@@ -633,6 +681,15 @@ export async function testGemini() {
     const model = imageModel(), usable = setting('image_model_openai') ? [model] : OPENAI_IMAGE_CHAIN;
     const pick = usable.find((m) => names.includes(m));
     return { ok: true, provider: 'openai', model: pick || model, modelAvailable: !!pick, imageModels: names.slice(0, 12) };
+  }
+  if (imageProvider() === 'xai') {
+    const key = providerKey('xai'); if (!key) throw new IntegrationError(keyHint());
+    let r;
+    try { r = await fetch(`${XAI_BASE}/models`, { signal: AbortSignal.timeout(15000), headers: { Authorization: `Bearer ${key}` } }); }
+    catch (e) { throw new IntegrationError(`Could not reach xAI (${e?.cause?.code || e?.message || 'network error'}).`); }
+    if (!r.ok) throw await upstreamError(r, 'xAI');
+    const names = ((await r.json()).data || []).map((m) => String(m.id || '')).filter((n) => /image/.test(n)).sort();
+    return { ok: true, provider: 'xai', model: imageModel(), modelAvailable: !names.length || names.includes(imageModel()), imageModels: names.slice(0, 12) };
   }
   const key = providerKey('google'); if (!key) throw new IntegrationError('Add a Google (Gemini) API key first.');
   let r;

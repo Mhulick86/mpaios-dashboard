@@ -483,7 +483,18 @@ function aiSettingsMarkup() {
    <form id="aiModelsForm"><h3 style="margin-top:18px">Model for each stage</h3><p>Prices are per million input / output tokens. A typical 1,500-word page through all four stages costs a few cents on the recommended models.</p>
     ${STAGES.map(stageSelect).join('')}
     <div class="settings-actions"><button type="button" class="button ghost" id="aiModelsReset">Use recommended</button><button type="submit" class="button primary">Save models</button></div>
-   </form></div>`;
+   </form>
+   ${backupMarkup(ai, keyed)}</div>`;
+}
+/** Backup provider: where work goes when a stage's provider runs out of credit. */
+function backupMarkup(ai, keyed) {
+  const b = ai.backup || {}, setting = b.setting || 'auto';
+  const opts = [['auto', 'Automatic (xAI Grok when its key is saved)'], ['none', 'None: pause and wait for credit'], ...ai.providers.map((x) => [x.id, `${x.label}${keyed(x.id) ? '' : ' (add a key first)'}`])];
+  const now = b.provider ? `Now: <strong>${html(ai.providers.find((x) => x.id === b.provider)?.label || b.provider)}</strong>${b.models ? ` (${['brief', 'draft', 'graphics', 'qa'].map((s) => `${html(STAGE_LABEL[s] || s)}: ${html(String(b.models[s] || '').split(':')[1] || '')}`).join(', ')})` : ''}.` : 'Now: no backup. Work pauses until the provider has credit again (checked every 6 hours).';
+  return `<form id="aiBackupForm"><h3 style="margin-top:18px">Backup when a provider runs out of credit</h3><p>When a stage's provider says the account is out of credit, its work moves to the backup straight away instead of waiting. Images switch too when the backup makes images (xAI Grok Imagine, OpenAI or Gemini).</p>
+    <div class="settings-field"><label>BACKUP PROVIDER</label><select name="backup">${opts.map(([v, l]) => `<option value="${html(v)}" ${v === setting ? 'selected' : ''}>${html(l)}</option>`).join('')}</select><span class="field-hint">${now}</span></div>
+    <div class="settings-actions"><button type="submit" class="button primary">Save backup</button></div>
+   </form>`;
 }
 function searchConsoleMarkup() {
   const g = { ...(state.data.searchConsole || {}), ...(state.gsc || {}) };
@@ -783,6 +794,11 @@ function installListeners() {
       e.preventDefault();
       try { const out = await api('/api/searchconsole', { method: 'PATCH', body: { site: String(new FormData(e.target).get('site') || '') } }); state.gsc = { ...state.gsc, ...out }; await refresh(false, true); settingsModal(true); toast(`Briefs will use ${out.site}.`); }
       catch (err) { toast(err.message, 'error'); }
+      return;
+    }
+    if (e.target.id === 'aiBackupForm') {
+      e.preventDefault();
+      try { state.model.ai = await api('/api/ai', { method: 'PATCH', body: { backup: e.target.backup.value } }); await refreshModel(); settingsModal(true); toast('Backup saved.'); } catch (err) { toast(err.message, 'error'); }
       return;
     }
     if (e.target.id === 'aiModelsForm') {
