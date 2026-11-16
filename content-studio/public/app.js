@@ -451,6 +451,21 @@ function aiSettingsMarkup() {
     <div class="settings-actions"><button type="button" class="button ghost" id="aiModelsReset">Use recommended</button><button type="submit" class="button primary">Save models</button></div>
    </form></div>`;
 }
+function searchConsoleMarkup() {
+  const g = { ...(state.data.searchConsole || {}), ...(state.gsc || {}) };
+  if (!state.data.searchConsole && !state.gsc) return '';
+  const dot = (on) => `<span class="live-dot ${on ? 'on' : ''}"></span>`;
+  const sites = g.sites?.length ? g.sites : (g.site ? [g.site] : []);
+  const link = (href, text) => `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+  return `<div class="settings-section" id="gscSection"><h3>Search Console · free keyword data for briefs</h3><p>Each brief gets the searches the page already appears for, with clicks and positions, and the searches on its topic across the site, straight from Google. No Semrush units needed. Read-only, through a Google service account.</p>
+   <div class="status-line">${dot(g.configured && g.site)}${g.configured ? `Connected as ${html(g.email)}${g.site ? ` · ${html(g.site)}` : ' · pick a property below'}` : 'Not connected'}</div>
+   ${g.hint ? `<p class="field-hint bad-hint">${html(g.hint)}</p>` : ''}
+   ${g.configured ? '' : `<ol><li>${link('https://console.cloud.google.com/apis/library/searchconsole.googleapis.com', 'Enable the Google Search Console API')} in a Google Cloud project (create one if asked).</li><li>Open ${link('https://console.cloud.google.com/iam-admin/serviceaccounts', 'Service accounts')}, click <strong>Create service account</strong> (name it maios-search-console, skip the roles), open it, then <strong>Keys &gt; Add key &gt; Create new key &gt; JSON</strong>. A .json file downloads.</li><li>In ${link('https://search.google.com/search-console/users', 'Search Console &gt; Settings &gt; Users and permissions')}, click <strong>Add user</strong>, paste the service account's email (it ends in iam.gserviceaccount.com) and choose <strong>Restricted</strong>.</li><li>Open the .json file in a text editor, copy all of it, paste it below and press Save key.</li></ol>`}
+   <form id="gscKeyForm" autocomplete="off"><div class="settings-field"><label>SERVICE ACCOUNT JSON KEY</label><textarea name="key" rows="4" spellcheck="false" class="brand-rules" placeholder="${g.configured ? 'Saved. Paste a new key file to replace it' : 'Paste the whole JSON key file'}"></textarea><span class="field-hint">Checked with Google, then encrypted before it is stored. It is never shown again.</span></div>
+    <div class="settings-actions">${g.source === 'saved' ? '<button type="button" class="button ghost" id="gscRemove">Disconnect</button>' : ''}<button type="button" class="button ghost" id="gscTest" ${g.configured ? '' : 'disabled'}>Test</button><button type="submit" class="button primary">Save key</button></div></form>
+   ${g.configured && sites.length ? `<form id="gscSiteForm"><div class="settings-field"><label>PROPERTY</label><select name="site">${sites.map((s) => `<option value="${html(s)}" ${s === g.site ? 'selected' : ''}>${html(s)}</option>`).join('')}</select></div><div class="settings-actions"><button type="submit" class="button primary">Use this property</button></div></form>` : ''}
+  </div>`;
+}
 function passcodeMarkup() {
   if (!HOSTED) return '';
   const a = state.auth || {}, dot = (on) => `<span class="live-dot ${on ? 'on' : ''}"></span>`;
@@ -519,7 +534,7 @@ function settingsModal(open) {
  ${HOSTED ? '' : `<div class="settings-field"><label>BACKEND API URL</label><input name="url" value="${html(baseUrl())}" placeholder="Local: leave empty. Remote: https://api.example.com" /><span class="field-hint">Leave empty when the UI and backend run together locally.</span></div>
  <div class="settings-field"><label>BACKEND ACCESS TOKEN</label><input type="password" autocomplete="off" name="token" value="${html(token())}" placeholder="Required for publicly exposed backend" /><span class="field-hint">Held in this tab's session storage, not embedded in the site.</span></div>`}
  <div class="settings-actions"><button type="button" class="button ghost" id="settingsCancel">Cancel</button><button type="submit" class="button primary">${HOSTED ? 'Save' : 'Save & connect'}</button></div></form>
- ${aiSettingsMarkup()}${passcodeMarkup()}${integrationSettingsMarkup()}<div class="settings-help">${HOSTED ? '<strong>How it runs:</strong> generations run on MAIOS servers and keep going if you close this tab. A scheduled check every 5 minutes picks up anything left in the queue.' : '<strong>Local model (optional):</strong> to use LM Studio for a stage, load an instruct model, enable its Local Server and pick "LM Studio (local model)" for that stage above.'}<br/><br/><strong>Current state:</strong> ${html(state.model.connected ? 'Ready. Writer model: ' + modelLabel(state.model.ai?.stages?.draft) : 'A stage is set to a provider with no API key')} · studio v${html(state.data.version || '')}.<br/><br/><button class="command-btn" id="clearDemo">Remove sample tasks</button></div><div class="brand-settings"><div class="eyebrow" style="margin-top:25px">CONTENT INTELLIGENCE</div><h3 style="font-size:14px;margin-bottom:3px">Voice and QA profiles</h3><p>Editable operating rules injected into the model prompt for every job. Based on Marketing Powered's historical content standards.</p><form id="brandForm">${[['company', 'Company voice'], ['founder', 'Founder voice'], ['visual', 'Visual creative'], ['qa', 'Quality assurance']].map(([key, label]) => `<div class="settings-field"><label>${label}</label><textarea data-brand-key="${key}" name="${key}" rows="5" class="brand-rules" placeholder="Loading rules..."></textarea></div>`).join('')}<button class="button primary" type="submit">Save profiles</button></form></div>`;
+ ${aiSettingsMarkup()}${searchConsoleMarkup()}${passcodeMarkup()}${integrationSettingsMarkup()}<div class="settings-help">${HOSTED ? '<strong>How it runs:</strong> generations run on MAIOS servers and keep going if you close this tab. A scheduled check every 5 minutes picks up anything left in the queue.' : '<strong>Local model (optional):</strong> to use LM Studio for a stage, load an instruct model, enable its Local Server and pick "LM Studio (local model)" for that stage above.'}<br/><br/><strong>Current state:</strong> ${html(state.model.connected ? 'Ready. Writer model: ' + modelLabel(state.model.ai?.stages?.draft) : 'A stage is set to a provider with no API key')} · studio v${html(state.data.version || '')}.<br/><br/><button class="command-btn" id="clearDemo">Remove sample tasks</button></div><div class="brand-settings"><div class="eyebrow" style="margin-top:25px">CONTENT INTELLIGENCE</div><h3 style="font-size:14px;margin-bottom:3px">Voice and QA profiles</h3><p>Editable operating rules injected into the model prompt for every job. Based on Marketing Powered's historical content standards.</p><form id="brandForm">${[['company', 'Company voice'], ['founder', 'Founder voice'], ['visual', 'Visual creative'], ['qa', 'Quality assurance']].map(([key, label]) => `<div class="settings-field"><label>${label}</label><textarea data-brand-key="${key}" name="${key}" rows="5" class="brand-rules" placeholder="Loading rules..."></textarea></div>`).join('')}<button class="button primary" type="submit">Save profiles</button></form></div>`;
   $('#settingsModal').scrollTop = settingsTop;
   api('/api/brand').then((x) => { for (const [key, value] of Object.entries(x)) { const el = $(`[data-brand-key="${key}"]`, $('#settingsModal')); if (el) el.value = value; } }).catch(() => { });
 }
@@ -599,6 +614,8 @@ function installListeners() {
     if (e.target.id === 'aiKeyTest') { const provider = $('#aiProvider').value; try { await api('/api/ai/test', { method: 'POST', body: { provider } }); toast('The key works.'); } catch (err) { toast(err.message, 'error'); } return; }
     if (e.target.id === 'aiKeyRemove') { const provider = $('#aiProvider').value; if (!confirm('Remove the saved key for this provider? Stages that use it stop working until a new key is added.')) return; try { state.model.ai = await api('/api/ai', { method: 'PATCH', body: { provider, clear: true } }); await refreshModel(); settingsModal(true); toast('Key removed.'); } catch (err) { toast(err.message, 'error'); } return; }
     if (e.target.id === 'aiModelsReset') { try { state.model.ai = await api('/api/ai', { method: 'PATCH', body: { stages: { ...state.model.ai.defaults } } }); await refreshModel(); settingsModal(true); toast('Recommended models restored.'); } catch (err) { toast(err.message, 'error'); } return; }
+    if (e.target.id === 'gscTest') { try { state.gsc = await api('/api/searchconsole/test', { method: 'POST', body: {} }); settingsModal(true); toast(state.gsc.sample ? `Search Console works. Top searches: ${state.gsc.sample.slice(0, 3).join(', ') || 'none yet'}.` : (state.gsc.hint || 'Key works.'), state.gsc.ok ? 'good' : 'error'); } catch (err) { toast(err.message, 'error'); } return; }
+    if (e.target.id === 'gscRemove') { if (!confirm('Disconnect Search Console? Briefs will no longer include its data.')) return; try { state.gsc = await api('/api/searchconsole', { method: 'PATCH', body: { clear: true } }); await refresh(false, true); settingsModal(true); toast('Search Console disconnected.'); } catch (err) { toast(err.message, 'error'); } return; }
     if (e.target.id === 'signOut') { try { await api('/api/session', { method: 'DELETE' }); location.reload(); } catch (err) { toast(err.message, 'error'); } return; }
     const tab = e.target.closest('[data-task-tab]'); if (tab) { state.dirty = false; state.taskTab = tab.dataset.taskTab; state.editingArtifact = false; renderDrawer(); return; }
     const atab = e.target.closest('[data-artifact-tab]'); if (atab) { state.dirty = false; state.taskTab = 'artifact'; state.artifactTab = atab.dataset.artifactTab; state.artifactVersion = null; state.editingArtifact = false; renderDrawer(); return; }
@@ -712,6 +729,19 @@ function installListeners() {
         await refreshModel(); settingsModal(true);
         try { await api('/api/ai/test', { method: 'POST', body: { provider } }); toast('Key saved and verified.'); } catch (err) { toast(`Key saved, but the test failed: ${err.message}`, 'error'); }
       } catch (err) { toast(err.message, 'error'); }
+      return;
+    }
+    if (e.target.id === 'gscKeyForm') {
+      e.preventDefault(); const key = String(new FormData(e.target).get('key') || '').trim();
+      if (!key) return toast('Paste the JSON key file first.', 'error');
+      try { state.gsc = await api('/api/searchconsole', { method: 'PATCH', body: { key } }); await refresh(false, true); settingsModal(true); toast(state.gsc.hint || `Connected as ${state.gsc.email}${state.gsc.site ? ` to ${state.gsc.site}` : ''}.`, state.gsc.hint ? 'error' : 'good'); }
+      catch (err) { toast(err.message, 'error'); }
+      return;
+    }
+    if (e.target.id === 'gscSiteForm') {
+      e.preventDefault();
+      try { const out = await api('/api/searchconsole', { method: 'PATCH', body: { site: String(new FormData(e.target).get('site') || '') } }); state.gsc = { ...state.gsc, ...out }; await refresh(false, true); settingsModal(true); toast(`Briefs will use ${out.site}.`); }
+      catch (err) { toast(err.message, 'error'); }
       return;
     }
     if (e.target.id === 'aiModelsForm') {

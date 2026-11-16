@@ -22,6 +22,7 @@ import {
   googleAuthStart, googleAuthFinish, disconnectGoogle, syncDoc, taskDocs, allDocs, afterArtifact
 } from './integrations.mjs';
 import { aiStatus, saveAiSettings, testProvider } from './providers.mjs';
+import { searchConsoleStatus, saveSearchConsole, testSearchConsole, searchConsoleContext } from './searchconsole.mjs';
 import { runtime } from './runtime.mjs';
 import { assets } from './assets.mjs';
 
@@ -84,12 +85,16 @@ export async function handleApi(req, ctx = {}) {
   const { method, path, query } = req;
   const actor = actorFrom(req);
   if (method === 'GET' && path === '/api/health') return json(200, { ok: true, version: VERSION, stats: taskStats(), knowledge: knowledgeStats(), worker: workerInfo(), backend: runtime.hosted ? 'maios-hosted' : 'local-sqlite-fts5-and-node' });
-  if (method === 'GET' && path === '/api/bootstrap') return json(200, { ...getBootstrap(), docs: allDocs(), integrations: integrationStatus(), stats: taskStats(), ai: aiStatus(), settings: settingsView() });
+  if (method === 'GET' && path === '/api/bootstrap') return json(200, { ...getBootstrap(), docs: allDocs(), integrations: integrationStatus(), stats: taskStats(), ai: aiStatus(), searchConsole: searchConsoleStatus(), settings: settingsView() });
   if (method === 'GET' && path === '/api/models') return json(200, await modelCatalog());
 
   // AI providers: keys are write-only from the browser's point of view. Status shows only whether one is set and its last 4 characters.
   if (method === 'GET' && path === '/api/ai') return json(200, aiStatus());
   if (method === 'PATCH' && path === '/api/ai') return json(200, saveAiSettings(await parseJson(req, 64 * 1024)));
+  // Search Console: service account key is write-only, like the AI keys.
+  if (method === 'GET' && path === '/api/searchconsole') return json(200, searchConsoleStatus());
+  if (method === 'PATCH' && path === '/api/searchconsole') return json(200, await saveSearchConsole(await parseJson(req, 32 * 1024)));
+  if (method === 'POST' && path === '/api/searchconsole/test') return json(200, await testSearchConsole());
   if (method === 'POST' && path === '/api/ai/test') { const body = await parseJson(req, 4096); return json(200, await testProvider(String(body.provider || ''))); }
 
   if (method === 'GET' && path === '/api/brand') return json(200, getBrandProfiles());
@@ -146,7 +151,7 @@ export async function handleApi(req, ctx = {}) {
     return json(202, { jobs: ids.map((id) => startPipeline(id, null, actor)) });
   }
 
-  const matched = path.match(/^\/api\/tasks\/([a-f0-9-]{36})(?:\/(move|comment|generate|pipeline|approve|publish|asset|archive|restore|artifact|context|sources|live|images|doc|revise))?$/);
+  const matched = path.match(/^\/api\/tasks\/([a-f0-9-]{36})(?:\/(move|comment|generate|pipeline|approve|publish|asset|archive|restore|artifact|context|sources|live|images|doc|revise|searchconsole))?$/);
   if (matched) {
     const [, id, action] = matched;
     if (!getTask(id)) return fail(404, 'Task not found.');
@@ -159,6 +164,7 @@ export async function handleApi(req, ctx = {}) {
     }
     if (action === 'context' && method === 'GET') return json(200, inspectTaskPrompt(id, query.get('kind') || 'draft'));
     if (action === 'sources' && method === 'GET') return json(200, getKnowledgeUsage(id));
+    if (action === 'searchconsole' && method === 'GET') return json(200, await searchConsoleContext(getTask(id)));
     if (action === 'live' && method === 'GET') return json(200, { jobs: await liveOutput(id) });
     if (!action && method === 'PATCH') return json(200, updateTask(id, await parseJson(req), actor));
     if (action === 'move' && method === 'POST') {
