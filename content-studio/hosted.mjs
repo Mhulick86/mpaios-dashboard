@@ -37,7 +37,7 @@ const stamp = () => new Date().toISOString();
  * @param seed    knowledge/seed.json contents (bundled by the caller; this file cannot read files next to itself)
  * @param cookiePath  where the API is mounted, e.g. /api/studio
  */
-export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'studio', maxRunning = clamp(process.env.WORKER_CONCURRENCY, 1, 8, 2), minStartMs = 240000 }) {
+export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'studio', maxRunning = clamp(process.env.WORKER_CONCURRENCY, 1, 8, 4), minStartMs = 240000 }) {
   process.env.NO_DEMO_SEED ??= '1'; // a real workspace starts with an empty board
   if (seed) setKnowledgeSeed(seed);
 
@@ -108,6 +108,7 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
   const readText = async (res) => (res?.stream ? new Response(res.stream).text() : undefined);
   configureRuntime({
     hosted: true,
+    maxRunning,
     commit,
     defer(fn) { const ctx = inCommit.getStore(); if (ctx) ctx.deferred.push(fn); else background(fn); },
     live: {

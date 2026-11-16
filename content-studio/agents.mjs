@@ -265,4 +265,4 @@ export function cancelJob(id) {
   abortLocal(id);
   return getJob(id);
 }
-export const workerInfo = () => ({ concurrency: CONCURRENCY, running: running.size, streaming: true, maxAttempts: MAX_ATTEMPTS, hosted: runtime.hosted, stages: Object.fromEntries(STAGES.map((s) => [s, stageModel(s)])) });
+export const workerInfo = () => ({ concurrency: runtime.maxRunning || CONCURRENCY, running: running.size, streaming: true, maxAttempts: MAX_ATTEMPTS, hosted: runtime.hosted, stages: Object.fromEntries(STAGES.map((s) => [s, stageModel(s)])) });
