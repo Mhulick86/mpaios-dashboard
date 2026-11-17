@@ -14,8 +14,10 @@ import { randomUUID } from 'node:crypto';
 export class PreconditionFailed extends Error { constructor() { super('The studio database changed on another server; reloading.'); this.precondition = true; } }
 
 export function createSupabaseStore({ url, key, bucket = 'studio', dbKey = 'studio/content-studio.sqlite' }) {
+  // Pasted values often carry a trailing space or line break, which Supabase rejects as an invalid key.
+  url = String(url || '').trim(); key = String(key || '').trim();
   if (!url || !key) throw new Error('Supabase storage needs STUDIO_SUPABASE_URL and STUDIO_SUPABASE_SECRET_KEY.');
-  const base = String(url).replace(/\/+$/, '');
+  const base = url.replace(/\/+$/, '');
   // New-style secret keys (sb_secret_...) go in the apikey header only; a legacy service_role JWT also as the bearer.
   const auth = String(key).startsWith('sb_') ? { apikey: key } : { apikey: key, Authorization: `Bearer ${key}` };
   const objectUrl = (path) => `${base}/storage/v1/object/${bucket}/${String(path).split('/').map(encodeURIComponent).join('/')}`;
