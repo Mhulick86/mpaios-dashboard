@@ -287,10 +287,17 @@ function renderBoard() {
   // Never rebuild the board under a card that is being dragged; redraw once the drag ends.
   if (state.drag) { state.renderPending = true; return; }
   // Work paused by a credit cutoff, and when MAIOS checks again.
-  const credit = state.data.credit || [], cb = $('#creditBanner');
+  // Only providers with work actually waiting are shown. The × hides the banner in this browser until a provider
+  // newly runs out of credit (the key is which providers are paused and since when).
+  const credit = (state.data.credit || []).filter((c) => c.jobs || c.images), cb = $('#creditBanner');
   if (cb) {
-    cb.hidden = !credit.length;
-    cb.innerHTML = credit.map((c) => `<strong>${html(c.label)} is out of credit.</strong> ${c.jobs} job${c.jobs === 1 ? '' : 's'}${c.images ? ` and ${c.images} image run${c.images === 1 ? '' : 's'}` : ''} paused. MAIOS checks every 6 hours and resumes them automatically (next check ${html(stampFmt(c.next_check))}). Added credit? Press Check now.`).join('<br>') + ' <button type="button" class="button ghost" id="creditCheckNow" style="margin-left:8px;padding:2px 10px">Check now</button>';
+    const key = credit.map((c) => `${c.provider}@${c.since}`).sort().join('|');
+    let closed = ''; try { closed = localStorage.getItem('maios_credit_banner_closed') || ''; } catch { /* storage blocked */ }
+    cb.hidden = !credit.length || closed === key;
+    cb.dataset.key = key;
+    cb.innerHTML = `<button type="button" class="credit-close" id="creditClose" aria-label="Close" title="Close">×</button>`
+      + credit.map((c) => `<strong>${html(c.label)} is out of credit:</strong> ${c.jobs} job${c.jobs === 1 ? '' : 's'}${c.images ? ` and ${c.images} image run${c.images === 1 ? '' : 's'}` : ''} paused until ${html(stampFmt(c.next_check))} (checked every 6 hours).`).join('<br>')
+      + ' <button type="button" class="credit-check" id="creditCheckNow">Added credit? Check now</button>';
   }
   const tasks = taskView();
   const scrolls = new Map($$('.kanban-column', $('#board')).map((col) => [col.dataset.laneId, $('.column-body', col)?.scrollTop || 0]));
@@ -662,6 +669,11 @@ function installListeners() {
     if (['settingsClose', 'settingsCancel'].includes(e.target.id)) return settingsModal(false);
     if (e.target.closest?.('#workerCard')) return settingsModal(true);
     if (e.target.id === 'authRetry') return location.reload();
+    if (e.target.id === 'creditClose') {
+      const cb = $('#creditBanner'); try { localStorage.setItem('maios_credit_banner_closed', cb?.dataset.key || ''); } catch { /* storage blocked */ }
+      if (cb) cb.hidden = true;
+      return;
+    }
     if (e.target.id === 'creditCheckNow') {
       e.target.disabled = true; e.target.textContent = 'Checking…';
       try {
@@ -669,7 +681,7 @@ function installListeners() {
         const back = (out.results || []).filter((r) => r.ok).map((r) => r.provider);
         toast(back.length ? `Credit is back (${back.join(', ')}): paused work is running again.` : 'Still out of credit. MAIOS keeps checking every 6 hours.', back.length ? 'ok' : 'error');
         await refresh(false, true);
-      } catch (err) { toast(err.message, 'error'); e.target.disabled = false; e.target.textContent = 'Check now'; }
+      } catch (err) { toast(err.message, 'error'); e.target.disabled = false; e.target.textContent = 'Added credit? Check now'; }
       return;
     }
     if (e.target.id === 'aiKeyTest') { const provider = $('#aiProvider').value; try { await api('/api/ai/test', { method: 'POST', body: { provider } }); toast('The key works.'); } catch (err) { toast(err.message, 'error'); } return; }
