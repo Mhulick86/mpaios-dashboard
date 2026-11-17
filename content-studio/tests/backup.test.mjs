@@ -25,7 +25,9 @@ function fakeProviders(t) {
     }
     res.writeHead(200, { 'Content-Type': 'text/event-stream' });
     const send = (o) => res.write(`data: ${JSON.stringify(o)}\n\n`);
-    send({ type: 'response.output_text.delta', delta: DRAFT });
+    // Like Grok: a line of narration in its own message before searching, then the page in the next message.
+    send({ type: 'response.output_text.delta', item_id: 'msg_a', output_index: 0, delta: "I'll verify the policy pages first, then write the page." });
+    send({ type: 'response.output_text.delta', item_id: 'msg_b', output_index: 2, delta: DRAFT });
     send({ type: 'response.completed', response: { model: body.model, output: [{ type: 'message' }], usage: { input_tokens: 900, output_tokens: 200 } } });
     res.end();
   });
@@ -51,6 +53,7 @@ test('out of credit on OpenAI: the job continues on Grok right away, and later j
   await s.api(`/api/tasks/${task.id}/generate`, 'POST', { kind: 'draft' });
   const done = await waitFor(async () => { const x = await s.api(`/api/tasks/${task.id}`); return x.artifacts.some((a) => a.kind === 'draft') ? x : false; }, 20000);
   assert.match(done.artifacts.find((a) => a.kind === 'draft').model, /^xai\/grok-4\.7/);
+  assert.match(done.artifacts.find((a) => a.kind === 'draft').body, /^\*\*Meta title:\*\* Owned measurement/, 'the narration before the page is not saved');
   assert.ok(done.events.some((e) => e.event_type === 'switched' && /OpenAI is out of credit: this draft continues on xAI/.test(e.message)));
   assert.equal(p.calls.xai[0].body.reasoning?.effort, 'medium', 'Grok 4.7 gets a reasoning effort'); assert.equal(p.calls.xai[0].body.tools, undefined);
   // OpenAI stays on the watch list (checked every 6 hours); new work for its stages goes straight to the backup.

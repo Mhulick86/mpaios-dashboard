@@ -248,6 +248,23 @@ function advance(task, kind, options) {
  * take minutes), then save the result in a single commit. On Vercel the commit re-reads the latest data first, so
  * edits made while the model was writing are kept, and a job cancelled in the meantime saves nothing.
  */
+/**
+ * Drop narration a model writes before the artifact itself ("I'll verify the policy pages first, then write the page"):
+ * a website draft starts at its meta title or its H1, whichever comes first, and a QA report at its verdict. Models
+ * that search before writing put this in front of the page, and QA then fails the page for a production note.
+ */
+export function trimToArtifact(text, kind, channel) {
+  const body = String(text || '');
+  const find = (re) => { const m = re.exec(body); return m ? m.index : -1; };
+  let start = -1;
+  if (kind === 'draft' && channel === 'website') {
+    const marks = [find(/\*\*\s*Meta title/i), find(/^#\s/m)].filter((i) => i >= 0);
+    start = marks.length ? Math.min(...marks) : -1; // whichever comes first: the meta lines or the H1
+  }
+  if (kind === 'qa') start = find(/Verdict:\s*(PASS|FAIL)/i);
+  // Only a short preamble is cut (a real page never puts this much before its meta title or H1).
+  return start > 0 && start <= 2000 ? body.slice(start).trimStart() : body;
+}
 const QA_SKIPPED = 'Model review skipped: the draft already fails the automatic checks above, so a model review would only repeat them (and cost a full call). Press "Redo with QA fixes" to fix them, or "Approve anyway".';
 export async function runGeneration(job, signal) {
   const task = getTask(job.task_id); if (!task) throw new Error('Task no longer exists.');
@@ -272,7 +289,7 @@ export async function runGeneration(job, signal) {
     const current = getJob(job.id);
     if (!current || current.status === 'cancelled') throw new Cancelled();
     const fresh = getTask(job.task_id); if (!fresh) throw new Error('Task no longer exists.');
-    let body = output.output;
+    let body = trimToArtifact(output.output, kind, fresh.channel);
     if (kind === 'qa') {
       const draft = fresh.artifacts.find((a) => a.kind === 'draft');
       const report = formatQaReport(deterministicQa(fresh, draft?.body || '', repetitionCorpus(fresh.id)), preQa?.block.length ? '' : modelVerdict(body), body);

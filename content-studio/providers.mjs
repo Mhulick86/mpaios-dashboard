@@ -296,10 +296,18 @@ async function callResponses(provider, { model, apiKey, system, user, stage, t, 
     if (CREDIT_ERROR.test(err.message)) throw new OutOfCredit(provider, creditMessage(cfg.label, cfg.billing));
     throw err;
   }
-  let text = '', truncated = false, served = model, searches = 0, usage = null, final = null;
+  let text = '', truncated = false, served = model, searches = 0, usage = null, final = null, lastItem = null;
+  const messages = [];
   try {
     for await (const ev of sseEvents(r, t)) {
-      if (ev.type === 'response.output_text.delta' && typeof ev.delta === 'string') { text += ev.delta; onText?.(text); }
+      if (ev.type === 'response.output_text.delta' && typeof ev.delta === 'string') {
+        text += ev.delta; onText?.(text);
+        // Text per output message: a model that searches first often writes a line ("I'll verify ... first") in an
+        // earlier message; only the last message is the artifact.
+        const id = ev.item_id || `#${ev.output_index ?? 0}`;
+        if (id !== lastItem) { lastItem = id; messages.push(''); }
+        messages[messages.length - 1] += ev.delta;
+      }
       else if (typeof ev.choices?.[0]?.delta?.content === 'string') { text += ev.choices[0].delta.content; onText?.(text); } // chat-style stream
       else if (ev.type === 'response.web_search_call.completed') searches++;
       else if (ev.type === 'response.completed' || ev.type === 'response.incomplete' || (!ev.type && ev.object === 'response')) {
@@ -319,6 +327,8 @@ async function callResponses(provider, { model, apiKey, system, user, stage, t, 
   } catch (e) { t.rethrow(e); }
   // A provider that streams only the finished response: take the text from it.
   if (!text && final?.output) text = final.output.flatMap((o) => o.content || []).filter((c) => c.type === 'output_text').map((c) => c.text).join('');
+  // Several messages (narration around web searches): keep the last one when it carries the bulk of the text.
+  else if (messages.length > 1 && messages[messages.length - 1].trim().length >= text.trim().length * 0.5) text = messages[messages.length - 1];
   return { output: text, model: served, truncated, usage, research: withTools ? { searches, fetches: 0 } : null };
 }
 const callOpenAI = (args) => callResponses('openai', args);
