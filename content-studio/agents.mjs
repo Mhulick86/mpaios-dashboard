@@ -8,7 +8,7 @@ import { publish } from './events.mjs';
 import { afterArtifact, imagePlanLimit, pageImageSlots } from './integrations.mjs';
 import { clamp } from './env.mjs';
 import { runtime } from './runtime.mjs';
-import { generate, aiStatus, ModelUnavailable, stageModel } from './providers.mjs';
+import { generate, aiStatus, ModelUnavailable, stageModel, isLocalStage } from './providers.mjs';
 import { handleCutoff, routeModel } from './credit.mjs';
 import { searchConsoleContext } from './searchconsole.mjs';
 
@@ -285,7 +285,12 @@ export async function runGeneration(job, signal) {
     try { output = await complete(prompt.system, prompt.user, kind, { signal, onText: reporter.onText, model: routeModel(kind) }); }
     finally { await reporter.flush(); }
   }
-  return runtime.commit(() => {
+  return runtime.commit(() => saveOutput(job, output, prompt, gsc, preQa));
+}
+/** Save a finished generation as the stage's artifact and move the card on. Call inside a commit. */
+function saveOutput(job, output, prompt, gsc, preQa) {
+  const kind = job.kind, options = job.options || {};
+  {
     const current = getJob(job.id);
     if (!current || current.status === 'cancelled') throw new Cancelled();
     const fresh = getTask(job.task_id); if (!fresh) throw new Error('Task no longer exists.');
@@ -308,7 +313,77 @@ export async function runGeneration(job, signal) {
     advance(fresh, kind, options);
     finishJob(job.id, 'done', '', output.model, output.usage);
     return output.model;
-  });
+  }
+}
+
+// ---------- Local team worker (worker/maios_worker.py on a team member's Mac) ----------
+// A stage set to "Local team" is not run by the studio. The worker polls workerClaim(), runs the stage on LM Studio and
+// reports back. Each function runs inside the request's commit.
+const localKinds = () => STAGES.filter(isLocalStage);
+/** Hand the worker the next queued job for a local-team stage, with the finished prompt. */
+export async function workerClaim() {
+  const mine = localKinds();
+  if (!mine.length) return { job: null, reason: 'No stage is set to the local team in Settings.' };
+  for (let i = 0; i < 5; i++) {
+    const job = nextJob({ excludeKinds: STAGES.filter((k) => !mine.includes(k)) });
+    if (!job) return { job: null };
+    try {
+      const task = getTask(job.task_id); if (!task) throw new Error('Task no longer exists.');
+      const kind = job.kind, options = job.options || {};
+      if (['graphics', 'qa'].includes(kind) && !task.artifacts.some((a) => a.kind === 'draft')) throw new Error('A draft artifact is required for this stage.');
+      const gsc = kind === 'brief' ? await searchConsoleContext(task) : { text: '', note: '' };
+      const prompt = makePrompt(task, kind, options, gsc.text);
+      const draft = task.artifacts.filter((a) => a.kind === 'draft').sort((a, b) => b.version - a.version)[0];
+      const preQa = kind === 'qa' ? deterministicQa(task, draft?.body || '', repetitionCorpus(task.id)) : null;
+      if (preQa?.block.length) { // the automatic checks already fail the draft: no model needed
+        saveOutput(job, { output: QA_SKIPPED, model: 'automatic checks', usage: null, truncated: false, research: null }, prompt, gsc, preQa);
+        continue;
+      }
+      if (gsc.note) event(task.id, 'searchconsole', gsc.note, 'MAIOS');
+      return { job: { id: job.id, kind, attempts: job.attempts }, task: { id: task.id, title: task.title, channel: task.channel, primary_keyword: task.primary_keyword || '' },
+        prompt: { system: prompt.system, user: prompt.user }, draft: kind === 'qa' ? draft?.body || '' : '' };
+    } catch (e) { finishJob(job.id, 'failed', String(e?.message || e)); }
+  }
+  return { job: null };
+}
+const workerJob = (id) => {
+  const job = getJob(id);
+  if (!job) return { error: [404, 'Job not found.'] };
+  if (job.status !== 'running') return { error: [409, `This job is ${job.status}, not running: it was cancelled or handed to someone else.`] };
+  return { job };
+};
+/** The worker is still on it: keeps the job from being treated as abandoned, and shows its text on the card. */
+export function workerProgress(id, body = {}) {
+  const { job, error } = workerJob(id); if (error) return { error };
+  getDb().prepare('UPDATE jobs SET started_at=? WHERE id=?').run(new Date().toISOString(), id);
+  if (typeof body.text === 'string' && body.text) {
+    const text = stripReasoning(body.text.slice(-60000), true);
+    if (runtime.hosted) runtime.live.set(id, text).catch(() => { }); else runtime.live.store.set(id, text);
+  }
+  return { ok: true, status: job.status };
+}
+export function workerDone(id, body = {}) {
+  const { job, error } = workerJob(id); if (error) return { error };
+  const text = stripReasoning(String(body.output || ''));
+  if (text.length < 20) return { error: [400, 'The worker sent no output.'] };
+  const task = getTask(job.task_id); if (!task) return { error: [404, 'Task no longer exists.'] };
+  const usage = body.usage && typeof body.usage === 'object' ? { input_tokens: Number(body.usage.input_tokens) || 0, output_tokens: Number(body.usage.output_tokens) || 0 } : null;
+  const research = body.research && typeof body.research === 'object' ? { searches: Number(body.research.searches) || 0, fetches: Number(body.research.fetches) || 0 } : null;
+  const output = { output: text, model: `local/${String(body.model || 'team').replace(/[^\w.+-]/g, '').slice(0, 60) || 'team'}`, usage, truncated: body.truncated === true, research };
+  try { saveOutput(job, output, makePrompt(task, job.kind, job.options || {}), { note: '' }, null); }
+  catch (e) { if (e?.cancelled) return { error: [409, 'This job was cancelled.'] }; throw e; }
+  runtime.live.remove(id).catch(() => { });
+  return { ok: true };
+}
+export function workerFailed(id, body = {}) {
+  const { job, error } = workerJob(id); if (error) return { error };
+  const message = `Local team: ${String(body.error || 'failed').slice(0, 1500)}`;
+  if (body.transient === true && job.attempts < MAX_ATTEMPTS) {
+    const delay = RETRY_BASE_MS * 3 ** (job.attempts - 1);
+    requeueJob(id, delay, `${message} Retrying in ${Math.round(delay / 1000)}s (attempt ${job.attempts} of ${MAX_ATTEMPTS}).`);
+  } else finishJob(id, 'failed', message);
+  runtime.live.remove(id).catch(() => { });
+  return { ok: true };
 }
 
 export async function runOne(job, ctl) {
@@ -330,7 +405,7 @@ export async function runOne(job, ctl) {
 }
 export async function workerTick() {
   while (running.size < CONCURRENCY) {
-    const job = nextJob(); if (!job) break;
+    const job = nextJob({ excludeKinds: localKinds() }); if (!job) break; // local-team stages wait for the worker
     const ctl = new AbortController(); running.set(job.id, ctl);
     runOne(job, ctl).catch((err) => console.error('Worker:', err)).finally(() => {
       running.delete(job.id);

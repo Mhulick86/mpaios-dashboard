@@ -13,7 +13,7 @@ import {
   startPipeline, retryJob, getJob, setQaStatus, requestRevision, repetitionCorpus, STAGES
 } from './db.mjs';
 import { deterministicQa, modelVerdict, qaStatusFor } from './qa-checks.mjs';
-import { modelCatalog, inspectTaskPrompt, cancelJob, liveOutput, workerInfo } from './agents.mjs';
+import { modelCatalog, inspectTaskPrompt, cancelJob, liveOutput, workerInfo, workerClaim, workerProgress, workerDone, workerFailed } from './agents.mjs';
 import {
   knowledgeStats, listKnowledge, getKnowledge, saveKnowledge, setKnowledgeEnabled, knowledgeHistory,
   importKnowledge, listAgents, saveAgent, listPlaybooks, getKnowledgeUsage
@@ -154,6 +154,16 @@ export async function handleApi(req, ctx = {}) {
   }
   const assetRead = path.match(/^\/api\/assets\/([a-f0-9-]{36})$/);
   if (assetRead && method === 'GET') return assetReply(assetRead[1]);
+
+  // Local team worker: claims work for stages set to "Local team", keeps it alive while it runs, and reports the result.
+  if (method === 'POST' && path === '/api/worker/claim') return json(200, await workerClaim());
+  const workerMatch = path.match(/^\/api\/worker\/jobs\/([a-f0-9-]{36})\/(progress|done|failed)$/);
+  if (workerMatch && method === 'POST') {
+    const [, id, action] = workerMatch;
+    const body = await parseJson(req, 2 * 1024 * 1024);
+    const out = action === 'done' ? workerDone(id, body) : action === 'failed' ? workerFailed(id, body) : workerProgress(id, body);
+    return out.error ? fail(out.error[0], out.error[1]) : json(200, out);
+  }
 
   const jobMatch = path.match(/^\/api\/jobs\/([a-f0-9-]{36})\/(cancel|retry)$/);
   if (jobMatch && method === 'POST') {
