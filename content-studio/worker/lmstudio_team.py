@@ -24,15 +24,76 @@ from pathlib import Path
 BASE_URL = os.environ.get("LM_STUDIO_BASE_URL", "http://127.0.0.1:1234/v1").rstrip("/")
 MODELS_DIR = Path(os.environ.get("LM_STUDIO_MODELS_DIR", Path.home() / ".lmstudio" / "models"))
 
-# identifier: the name the studio will call; file: the download; context: tokens to load with.
+# identifier: the name the studio will call; file: the download.
+# per_request: tokens of context one request needs (the lead now gets the full research pack: up to 25 searches).
+# parallel: [minimum, maximum] requests served at once; plan_team() picks the most this Mac's memory allows.
+# weights_gb / kv_mb_per_token: used when the file is not on disk yet / estimated KV cache cost (fp16, rounded up).
 TEAM = [
-    {"identifier": "lead", "role": "writes drafts, first QA verdict",
-     "repo": "lmstudio-community/Qwen3.8-27B-GGUF", "file": "Qwen3.8-27B-Q4_K_M.gguf", "context": 49152},
-    {"identifier": "reader", "role": "checks one claim against one page, four at once",
-     "repo": "lmstudio-community/Qwen3.5-4B-GGUF", "file": "Qwen3.5-4B-Q8_0.gguf", "context": 65536},
+    {"identifier": "lead", "role": "writes drafts and QA reports (one card per slot)",
+     "repo": "lmstudio-community/Qwen3.8-27B-GGUF", "file": "Qwen3.8-27B-Q4_K_M.gguf",
+     "per_request": 81920, "min_per_request": 49152, "parallel": [1, 3], "weights_gb": 16.5, "kv_mb_per_token": 0.26},
+    {"identifier": "reader", "role": "reads pages and checks one claim against one page, many at once",
+     "repo": "lmstudio-community/Qwen3.5-4B-GGUF", "file": "Qwen3.5-4B-Q8_0.gguf",
+     "per_request": 16384, "min_per_request": 12288, "parallel": [4, 16], "weights_gb": 4.5, "kv_mb_per_token": 0.15},
     {"identifier": "judge", "role": "independent second check",
-     "repo": "lmstudio-community/gemma-4-12B-it-GGUF", "file": "gemma-4-12B-it-Q8_0.gguf", "context": 16384},
+     "repo": "lmstudio-community/gemma-4-12B-it-GGUF", "file": "gemma-4-12B-it-Q8_0.gguf",
+     "per_request": 6144, "min_per_request": 4096, "parallel": [4, 8], "weights_gb": 12.7, "kv_mb_per_token": 0.4},
 ]
+PLAN_PATH = Path(os.environ.get("MAIOS_TEAM_PLAN", Path.home() / ".maios-team-plan.json"))
+
+
+def memory_gb():
+    """Total memory of this machine in GB (unified memory on Apple silicon)."""
+    try:
+        if sys.platform == "darwin":
+            return int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True).stdout.strip()) / 2**30
+        with open("/proc/meminfo") as f:
+            return int(next(l for l in f if l.startswith("MemTotal")).split()[1]) / 2**20
+    except Exception:
+        return 32.0
+
+
+def plan_team(total_gb=None):
+    """
+    Size the team to this machine: the most parallel slots and the largest context that fit in memory, leaving room
+    for macOS and other apps. macOS lets the GPU use about 75% of unified memory by default; we keep 4 GB more back.
+    Order of growth: give the lead its full context, then more reader slots (claim checks and page reading run many at
+    once), then judge slots, then extra lead slots (each one lets the worker run another card at the same time).
+    """
+    total_gb = total_gb or memory_gb()
+    budget = total_gb * 0.75 - 4
+    def weights(m):
+        path = MODELS_DIR / m["repo"] / m["file"]
+        return path.stat().st_size / 2**30 if path.exists() else m["weights_gb"]
+    plan = {m["identifier"]: {"parallel": m["parallel"][0], "per_request": m["min_per_request"]} for m in TEAM}
+    by_id = {m["identifier"]: m for m in TEAM}
+    def used():
+        return sum(weights(by_id[i]) + by_id[i]["kv_mb_per_token"] * p["per_request"] * p["parallel"] / 1024 for i, p in plan.items())
+    steps = [("lead", "per_request", by_id["lead"]["per_request"])]
+    for i in ("reader", "judge"):
+        steps.append((i, "per_request", by_id[i]["per_request"]))
+    for n in range(by_id["reader"]["parallel"][0] + 2, by_id["reader"]["parallel"][1] + 1, 2):
+        steps.append(("reader", "parallel", n))
+    for n in range(by_id["judge"]["parallel"][0] + 2, by_id["judge"]["parallel"][1] + 1, 2):
+        steps.append(("judge", "parallel", n))
+    for n in range(by_id["lead"]["parallel"][0] + 1, by_id["lead"]["parallel"][1] + 1):
+        steps.append(("lead", "parallel", n))
+    for ident, field, value in steps:
+        before = plan[ident][field]
+        plan[ident][field] = value
+        if used() > budget:
+            plan[ident][field] = before
+    for i, p in plan.items():
+        p["context"] = p["per_request"] * p["parallel"]   # works whether LM Studio splits the context per slot or shares it
+    return {"memory_gb": round(total_gb, 1), "budget_gb": round(budget, 1), "estimated_gb": round(used(), 1), "models": plan}
+
+
+def read_plan():
+    """The plan the team was last loaded with (or a fresh one)."""
+    try:
+        return json.loads(PLAN_PATH.read_text())
+    except Exception:
+        return plan_team()
 
 
 def find_lms():
@@ -122,6 +183,8 @@ def candidate_keys(lms, member):
 
 def load_team(lms):
     already = loaded_ids()
+    plan = plan_team()
+    print(f"This machine: {plan['memory_gb']} GB memory, {plan['budget_gb']} GB for models, plan uses about {plan['estimated_gb']} GB.")
     for member in TEAM:
         ident = member["identifier"]
         path = MODELS_DIR / member["repo"] / member["file"]
@@ -131,17 +194,26 @@ def load_team(lms):
         if ident in already:
             print(f"[{ident}] already loaded")
             continue
-        print(f"[{ident}] loading {member['file']} with {member['context']:,} tokens of context...")
+        p = plan["models"][ident]
+        print(f"[{ident}] loading {member['file']}: {p['parallel']} at once, {p['per_request']:,} tokens each ({p['context']:,} total)...")
         last = ""
         for key in candidate_keys(lms, member):
-            code, out = run([lms, "load", key, "--identifier", ident,
-                             "--context-length", str(member["context"]), "--gpu", "max"])
+            code, out = run([lms, "load", key, "--identifier", ident, "--context-length", str(p["context"]),
+                             "--parallel", str(p["parallel"]), "--gpu", "max"])
+            if code != 0 and "parallel" in out.lower():
+                # LM Studio before 0.4.1 has no --parallel: load with its default of 4 at once.
+                p.update(parallel=4, context=p["per_request"] * 4)
+                code, out = run([lms, "load", key, "--identifier", ident, "--context-length", str(p["context"]), "--gpu", "max"])
             if code == 0:
                 print(f"[{ident}] loaded as '{key}'")
                 break
             last = out
         else:
             print(f"[{ident}] FAILED to load. Last message from LM Studio:\n{last[-600:]}")
+    try:
+        PLAN_PATH.write_text(json.dumps(plan, indent=2))   # the worker sizes its parallel work from this
+    except OSError:
+        pass
 
 
 def ask(ident, prompt, max_tokens=400):
