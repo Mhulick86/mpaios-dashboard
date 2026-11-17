@@ -45,10 +45,16 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
   // ---------- Database snapshot ----------
   const DB_KEY = `${prefix}/content-studio.sqlite`;
   const dir = mkdtempSync(join(tmpdir(), 'maios-studio-'));
-  let file = null, etag = null, generation = 0, persisted = 0, stale = true;
+  let file = null, etag = null, generation = 0, persisted = 0, stale = true, checkedAt = 0;
+  // Every Blob call counts against the plan's monthly operations. A copy confirmed current within SYNC_TTL_MS is used
+  // as is (the board polls every few seconds); writes stay safe because an upload from a stale copy fails its ifMatch
+  // and the commit then reloads and runs again.
+  const SYNC_TTL_MS = clamp(process.env.STUDIO_SYNC_TTL_MS, 0, 60000, 5000);
 
   async function sync() {
+    if (file && etag && !stale && Date.now() - checkedAt < SYNC_TTL_MS) return;
     const res = await blob.get(DB_KEY, { access: 'private', useCache: false, ...(etag && !stale ? { ifNoneMatch: etag } : {}) });
+    checkedAt = Date.now();
     if (res?.statusCode === 304) return;
     if (!res && !etag && file && !stale) return; // still the first, not yet saved database
     const next = join(dir, `db-${++generation}.sqlite`);
@@ -104,7 +110,7 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
   }
 
   // ---------- Runtime hooks used by the shared studio code ----------
-  const liveKey = (jobId) => `${prefix}/live/${basename(jobId)}.txt`;
+  const liveText = new Map(); // jobId -> latest preview text (this server only)
   const assetKey = (name) => `${prefix}/assets/${basename(name)}`;
   const readText = async (res) => (res?.stream ? new Response(res.stream).text() : undefined);
   configureRuntime({
@@ -112,10 +118,13 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
     maxRunning,
     commit,
     defer(fn) { const ctx = inCommit.getStore(); if (ctx) ctx.deferred.push(fn); else background(fn); },
+    // The live preview of a running generation stays in this server's memory. Keeping it in Blob cost an upload every
+    // 1.5 seconds per running job, which used up the Blob plan's monthly operations in minutes. A board request that
+    // reaches another server sees no preview text and shows the job as writing.
     live: {
-      async set(jobId, text) { await blob.put(liveKey(jobId), text || ' ', { access: 'private', allowOverwrite: true, addRandomSuffix: false, contentType: 'text/plain; charset=utf-8', cacheControlMaxAge: 60 }); },
-      async get(jobId) { try { return await readText(await blob.get(liveKey(jobId), { access: 'private', useCache: false })); } catch { return undefined; } },
-      async remove(jobId) { await blob.del(liveKey(jobId)).catch(() => { }); }
+      async set(jobId, text) { liveText.set(jobId, text || ''); },
+      async get(jobId) { return liveText.get(jobId); },
+      async remove(jobId) { liveText.delete(jobId); }
     },
     assets: {
       async write(name, buf) { await blob.put(assetKey(name), buf, { access: 'private', addRandomSuffix: false, allowOverwrite: false }); },

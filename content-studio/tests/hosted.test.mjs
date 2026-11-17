@@ -53,7 +53,7 @@ test('hosted: passcode gate, cloud-style generation in the background, and no lo
   const blob = fakeBlob(); const blobPort = await blob.listen(); t.after(() => blob.server.close());
   const mock = createMockModel({ delayMs: 2 }); const modelPort = await mock.listen(0); t.after(() => mock.close());
   const env = {
-    FAKE_BLOB_URL: `http://127.0.0.1:${blobPort}`, STUDIO_SECRET_KEY: randomBytes(32).toString('base64'), STUDIO_HOSTED: '1',
+    FAKE_BLOB_URL: `http://127.0.0.1:${blobPort}`, STUDIO_SECRET_KEY: randomBytes(32).toString('base64'), STUDIO_HOSTED: '1', STUDIO_SYNC_TTL_MS: '0',
     LM_STUDIO_BASE_URL: `http://127.0.0.1:${modelPort}/v1`, STUDIO_MODEL_BRIEF: 'lmstudio:auto', STUDIO_MODEL_DRAFT: 'lmstudio:auto',
     STUDIO_MODEL_GRAPHICS: 'lmstudio:auto', STUDIO_MODEL_QA: 'lmstudio:auto', ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', GEMINI_API_KEY: '', GOOGLE_AI_API_KEY: '', GOOGLE_API_KEY: '',
     AUTO_GENERATE_ON_MOVE: 'true', JOB_RETRY_BASE_MS: '200', STUDIO_PASSCODE: 'correct horse battery', STUDIO_BUILD_TOKEN: 'build-token-0123456789abcdefghij'
@@ -117,7 +117,7 @@ test('hosted: a cancel through one instance stops a generation running on anothe
   const blob = fakeBlob(); const blobPort = await blob.listen(); t.after(() => blob.server.close());
   const mock = createMockModel({ delayMs: 120 }); const modelPort = await mock.listen(0); t.after(() => mock.close());
   const env = {
-    FAKE_BLOB_URL: `http://127.0.0.1:${blobPort}`, STUDIO_SECRET_KEY: randomBytes(32).toString('base64'), STUDIO_HOSTED: '1',
+    FAKE_BLOB_URL: `http://127.0.0.1:${blobPort}`, STUDIO_SECRET_KEY: randomBytes(32).toString('base64'), STUDIO_HOSTED: '1', STUDIO_SYNC_TTL_MS: '0',
     LM_STUDIO_BASE_URL: `http://127.0.0.1:${modelPort}/v1`, STUDIO_MODEL_BRIEF: 'lmstudio:auto', STUDIO_MODEL_DRAFT: 'lmstudio:auto', AUTO_GENERATE_ON_MOVE: 'false', STUDIO_PASSCODE: 'cancel test passcode'
   };
   const [a, b] = await Promise.all([instance(t, env), instance(t, env)]);
@@ -125,7 +125,8 @@ test('hosted: a cancel through one instance stops a generation running on anothe
   const host = {};
   const { tasks: [task] } = await a.api('/api/commission', 'POST', { topic: 'Cancel me', outputs: ['website'], voice: 'company', word_count: 600 }, host);
   await a.api(`/api/tasks/${task.id}/generate`, 'POST', { kind: 'draft' }, host);
-  const running = await waitFor(async () => (await b.api(`/api/tasks/${task.id}/live`, 'GET', undefined, host)).jobs.find((j) => j.text.length > 20), 20000, 100);
+  // The live preview stays on the server running the job (no Blob upload per chunk); the cancel goes through the other one.
+  const running = await waitFor(async () => (await a.api(`/api/tasks/${task.id}/live`, 'GET', undefined, host)).jobs.find((j) => j.text.length > 20), 20000, 100);
   await b.api(`/api/jobs/${running.jobId}/cancel`, 'POST', {}, host);
   const final = await waitFor(async () => { const d = await a.api(`/api/tasks/${task.id}`, 'GET', undefined, host); return d.jobs[0].status === 'cancelled' && d; }, 15000, 200);
   await new Promise((r) => setTimeout(r, 8000)); // longer than the cancel check interval and the rest of the stream
