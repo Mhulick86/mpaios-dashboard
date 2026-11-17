@@ -22,8 +22,10 @@ const blob = {
   },
   async del(path) { await fetch(`${BLOB}/${path}`, { method: 'DELETE' }); }
 };
+// FAKE_SUPABASE_URL: run on the Supabase store instead (tests/supabase-store.test.mjs).
+const storage = process.env.FAKE_SUPABASE_URL ? (await import('../../supabase-store.mjs')).createSupabaseStore({ url: process.env.FAKE_SUPABASE_URL, key: 'sb_secret_test' }) : blob;
 const seed = JSON.parse(readFileSync(new URL('../../knowledge/seed.json', import.meta.url), 'utf8'));
-const studio = createHostedStudio({ blob, seed, cookiePath: '/', minStartMs: 1000 });
+const studio = createHostedStudio({ blob: storage, seed, cookiePath: '/', minStartMs: 1000 });
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
