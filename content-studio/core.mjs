@@ -24,7 +24,7 @@ import {
 } from './integrations.mjs';
 import { aiStatus, saveAiSettings, testProvider } from './providers.mjs';
 import { shipQueue, shipPackage, shipClaim, shipDone, shipFailed, shipSummaries } from './ship.mjs';
-import { creditStatus } from './credit.mjs';
+import { creditStatus, releaseRoutable } from './credit.mjs';
 import { searchConsoleStatus, saveSearchConsole, testSearchConsole, searchConsoleContext } from './searchconsole.mjs';
 import { runtime } from './runtime.mjs';
 import { assets } from './assets.mjs';
@@ -93,7 +93,8 @@ export async function handleApi(req, ctx = {}) {
 
   // AI providers: keys are write-only from the browser's point of view. Status shows only whether one is set and its last 4 characters.
   if (method === 'GET' && path === '/api/ai') return json(200, aiStatus());
-  if (method === 'PATCH' && path === '/api/ai') return json(200, saveAiSettings(await parseJson(req, 64 * 1024)));
+  // Saving a key, a backup or a stage model can give paused work somewhere to run: release it now, not at the next check.
+  if (method === 'PATCH' && path === '/api/ai') { const out = saveAiSettings(await parseJson(req, 64 * 1024)); const released = releaseRoutable(); return json(200, { ...out, released }); }
   // Ship to dev: the site builder polls the queue, claims a ready batch, downloads packages and reports results.
   if (method === 'GET' && path === '/api/ship/queue') return json(200, shipQueue());
   if (method === 'POST' && path === '/api/ship/claim') { const body = await parseJson(req, 64 * 1024); return json(200, shipClaim(body.ids, body.batch, actor === 'Mike' ? 'MP site builder' : actor)); }

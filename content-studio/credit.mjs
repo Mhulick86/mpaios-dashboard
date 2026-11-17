@@ -66,6 +66,19 @@ export function claimNext(maxRunning) {
   const full = ['brief', 'draft', 'graphics', 'qa'].filter((k) => (busy[providerFor(k)] || 0) >= providerConcurrency(providerFor(k)));
   return full.length === 4 ? null : nextJob({ excludeKinds: full });
 }
+/**
+ * A paused job goes ahead as soon as it has somewhere to run: its stage now uses a provider that is not paused (the
+ * model was changed), or a backup with credit is set up (a key was just saved). Call inside a commit. Returns how many.
+ */
+export function releaseRoutable() {
+  let n = 0;
+  for (const provider of Object.keys(LABEL)) {
+    for (const j of pausedJobs(provider)) {
+      if (!isPaused(providerOfModel(routeModel(j.kind)))) { getDb().prepare('UPDATE jobs SET run_after=?,error=NULL WHERE id=?').run(stamp(), j.id); n++; }
+    }
+  }
+  return n;
+}
 /** For the board: which providers are paused, since when, the next check, and how much work is waiting. */
 export function creditStatus() {
   return Object.entries(read().providers || {}).map(([provider, p]) => ({
@@ -127,14 +140,8 @@ function adoptEarlierCutoffs() {
 export async function creditWatchTick() {
   await runtime.commit(() => {
     adoptEarlierCutoffs();
-    // A paused job goes ahead as soon as it has somewhere to run: its stage now uses a provider that is not paused (the
-    // model was changed), or the backup is available.
+    releaseRoutable();
     const state = read();
-    for (const provider of Object.keys(LABEL)) {
-      for (const j of pausedJobs(provider)) {
-        if (!isPaused(providerOfModel(routeModel(j.kind)))) getDb().prepare('UPDATE jobs SET run_after=?,error=NULL WHERE id=?').run(stamp(), j.id);
-      }
-    }
     // A provider nothing depends on any more (no paused work, not a stage's provider, not the backup) needs no checks.
     const inUse = new Set([...['brief', 'draft', 'graphics', 'qa'].map(providerOf), backupProvider(), imageProviderNow?.()].filter(Boolean));
     let changed = false;

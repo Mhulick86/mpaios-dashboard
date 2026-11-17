@@ -73,3 +73,16 @@ test('every out-of-credit wording seen from the providers is recognized, and not
   for (const m of ['The model declined this request.', 'OpenAI error: The server had an error processing your request.', 'Rate limit reached for requests per minute.'])
     assert.doesNotMatch(m, CREDIT_ERROR);
 });
+
+test('saving a backup key releases paused work at once, without waiting for the check', async (t) => {
+  const o = await fakeOpenAI(t);
+  const s = await startStudio(t, { env: { ...o.env, CREDIT_CHECK_MS: '3600000', CREDIT_TICK_MS: '3600000' } });
+  const { tasks: [task] } = await s.api('/api/commission', 'POST', order);
+  await s.api(`/api/tasks/${task.id}/generate`, 'POST', { kind: 'draft' });
+  await waitFor(async () => (await s.api(`/api/tasks/${task.id}`)).events.some((e) => e.event_type === 'paused'), 15000);
+  // An xAI key is saved: the paused draft is released in the same request, and runs (here on the same fake server).
+  const saved = await s.api('/api/ai', 'PATCH', { provider: 'xai', key: 'xai-test-release-1234' });
+  assert.equal(saved.released, 1);
+  const job = (await s.api(`/api/tasks/${task.id}`)).jobs.find((j) => j.kind === 'draft');
+  assert.ok(job.status === 'running' || job.status === 'done' || (job.status === 'queued' && !job.error), 'no longer paused');
+});
