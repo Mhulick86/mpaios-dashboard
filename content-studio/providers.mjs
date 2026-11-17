@@ -49,6 +49,11 @@ export function backupProvider() {
 }
 export const backupModel = (stage) => { const p = backupProvider(); return p ? BACKUP_MODELS[p]?.[stage] || '' : ''; };
 export const providerOfModel = (id) => String(id || '').split(':')[0];
+/**
+ * How many generations may run at once on each provider (hosted). xAI (Grok) gets 8; the others 4, which stays well
+ * inside their rate limits. Override with CONCURRENCY_<PROVIDER>, e.g. CONCURRENCY_OPENAI=6.
+ */
+export const providerConcurrency = (provider) => clamp(process.env[`CONCURRENCY_${String(provider).toUpperCase()}`], 1, 16, provider === 'xai' ? 8 : 4);
 export const STAGE_DEFAULTS = { brief: 'anthropic:claude-sonnet-5-5', draft: 'anthropic:claude-sonnet-5-5', graphics: 'anthropic:claude-haiku-5-5', qa: 'anthropic:claude-sonnet-5-5' };
 const STAGE_EFFORT = { brief: 'medium', draft: 'high', graphics: 'low', qa: 'medium' };
 const MAX_OUTPUT = clamp(process.env.STUDIO_MAX_OUTPUT_TOKENS, 1024, 64000, 32000);

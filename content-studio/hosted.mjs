@@ -25,7 +25,7 @@ import { setKnowledgeSeed, resetKnowledge, initKnowledge } from './knowledge.mjs
 import { ensureIntegrationSchema } from './integrations.mjs';
 import { handleApi, errorReply, json, parseJson, HttpError } from './core.mjs';
 import { runOne, trackRunning } from './agents.mjs';
-import { creditWatchTick } from './credit.mjs';
+import { creditWatchTick, claimNext } from './credit.mjs';
 import { passcodeHash, passcodeMatches, signSession, verifySession } from './secrets.mjs';
 import { clamp } from './env.mjs';
 
@@ -38,7 +38,7 @@ const stamp = () => new Date().toISOString();
  * @param seed    knowledge/seed.json contents (bundled by the caller; this file cannot read files next to itself)
  * @param cookiePath  where the API is mounted, e.g. /api/studio
  */
-export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'studio', maxRunning = clamp(process.env.WORKER_CONCURRENCY, 1, 8, 4), minStartMs = 240000 }) {
+export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'studio', maxRunning = clamp(process.env.WORKER_CONCURRENCY, 1, 16, 8), minStartMs = 240000 }) {
   process.env.NO_DEMO_SEED ??= '1'; // a real workspace starts with an empty board
   if (seed) setKnowledgeSeed(seed);
 
@@ -185,10 +185,8 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
   // ---------- Background generation ----------
   const ready = () => { try { return !!getDb().prepare("SELECT 1 FROM jobs WHERE status='queued' AND run_after<=? LIMIT 1").get(stamp()); } catch { return false; } };
   const nextDue = () => { try { return getDb().prepare("SELECT min(run_after) t FROM jobs WHERE status='queued'").get()?.t || null; } catch { return null; } };
-  const claim = () => commit(() => {
-    const busy = getDb().prepare("SELECT count(*) n FROM jobs WHERE status='running'").get().n;
-    return busy >= maxRunning ? null : nextJob();
-  });
+  // Up to maxRunning generations at once overall, and no more than each provider's own limit (Grok 8, others 4).
+  const claim = () => commit(() => claimNext(maxRunning));
 
   async function runJob(job, deadline) {
     const ctl = new AbortController();

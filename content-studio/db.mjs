@@ -391,13 +391,15 @@ export function queueJob(id, kind, options = {}) {
   return getJob(jobId);
 }
 /** Claim the oldest runnable job. A task never has two generations running at once. */
-export function nextJob() {
+export function nextJob({ excludeKinds = [] } = {}) {
   const db = getDb();
+  // Stages whose provider has no free slot (per-provider concurrency, hosted.mjs) are left for later.
+  const skip = excludeKinds.filter((k) => STAGES.includes(k));
   // Finish work in progress before starting new work: QA, graphics and drafts go ahead of new briefs, so moving a
   // card forward is not stuck behind a large batch of briefs. Within a stage, oldest first.
   const job = db.prepare(`SELECT * FROM jobs WHERE status='queued' AND run_after<=?
-    AND task_id NOT IN (SELECT task_id FROM jobs WHERE status='running')
-    ORDER BY CASE kind WHEN 'qa' THEN 0 WHEN 'graphics' THEN 1 WHEN 'draft' THEN 2 ELSE 3 END, created_at ASC LIMIT 1`).get(stamp());
+    AND task_id NOT IN (SELECT task_id FROM jobs WHERE status='running')${skip.length ? ` AND kind NOT IN (${skip.map(() => '?').join(',')})` : ''}
+    ORDER BY CASE kind WHEN 'qa' THEN 0 WHEN 'graphics' THEN 1 WHEN 'draft' THEN 2 ELSE 3 END, created_at ASC LIMIT 1`).get(stamp(), ...skip);
   if (!job) return null;
   db.prepare("UPDATE jobs SET status='running',attempts=attempts+1,started_at=?,error=NULL WHERE id=?").run(stamp(), job.id);
   publish('job', { jobId: job.id, taskId: job.task_id, kind: job.kind, status: 'running' });

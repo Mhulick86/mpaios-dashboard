@@ -10,10 +10,10 @@
  * once and every cut-off image run starts again. Paused jobs whose stage now uses another provider (someone switched the
  * model in Settings) are released straight away.
  */
-import { getDb, getTask, event } from './db.mjs';
+import { getDb, getTask, event, nextJob } from './db.mjs';
 import { runtime } from './runtime.mjs';
 import { clamp } from './env.mjs';
-import { creditProbe, stageModel, CREDIT_ERROR, backupModel, backupProvider, providerOfModel } from './providers.mjs';
+import { creditProbe, stageModel, CREDIT_ERROR, backupModel, backupProvider, providerOfModel, providerConcurrency } from './providers.mjs';
 
 const KEY = 'credit_watch';
 export const CHECK_MS = () => clamp(process.env.CREDIT_CHECK_MS, 1000, 86400000, 6 * 3600000); // 6 hours; shorter only in tests
@@ -53,6 +53,18 @@ export function handleCutoff(job, provider) {
   }
   pauseJob(job, providerOfModel(stageModel(job.kind)) || provider);
   return 'paused';
+}
+/**
+ * Start the next queued job if there is room: at most `maxRunning` at once overall, and no more on one provider than its
+ * own limit (Grok 8, the others 4). A job's provider is the one its stage routes to now. Call inside a commit.
+ */
+export function claimNext(maxRunning) {
+  const running = getDb().prepare("SELECT kind FROM jobs WHERE status='running'").all();
+  if (running.length >= maxRunning) return null;
+  const providerFor = (kind) => providerOfModel(routeModel(kind));
+  const busy = {}; for (const r of running) { const p = providerFor(r.kind); busy[p] = (busy[p] || 0) + 1; }
+  const full = ['brief', 'draft', 'graphics', 'qa'].filter((k) => (busy[providerFor(k)] || 0) >= providerConcurrency(providerFor(k)));
+  return full.length === 4 ? null : nextJob({ excludeKinds: full });
 }
 /** For the board: which providers are paused, since when, the next check, and how much work is waiting. */
 export function creditStatus() {

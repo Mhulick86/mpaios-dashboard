@@ -484,7 +484,7 @@ export function startImageGeneration(taskId, actor = 'MAIOS') {
     if (imageRuns.get(taskId)?.status === 'running') return;
     imageRuns.set(taskId, run);
     // OpenAI images take up to a couple of minutes each, so two run at a time to stay inside the hosting time limit.
-    const parallel = use === 'google' ? 1 : 2;
+    const parallel = use === 'google' ? 1 : use === 'xai' ? 4 : 2; // Grok Imagine: four at a time
     let stop = false;
     for (let start = 0; start < prompts.length && !stop; start += parallel) {
       await Promise.all(prompts.slice(start, start + parallel).map(async ({ label, prompt, aspect }, j) => {
