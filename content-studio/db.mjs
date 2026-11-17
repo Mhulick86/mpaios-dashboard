@@ -222,7 +222,11 @@ export function getBootstrap() {
   const assetCounts = db.prepare('SELECT task_id,COUNT(*) count FROM assets GROUP BY task_id').all();
   const artifactCounts = db.prepare('SELECT task_id,kind,COUNT(*) count FROM artifacts GROUP BY task_id,kind').all();
   const commentCounts = db.prepare('SELECT task_id,COUNT(*) count FROM comments GROUP BY task_id').all();
-  return { boards, lanes, tasks, jobs, assetCounts, artifactCounts, commentCounts, version: VERSION };
+  // QA that failed on the automatic checks alone (no model review was run): the board labels these "needs redo".
+  const qaAuto = db.prepare(`SELECT a.task_id, a.body FROM artifacts a JOIN (SELECT task_id, MAX(version) v FROM artifacts WHERE kind='qa' GROUP BY task_id) m
+    ON m.task_id=a.task_id AND m.v=a.version WHERE a.kind='qa' AND a.body LIKE '%Model review skipped%'`).all()
+    .map((r) => ({ task_id: r.task_id, reasons: (r.body.split('## Local model review')[0].match(/^- BLOCK: .+$/gm) || []).map((x) => x.slice(9, 140)).slice(0, 4) }));
+  return { boards, lanes, tasks, jobs, assetCounts, artifactCounts, commentCounts, qaAuto, version: VERSION };
 }
 export function getTask(id) {
   const db = getDb();

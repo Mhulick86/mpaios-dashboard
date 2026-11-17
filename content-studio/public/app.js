@@ -196,7 +196,13 @@ function artifactKinds(id) { return state.data.artifactCounts.filter((x) => x.ta
 function activeJob(id) { return state.data.jobs.find((x) => x.task_id === id && x.status === 'running') || state.data.jobs.find((x) => x.task_id === id && x.status === 'queued'); }
 const commentCount = (id) => state.data.commentCounts?.find((x) => x.task_id === id)?.count || 0;
 const isOverdue = (t) => t.due_date && !t.published_at && !/ship_dev|posted|ready_post/.test(t.lane_id) && t.due_date < new Date().toISOString().slice(0, 10);
-const qaChip = (t, cls = 'card-tag') => { const q = QA_LABEL[t.qa_status]; return q ? `<span class="${cls} qa-${q[1]}">${q[0]}</span>` : ''; };
+const qaChip = (t, cls = 'card-tag') => {
+  const q = QA_LABEL[t.qa_status]; if (!q) return '';
+  // Failed on the automatic checks alone (leftover [VERIFY] markers, placeholders, notes): no model review was run.
+  const auto = t.qa_status === 'blocked' && (state.data?.qaAuto || []).find((x) => x.task_id === t.id);
+  if (auto) return `<span class="${cls} qa-bad" title="${html(`Failed the automatic checks, so no model review was run (it would only repeat them). Press "Redo with QA fixes" to rewrite it. ${auto.reasons.join(' ')}`)}">QA fail · needs redo</span>`;
+  return `<span class="${cls} qa-${q[1]}">${q[0]}</span>`;
+};
 
 // ---------- Board ----------
 const imageRunFor = (taskId) => (state.data.imageRuns || []).find((r) => r.task_id === taskId);
