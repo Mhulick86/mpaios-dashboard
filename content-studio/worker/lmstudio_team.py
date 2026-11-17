@@ -36,7 +36,7 @@ TEAM = [
      "repo": "lmstudio-community/Qwen3.5-4B-GGUF", "file": "Qwen3.5-4B-Q8_0.gguf",
      "per_request": 16384, "min_per_request": 12288, "parallel": [4, 16], "weights_gb": 4.5, "kv_mb_per_token": 0.15},
     {"identifier": "judge", "role": "independent second check",
-     "repo": "lmstudio-community/gemma-4-12B-it-GGUF", "file": "gemma-4-12B-it-Q8_0.gguf",
+     "repo": "sigmanih/google-gemma-4-12B-it-GGUF-Q8_0", "file": "google--gemma-4-12B-it.Q8_0.gguf",
      "per_request": 6144, "min_per_request": 4096, "parallel": [4, 8], "weights_gb": 12.7, "kv_mb_per_token": 0.4},
 ]
 PLAN_PATH = Path(os.environ.get("MAIOS_TEAM_PLAN", Path.home() / ".maios-team-plan.json"))
