@@ -56,7 +56,7 @@ test('hosted: passcode gate, cloud-style generation in the background, and no lo
     FAKE_BLOB_URL: `http://127.0.0.1:${blobPort}`, STUDIO_SECRET_KEY: randomBytes(32).toString('base64'), STUDIO_HOSTED: '1', STUDIO_SYNC_TTL_MS: '0',
     LM_STUDIO_BASE_URL: `http://127.0.0.1:${modelPort}/v1`, STUDIO_MODEL_BRIEF: 'lmstudio:auto', STUDIO_MODEL_DRAFT: 'lmstudio:auto',
     STUDIO_MODEL_GRAPHICS: 'lmstudio:auto', STUDIO_MODEL_QA: 'lmstudio:auto', ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', GEMINI_API_KEY: '', GOOGLE_AI_API_KEY: '', GOOGLE_API_KEY: '',
-    AUTO_GENERATE_ON_MOVE: 'true', JOB_RETRY_BASE_MS: '200', STUDIO_PASSCODE: 'correct horse battery', STUDIO_BUILD_TOKEN: 'build-token-0123456789abcdefghij'
+    AUTO_GENERATE_ON_MOVE: 'true', JOB_RETRY_BASE_MS: '200', STUDIO_PASSCODE: 'correct horse battery', STUDIO_BUILD_TOKEN: 'build-token-0123456789abcdefghij', STUDIO_WORKER_TOKEN: 'worker-token-0123456789abcdefghi'
   };
   const [a, b] = await Promise.all([instance(t, env), instance(t, env)]);
 
@@ -86,6 +86,12 @@ test('hosted: passcode gate, cloud-style generation in the background, and no lo
   assert.equal((await asBuilder('/api/ship/queue')).status, 200);
   assert.equal((await asBuilder('/api/bootstrap')).status, 401, 'the builder token is not a passcode');
   assert.equal((await asBuilder('/api/ship/queue', 'build-token-0123456789abcdefghiX')).status, 401);
+  // The local team worker's token opens /api/worker and nothing else.
+  const asWorker = (path, token = 'worker-token-0123456789abcdefghi') => fetch(`http://127.0.0.1:${port}${path}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}' });
+  const workerClaim = await asWorker('/api/worker/claim');
+  assert.equal(workerClaim.status, 200); assert.equal((await workerClaim.json()).job, null);
+  assert.equal((await asWorker('/api/worker/claim', 'worker-token-0123456789abcdefghX')).status, 401);
+  assert.equal((await asWorker('/api/commission')).status, 401, 'the worker token is no use outside /api/worker');
 
   // A provider key is stored encrypted and only its last 4 characters ever come back.
   const ai = await a.api('/api/ai', 'PATCH', { provider: 'openai', key: 'sk-test-abcdefghijklmnop1234' });

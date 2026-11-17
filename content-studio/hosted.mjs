@@ -145,8 +145,16 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
     let diff = 0; for (let i = 0; i < token.length; i++) diff |= token.charCodeAt(i) ^ sent.charCodeAt(i);
     return diff === 0 && (/^\/api\/ship(\/|$)/.test(req.path) || (req.method === 'GET' && /^\/api\/assets\/[a-f0-9-]{36}$/.test(req.path)));
   };
+  // The local team worker authenticates with STUDIO_WORKER_TOKEN and may only use /api/worker.
+  const isWorker = (req) => {
+    const token = (process.env.STUDIO_WORKER_TOKEN || '').trim(); const sent = (req.header('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+    if (token.length < 24 || sent.length !== token.length) return false;
+    let diff = 0; for (let i = 0; i < token.length; i++) diff |= token.charCodeAt(i) ^ sent.charCodeAt(i);
+    return diff === 0 && /^\/api\/worker\//.test(req.path);
+  };
   function access(req) {
     if (isBuilder(req)) return { ok: true, hosted: true, builder: true, passcodeSet: true, signedIn: false };
+    if (isWorker(req)) return { ok: true, hosted: true, worker: true, passcodeSet: true, signedIn: false };
     const stored = storedPasscode();
     const signedIn = verifySession(req.cookie, stored);
     return { ok: signedIn, hosted: true, passcodeSet: !!stored, signedIn };

@@ -472,8 +472,8 @@ function aiSettingsMarkup() {
   const sel = ai.providers.some((p) => p.id === state.aiProvider) ? state.aiProvider : (ai.providers.find((p) => !p.configured) || ai.providers[0]).id;
   const p = ai.providers.find((x) => x.id === sel);
   const source = (x) => x.source === 'saved' ? `key saved ····${html(x.last4)}` : x.source === 'environment' ? 'using the key from the Vercel project environment' : 'no key yet';
-  const keyed = (provider) => provider === 'lmstudio' || ai.providers.find((x) => x.id === provider)?.configured;
-  const providerName = (id) => ai.providers.find((x) => x.id === id)?.label || (id === 'lmstudio' ? 'Local' : id);
+  const keyed = (provider) => provider === 'lmstudio' || provider === 'local' || ai.providers.find((x) => x.id === provider)?.configured;
+  const providerName = (id) => ai.providers.find((x) => x.id === id)?.label || (id === 'lmstudio' ? 'Local' : id === 'local' ? 'Local team' : id);
   const stageSelect = (stage) => {
     const current = ai.stages[stage], known = ai.models.some((m) => m.id === current);
     const groups = [...new Set(ai.models.map((m) => m.provider))].map((prov) => `<optgroup label="${html(providerName(prov))}${keyed(prov) ? '' : ' (add a key first)'}">${ai.models.filter((m) => m.provider === prov).map((m) => `<option value="${html(m.id)}" ${m.id === current ? 'selected' : ''}>${html(m.label)} · ${html(m.price)}${m.id === ai.defaults[stage] ? ' · recommended' : ''}</option>`).join('')}</optgroup>`).join('');

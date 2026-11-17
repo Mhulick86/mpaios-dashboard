@@ -50,6 +50,12 @@ export function backupProvider() {
 export const backupModel = (stage) => { const p = backupProvider(); return p ? BACKUP_MODELS[p]?.[stage] || '' : ''; };
 export const providerOfModel = (id) => String(id || '').split(':')[0];
 /**
+ * The local team: models in LM Studio on a team member's computer. The studio never calls it; a stage set to it leaves
+ * its jobs queued for the MAIOS worker on that computer, which claims them over /api/worker (agents.mjs, worker/).
+ */
+export const LOCAL_MODEL = 'local:team';
+export const isLocalStage = (stage) => providerOfModel(stageModel(stage)) === 'local';
+/**
  * How many generations may run at once on each provider (hosted). xAI (Grok) gets 8; the others 4, which stays well
  * inside their rate limits. Override with CONCURRENCY_<PROVIDER>, e.g. CONCURRENCY_OPENAI=6.
  */
@@ -94,7 +100,7 @@ export function stageModel(stage) { return getSetting(`model:${stage}`) || proce
 const parseModel = (id) => {
   const [provider, ...rest] = String(id || '').split(':');
   const model = rest.join(':');
-  if (!model || !(provider in PROVIDERS || provider === 'lmstudio')) throw new Error(`Unknown model "${id}". Pick one in Settings.`);
+  if (!model || !(provider in PROVIDERS || provider === 'lmstudio' || provider === 'local')) throw new Error(`Unknown model "${id}". Pick one in Settings.`);
   return { provider, model };
 };
 
@@ -105,7 +111,8 @@ export function aiStatus() {
     return { id, label: p.label, keyHint: p.keyHint, docs: p.docs, configured: !!(saved || envName || (id === 'google' && getSetting('gemini_api_key'))),
       source: saved ? 'saved' : envName ? 'environment' : (id === 'google' && getSetting('gemini_api_key')) ? 'saved' : 'none', last4: saved ? saved.slice(-4) : '' };
   });
-  const models = runtime.hosted ? MODELS : [...MODELS, { id: 'lmstudio:auto', provider: 'lmstudio', label: 'LM Studio (local model)', price: 'free', note: 'Only when LM Studio runs on this computer' }];
+  const localTeam = { id: LOCAL_MODEL, provider: 'local', label: 'Local team (your Mac, via LM Studio)', price: 'free', note: 'Runs when the MAIOS worker on your Mac is on; work waits in the queue until then' };
+  const models = runtime.hosted ? [...MODELS, localTeam] : [...MODELS, localTeam, { id: 'lmstudio:auto', provider: 'lmstudio', label: 'LM Studio (local model)', price: 'free', note: 'Only when LM Studio runs on this computer' }];
   const set = getSetting('backup_provider');
   return { providers, models, stages: Object.fromEntries(Object.keys(STAGE_DEFAULTS).map((s) => [s, stageModel(s)])), defaults: STAGE_DEFAULTS, hosted: runtime.hosted,
     backup: { provider: backupProvider(), setting: set || 'auto', models: backupProvider() ? BACKUP_MODELS[backupProvider()] : null } };
@@ -390,6 +397,7 @@ async function callLmStudio({ model, system, user, t, onText }) {
 /** Generate one stage with the model chosen for it. Streams text to onText as it arrives. */
 export async function generate({ stage, system, user, signal, onText, model: chosen = '' }) {
   const { provider, model } = parseModel(chosen || stageModel(stage));
+  if (provider === 'local') throw new ModelUnavailable('This stage runs on the local team. Start the MAIOS worker on your Mac, or pick another model in Settings.');
   const apiKey = provider === 'lmstudio' ? '' : providerKey(provider);
   if (provider !== 'lmstudio' && !apiKey) throw new Error(`No ${PROVIDERS[provider].label} API key. Add one in Settings > AI models and keys.`);
   const t = timers(signal);

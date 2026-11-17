@@ -63,7 +63,8 @@ export function claimNext(maxRunning) {
   if (running.length >= maxRunning) return null;
   const providerFor = (kind) => providerOfModel(routeModel(kind));
   const busy = {}; for (const r of running) { const p = providerFor(r.kind); busy[p] = (busy[p] || 0) + 1; }
-  const full = ['brief', 'draft', 'graphics', 'qa'].filter((k) => (busy[providerFor(k)] || 0) >= providerConcurrency(providerFor(k)));
+  // A stage set to the local team is never started here: the worker on that computer claims it (agents.mjs workerClaim).
+  const full = ['brief', 'draft', 'graphics', 'qa'].filter((k) => providerFor(k) === 'local' || (busy[providerFor(k)] || 0) >= providerConcurrency(providerFor(k)));
   return full.length === 4 ? null : nextJob({ excludeKinds: full });
 }
 /**
