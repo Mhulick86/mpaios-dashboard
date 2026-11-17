@@ -290,7 +290,7 @@ function renderBoard() {
   const credit = state.data.credit || [], cb = $('#creditBanner');
   if (cb) {
     cb.hidden = !credit.length;
-    cb.innerHTML = credit.map((c) => `<strong>${html(c.label)} is out of credit.</strong> ${c.jobs} job${c.jobs === 1 ? '' : 's'}${c.images ? ` and ${c.images} image run${c.images === 1 ? '' : 's'}` : ''} paused. MAIOS checks every 6 hours and resumes them automatically (next check ${html(stampFmt(c.next_check))}). Add credit, or switch the stage's model in Settings, to resume sooner.`).join('<br>');
+    cb.innerHTML = credit.map((c) => `<strong>${html(c.label)} is out of credit.</strong> ${c.jobs} job${c.jobs === 1 ? '' : 's'}${c.images ? ` and ${c.images} image run${c.images === 1 ? '' : 's'}` : ''} paused. MAIOS checks every 6 hours and resumes them automatically (next check ${html(stampFmt(c.next_check))}). Added credit? Press Check now.`).join('<br>') + ' <button type="button" class="button ghost" id="creditCheckNow" style="margin-left:8px;padding:2px 10px">Check now</button>';
   }
   const tasks = taskView();
   const scrolls = new Map($$('.kanban-column', $('#board')).map((col) => [col.dataset.laneId, $('.column-body', col)?.scrollTop || 0]));
@@ -662,6 +662,16 @@ function installListeners() {
     if (['settingsClose', 'settingsCancel'].includes(e.target.id)) return settingsModal(false);
     if (e.target.closest?.('#workerCard')) return settingsModal(true);
     if (e.target.id === 'authRetry') return location.reload();
+    if (e.target.id === 'creditCheckNow') {
+      e.target.disabled = true; e.target.textContent = 'Checking…';
+      try {
+        const out = await api('/api/credit/check', { method: 'POST', body: {} });
+        const back = (out.results || []).filter((r) => r.ok).map((r) => r.provider);
+        toast(back.length ? `Credit is back (${back.join(', ')}): paused work is running again.` : 'Still out of credit. MAIOS keeps checking every 6 hours.', back.length ? 'ok' : 'error');
+        await refresh(false, true);
+      } catch (err) { toast(err.message, 'error'); e.target.disabled = false; e.target.textContent = 'Check now'; }
+      return;
+    }
     if (e.target.id === 'aiKeyTest') { const provider = $('#aiProvider').value; try { await api('/api/ai/test', { method: 'POST', body: { provider } }); toast('The key works.'); } catch (err) { toast(err.message, 'error'); } return; }
     if (e.target.id === 'aiKeyRemove') { const provider = $('#aiProvider').value; if (!confirm('Remove the saved key for this provider? Stages that use it stop working until a new key is added.')) return; try { state.model.ai = await api('/api/ai', { method: 'PATCH', body: { provider, clear: true } }); await refreshModel(); settingsModal(true); toast('Key removed.'); } catch (err) { toast(err.message, 'error'); } return; }
     if (e.target.id === 'aiModelsReset') { try { state.model.ai = await api('/api/ai', { method: 'PATCH', body: { stages: { ...state.model.ai.defaults } } }); await refreshModel(); settingsModal(true); toast('Recommended models restored.'); } catch (err) { toast(err.message, 'error'); } return; }

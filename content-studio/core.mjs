@@ -24,7 +24,7 @@ import {
 } from './integrations.mjs';
 import { aiStatus, saveAiSettings, testProvider } from './providers.mjs';
 import { shipQueue, shipPackage, shipClaim, shipDone, shipFailed, shipSummaries } from './ship.mjs';
-import { creditStatus, releaseRoutable } from './credit.mjs';
+import { creditStatus, releaseRoutable, creditWatchTick } from './credit.mjs';
 import { searchConsoleStatus, saveSearchConsole, testSearchConsole, searchConsoleContext } from './searchconsole.mjs';
 import { runtime } from './runtime.mjs';
 import { assets } from './assets.mjs';
@@ -110,6 +110,8 @@ export async function handleApi(req, ctx = {}) {
   if (method === 'GET' && path === '/api/searchconsole') return json(200, searchConsoleStatus());
   if (method === 'PATCH' && path === '/api/searchconsole') return json(200, await saveSearchConsole(await parseJson(req, 32 * 1024)));
   if (method === 'POST' && path === '/api/searchconsole/test') return json(200, await testSearchConsole());
+  // "Check now" on the paused banner: probe every paused provider at once instead of waiting for the 6-hourly check.
+  if (method === 'POST' && path === '/api/credit/check') { const results = await creditWatchTick({ now: true }); return json(200, { results, credit: creditStatus() }); }
   if (method === 'POST' && path === '/api/ai/test') { const body = await parseJson(req, 4096); return json(200, await testProvider(String(body.provider || ''))); }
 
   if (method === 'GET' && path === '/api/brand') return json(200, getBrandProfiles());

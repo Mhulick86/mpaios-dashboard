@@ -86,3 +86,18 @@ test('saving a backup key releases paused work at once, without waiting for the 
   const job = (await s.api(`/api/tasks/${task.id}`)).jobs.find((j) => j.kind === 'draft');
   assert.ok(job.status === 'running' || job.status === 'done' || (job.status === 'queued' && !job.error), 'no longer paused');
 });
+
+test('Check now probes a paused provider at once and resumes the work when credit is back', async (t) => {
+  const o = await fakeOpenAI(t);
+  const s = await startStudio(t, { env: { ...o.env, CREDIT_CHECK_MS: '3600000', CREDIT_TICK_MS: '3600000' } });
+  const { tasks: [task] } = await s.api('/api/commission', 'POST', order);
+  await s.api(`/api/tasks/${task.id}/generate`, 'POST', { kind: 'draft' });
+  await waitFor(async () => (await s.api(`/api/tasks/${task.id}`)).events.some((e) => e.event_type === 'paused'), 15000);
+  const still = await s.api('/api/credit/check', 'POST', {});
+  assert.deepEqual(still.results.map((r) => [r.provider, r.ok]), [['openai', false]]);
+  o.state.out = false; // credit added
+  const back = await s.api('/api/credit/check', 'POST', {});
+  assert.deepEqual(back.results.map((r) => [r.provider, r.ok]), [['openai', true]]);
+  assert.deepEqual(back.credit, []);
+  await waitFor(async () => (await s.api(`/api/tasks/${task.id}`)).artifacts.some((a) => a.kind === 'draft'), 20000);
+});

@@ -137,7 +137,7 @@ function adoptEarlierCutoffs() {
 }
 
 /** Called from the cron or worker loop. Probes due providers (network) and releases or reschedules their work. */
-export async function creditWatchTick() {
+export async function creditWatchTick({ now = false } = {}) {
   await runtime.commit(() => {
     adoptEarlierCutoffs();
     releaseRoutable();
@@ -150,7 +150,8 @@ export async function creditWatchTick() {
     }
     if (changed) write(state);
   });
-  const due = Object.entries(read().providers || {}).filter(([, p]) => Date.parse(p.next_check) <= Date.now());
+  // now: the "Check now" button (credit was just added), so every paused provider is checked straight away.
+  const due = Object.entries(read().providers || {}).filter(([, p]) => now || Date.parse(p.next_check) <= Date.now());
   const results = [];
   for (const [provider, p] of due) {
     const probe = await creditProbe(provider, p.model).catch((e) => ({ ok: false, message: String(e?.message || e) }));
