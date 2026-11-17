@@ -339,7 +339,7 @@ export function requestRevision(id, note, actor = 'Mike') {
   const lane = REVISION_LANES[task.board_id];
   if (lane) moveTask(id, lane, actor, false);
   event(id, 'revision', 'Sent back for revision', actor, { note: String(note).slice(0, 300) });
-  return queueJob(id, 'draft');
+  return queueJob(id, 'draft', { thenQa: true }); // the rewrite goes straight to QA (agents.mjs advance)
 }
 export function setQaStatus(id, status) {
   getDb().prepare('UPDATE tasks SET qa_status=? WHERE id=?').run(status, id);
@@ -388,6 +388,7 @@ export function queueJob(id, kind, options = {}) {
   const clean = {};
   if (options.chain) clean.chain = true;
   if (options.fresh) clean.fresh = true;
+  if (options.thenQa) clean.thenQa = true;
   const jobId = randomUUID(), now = stamp();
   db.prepare('INSERT INTO jobs (id,task_id,kind,status,run_after,created_at,options) VALUES (?,?,?,?,?,?,?)').run(jobId, id, kind, 'queued', now, now, json(clean));
   event(id, 'queued', `Queued ${kind} generation${clean.chain ? ' (autopilot)' : ''}`);

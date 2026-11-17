@@ -84,7 +84,10 @@ test('send back for revision: note is kept, card returns to drafting, approval i
   assert(done.comments.some((c) => c.author === 'Emily' && /Revision requested: Cut the second section/.test(c.body)));
   assert(done.events.some((e) => e.event_type === 'revision' && e.actor === 'Emily'));
   assert.equal(done.approved_at, null);
-  assert.equal(done.lane_id, 'mpfresh:draft_complete', 'returned to drafting, then advanced when the new draft landed');
+  // A redo goes straight to QA once the new draft lands: Final Approval, with one QA run on the new draft.
+  const qa = await waitFor(async () => { const x = await s.api(`/api/tasks/${task.id}`); return x.artifacts.some((a) => a.kind === 'qa') && !x.jobs.some((j) => ['queued', 'running'].includes(j.status)) ? x : false; });
+  assert.equal(qa.lane_id, 'mpfresh:final_approval', 'returned to drafting, then sent to QA when the new draft landed');
+  assert.equal(qa.artifacts.filter((a) => a.kind === 'qa').length, 1, 'exactly one QA run');
   assert.equal(done.artifacts.filter((a) => a.kind === 'draft').length, 2, 'the earlier draft is kept as a version');
   const sent = JSON.stringify(s.mock.requests.slice(before));
   assert.match(sent, /Cut the second section and cite the 40% figure/, 'the note reaches the model');

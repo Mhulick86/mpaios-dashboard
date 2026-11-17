@@ -229,6 +229,15 @@ function advance(task, kind, options) {
     else event(task.id, 'pipeline', 'Autopilot finished. Waiting for human approval.', 'MAIOS');
     return;
   }
+  // A redo (the draft already had a QA report, or the revision asked for it) goes straight back to QA: the card moves to
+  // Final Approval and one QA run is queued. A person still decides after that QA.
+  if (kind === 'draft' && task.board_id === 'mpfresh' && ['mpfresh:ready_writing', 'mpfresh:draft_complete'].includes(task.lane_id)
+    && (options.thenQa || task.artifacts.some((a) => a.kind === 'qa'))) {
+    moveTask(task.id, 'mpfresh:final_approval', 'MAIOS', false);
+    queueJob(task.id, 'qa');
+    event(task.id, 'qa', 'Rewrite done: sent straight to QA.', 'MAIOS');
+    return;
+  }
   if (kind === 'brief' && task.lane_id === 'mpfresh:ready_brief') moveTask(task.id, 'mpfresh:brief_complete', 'MAIOS', false);
   if (kind === 'draft' && task.lane_id === 'mpfresh:ready_writing') moveTask(task.id, 'mpfresh:draft_complete', 'MAIOS', false);
   if (kind === 'draft' && task.lane_id === 'social:content_drafting') moveTask(task.id, 'social:content_review', 'MAIOS', false);
