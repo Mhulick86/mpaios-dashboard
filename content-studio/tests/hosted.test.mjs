@@ -10,7 +10,7 @@ import { waitFor } from './helpers.mjs';
 
 /** In-memory stand-in for Vercel Blob with ETags and conditional writes. Single-threaded, so each write is atomic. */
 function fakeBlob() {
-  const files = new Map(); let n = 0; const stats = { conflicts: 0, puts: 0 };
+  const files = new Map(); let n = 0; const stats = { conflicts: 0, puts: 0, forceConflicts: 0 };
   const server = http.createServer(async (req, res) => {
     const key = req.url.slice(1), cur = files.get(key);
     if (req.method === 'GET') {
@@ -21,6 +21,7 @@ function fakeBlob() {
     if (req.method === 'DELETE') { files.delete(key); res.writeHead(204); return res.end(); }
     const chunks = []; for await (const c of req) chunks.push(c);
     const ifMatch = req.headers['if-match'];
+    if (ifMatch && stats.forceConflicts > 0) { stats.forceConflicts--; stats.conflicts++; res.writeHead(412); return res.end(); } // as if another server saved first
     if (ifMatch && (!cur || cur.etag !== ifMatch)) { stats.conflicts++; res.writeHead(412); return res.end(); }
     if (!ifMatch && cur && req.headers['x-allow-overwrite'] !== '1') { stats.conflicts++; res.writeHead(409); return res.end(); }
     const data = Buffer.concat(chunks); const etag = `"${++n}-${createHash('sha1').update(data).digest('hex').slice(0, 8)}"`;
@@ -140,4 +141,22 @@ test('hosted: a cancel through one instance stops a generation running on anothe
   assert.equal(after.jobs[0].status, 'cancelled');
   assert.equal(after.artifacts.filter((x) => x.kind === 'draft').length, 0, 'a cancelled generation saves nothing');
   assert.ok(final);
+});
+
+test('hosted: a save that keeps losing to other servers is retried past eight attempts, then reported as busy', async (t) => {
+  const blob = fakeBlob(); const blobPort = await blob.listen(); t.after(() => blob.server.close());
+  const env = { FAKE_BLOB_URL: `http://127.0.0.1:${blobPort}`, STUDIO_SECRET_KEY: randomBytes(32).toString('base64'), STUDIO_HOSTED: '1', STUDIO_SYNC_TTL_MS: '0', AUTO_GENERATE_ON_MOVE: 'false', STUDIO_PASSCODE: 'busy test passcode', STUDIO_COMMIT_RETRY_MS: '8000' };
+  const a = await instance(t, env);
+  await a.api('/api/session', 'POST', { passcode: 'busy test passcode' });
+  const order = (topic) => ({ topic, outputs: ['website'], voice: 'company', word_count: 600 });
+  await a.api('/api/commission', 'POST', order('First piece'));
+  blob.stats.forceConflicts = 9;
+  const { tasks: [task] } = await a.api('/api/commission', 'POST', order('Saved under heavy load'));
+  assert.equal(blob.stats.forceConflicts, 0, 'kept trying through nine lost saves');
+  assert.equal((await a.api(`/api/tasks/${task.id}`)).title, task.title);
+  blob.stats.forceConflicts = 1e6; // never lets a save through
+  await assert.rejects(a.api('/api/commission', 'POST', order('Never saved')), (e) => e.status === 503 && e.data.busy === true && /saving a lot of changes/.test(e.data.error));
+  blob.stats.forceConflicts = 0;
+  const titles = (await a.api('/api/bootstrap')).tasks.map((x) => x.title).join('|');
+  assert.ok(!/Never saved/.test(titles), 'a save that gave up changed nothing');
 });

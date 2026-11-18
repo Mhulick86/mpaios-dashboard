@@ -41,9 +41,14 @@ const authHeaders = () => ({ 'X-MAIOS-Token': token(), 'X-MAIOS-Actor': encodeUR
 async function api(path, opts = {}) {
   const req = { method: opts.method || 'GET', headers: { Accept: 'application/json', ...authHeaders() }, cache: 'no-store' };
   if (opts.body !== undefined) { req.headers['Content-Type'] = 'application/json'; req.body = JSON.stringify(opts.body); }
-  let r;
-  try { r = await fetch(baseUrl() + path, req); } catch { throw new Error(HOSTED ? 'Unable to reach MAIOS. Check your connection and try again.' : 'Unable to reach the MAIOS backend. Check Settings > API connection and that the local server is running.'); }
-  let body; try { body = await r.json(); } catch { throw new Error(`Backend returned a non-JSON response (HTTP ${r.status}).${HOSTED ? '' : ' Check API URL.'}`); }
+  let r, body;
+  for (let attempt = 1; ; attempt++) {
+    try { r = await fetch(baseUrl() + path, req); } catch { throw new Error(HOSTED ? 'Unable to reach MAIOS. Check your connection and try again.' : 'Unable to reach the MAIOS backend. Check Settings > API connection and that the local server is running.'); }
+    try { body = await r.json(); } catch { throw new Error(`Backend returned a non-JSON response (HTTP ${r.status}).${HOSTED ? '' : ' Check API URL.'}`); }
+    // The hosted studio was too busy to save this change and applied none of it, so sending it again is safe.
+    if (r.status === 503 && body.busy && attempt < 4) { await new Promise((ok) => setTimeout(ok, 1500 * attempt)); continue; }
+    break;
+  }
   if (r.status === 401 && body.auth) authGate(body.auth);
   if (!r.ok) throw new Error(body.error || `Request failed (${r.status})`);
   return body;

@@ -50,6 +50,10 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
   // as is (the board polls every few seconds); writes stay safe because an upload from a stale copy fails its ifMatch
   // and the commit then reloads and runs again.
   const SYNC_TTL_MS = clamp(process.env.STUDIO_SYNC_TTL_MS, 0, 60000, 5000);
+  // How long a save keeps retrying when other servers keep saving first. Under heavy load (many generations and image
+  // runs finishing together) a fixed handful of quick retries ran out and the request failed.
+  const COMMIT_RETRY_MS = clamp(process.env.STUDIO_COMMIT_RETRY_MS, 0, 120000, 30000);
+  const isConflict = (e) => !!e?.precondition || /precondition|already exists/i.test(`${e?.name || ''} ${e?.message || ''}`);
 
   async function sync() {
     if (file && etag && !stale && Date.now() - checkedAt < SYNC_TTL_MS) return;
@@ -88,6 +92,7 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
   async function commit(fn) {
     if (inCommit.getStore()) return fn(); // nested: already inside a commit
     return lock(async () => {
+      const started = Date.now();
       for (let attempt = 1; ; attempt++) {
         const ctx = { deferred: [] };
         await sync();
@@ -99,7 +104,10 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
           try { await persist(); }
           catch (e) {
             stale = true;
-            if (attempt < 8) { await sleep(40 * attempt + Math.random() * 80); continue; } // someone else saved first: rerun on their data
+            // Someone else saved first: rerun on their data. The wait is random and grows, so servers competing for
+            // the save spread out instead of colliding again.
+            if (attempt < 8 || (isConflict(e) && Date.now() - started < COMMIT_RETRY_MS)) { await sleep(20 + Math.random() * Math.min(1000, 80 * 2 ** Math.min(attempt, 4))); continue; }
+            if (isConflict(e)) throw Object.assign(new HttpError(503, 'The studio is saving a lot of changes at once and could not save this one. Nothing was changed; it will be tried again.'), { busy: true });
             throw e;
           }
         }
@@ -196,7 +204,7 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
         if (req.path === '/api/events') return json(404, { error: 'Live events are not available on the hosted studio; the board polls instead.' });
         return handleApi(req);
       });
-    } catch (e) { return errorReply(e); }
+    } catch (e) { return e?.busy ? json(503, { error: e.message, busy: true }, { 'Retry-After': '2' }) : errorReply(e); }
   }
 
   // ---------- Background generation ----------
