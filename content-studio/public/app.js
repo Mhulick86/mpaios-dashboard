@@ -265,8 +265,10 @@ function renderMetrics() {
   const ready = t.filter((x) => /ship_dev|posted|ready_post/.test(x.lane_id)).length;
   const active = t.filter((x) => !/(backlog|post_plan|ship_dev|posted|ready_post)$/.test(x.lane_id)).length;
   const blocked = t.filter((x) => x.qa_status === 'blocked').length;
+  const backlog = t.filter((x) => /(backlog|post_plan)$/.test(x.lane_id)).length;
+  const split = `<span class="metric-split"><span>${backlog}<small>backlog</small></span><span>${active}<small>in pipeline</small></span></span>`;
   const vals = [
-    ['TOTAL CONTENT', t.length, 'All cards on this board', '▦'],
+    ['NOT YET SHIPPED', split, `Of ${t.length} cards on this board`, '▦'],
     ['IN PRODUCTION', active, 'Across active workflow stages', '✧'],
     ['NEEDS REVIEW', review, blocked ? `${blocked} blocked by QA` : 'Waiting on an approval gate', '◉'],
     [state.board === 'mpfresh' ? 'SHIP TO DEV' : 'READY TO POST', ready, 'Content in delivery lane', '↗']

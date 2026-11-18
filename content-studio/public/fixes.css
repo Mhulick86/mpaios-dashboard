@@ -71,3 +71,6 @@ button:focus-visible,a:focus-visible,.task-card:focus-visible{outline:2px solid 
 .image-grid figure{margin:0;border:1px solid #303b4e;border-radius:9px;overflow:hidden;background:#0f1622}
 .image-grid img{display:block;width:100%;aspect-ratio:1;object-fit:cover;cursor:zoom-in;background:#0b111a}
 .image-grid figcaption{font-size:10px;color:#93a1b7;padding:6px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* First metric tile: backlog and in-pipeline counts side by side. */
+.metric-split{display:flex;gap:22px;flex-wrap:wrap}.metric-split small{font:600 11px Inter,system-ui,sans-serif;color:#9fa9bd;margin-left:6px;letter-spacing:0}

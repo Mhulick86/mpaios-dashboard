@@ -429,6 +429,7 @@ async function xaiImage(prompt, aspect) {
 const generateImage = (prompt, aspect, provider = imageProvider()) => provider === 'openai' ? openaiImage(prompt, aspect)
   : provider === 'xai' ? xaiImage(prompt, aspect) : geminiImage(prompt, aspect).then((img) => ({ ...img, model: modelFor('google') }));
 
+const GEMINI_CONCURRENCY = Math.min(8, Math.max(1, Math.trunc(Number(process.env.GEMINI_CONCURRENCY)) || 8)); // Gemini image requests in flight at once, per piece
 const imageRuns = new Map(); // taskId -> { status, done, total, failed, error, started_at }
 /**
  * Progress of the latest image run, read from the task's events in the shared database, so every server instance
@@ -484,7 +485,7 @@ export function startImageGeneration(taskId, actor = 'MAIOS') {
     if (imageRuns.get(taskId)?.status === 'running') return;
     imageRuns.set(taskId, run);
     // OpenAI images take up to a couple of minutes each, so two run at a time to stay inside the hosting time limit.
-    const parallel = use === 'google' ? 1 : use === 'xai' ? 4 : 2; // Grok Imagine: four at a time
+    const parallel = use === 'google' ? GEMINI_CONCURRENCY : use === 'xai' ? 4 : 2; // Gemini: the whole set at once; Grok Imagine: four at a time
     let stop = false;
     for (let start = 0; start < prompts.length && !stop; start += parallel) {
       await Promise.all(prompts.slice(start, start + parallel).map(async ({ label, prompt, aspect }, j) => {
