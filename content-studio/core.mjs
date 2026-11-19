@@ -23,7 +23,7 @@ import {
   googleAuthStart, googleAuthFinish, disconnectGoogle, syncDoc, taskDocs, allDocs, afterArtifact, recentImageRuns
 } from './integrations.mjs';
 import { aiStatus, saveAiSettings, testProvider } from './providers.mjs';
-import { shipQueue, shipPackage, shipClaim, shipDone, shipFailed, shipSummaries } from './ship.mjs';
+import { shipQueue, shipPackage, shipClaim, shipDone, shipFailed, shipSummaries, shipBuildNow, shipBuilderStatus } from './ship.mjs';
 import { creditStatus, releaseRoutable, creditWatchTick } from './credit.mjs';
 import { searchConsoleStatus, saveSearchConsole, testSearchConsole, searchConsoleContext } from './searchconsole.mjs';
 import { runtime } from './runtime.mjs';
@@ -88,7 +88,7 @@ export async function handleApi(req, ctx = {}) {
   const { method, path, query } = req;
   const actor = actorFrom(req);
   if (method === 'GET' && path === '/api/health') return json(200, { ok: true, version: VERSION, stats: taskStats(), knowledge: knowledgeStats(), worker: workerInfo(), backend: runtime.hosted ? 'maios-hosted' : 'local-sqlite-fts5-and-node' });
-  if (method === 'GET' && path === '/api/bootstrap') return json(200, { ...getBootstrap(), docs: allDocs(), imageRuns: recentImageRuns(), ship: shipSummaries(), integrations: integrationStatus(), stats: taskStats(), ai: aiStatus(), searchConsole: searchConsoleStatus(), settings: settingsView(), credit: creditStatus() });
+  if (method === 'GET' && path === '/api/bootstrap') return json(200, { ...getBootstrap(), docs: allDocs(), imageRuns: recentImageRuns(), ship: shipSummaries(), shipBuilder: shipBuilderStatus(), integrations: integrationStatus(), stats: taskStats(), ai: aiStatus(), searchConsole: searchConsoleStatus(), settings: settingsView(), credit: creditStatus() });
   if (method === 'GET' && path === '/api/models') return json(200, await modelCatalog());
 
   // AI providers: keys are write-only from the browser's point of view. Status shows only whether one is set and its last 4 characters.
@@ -97,6 +97,7 @@ export async function handleApi(req, ctx = {}) {
   if (method === 'PATCH' && path === '/api/ai') { const out = saveAiSettings(await parseJson(req, 64 * 1024)); const released = releaseRoutable(); return json(200, { ...out, released }); }
   // Ship to dev: the site builder polls the queue, claims a ready batch, downloads packages and reports results.
   if (method === 'GET' && path === '/api/ship/queue') return json(200, shipQueue());
+  if (method === 'POST' && path === '/api/ship/build-now') return json(202, shipBuildNow());
   if (method === 'POST' && path === '/api/ship/claim') { const body = await parseJson(req, 64 * 1024); return json(200, shipClaim(body.ids, body.batch, actor === 'Mike' ? 'MP site builder' : actor)); }
   const shipMatch = path.match(/^\/api\/ship\/([a-f0-9-]{36})(?:\/(done|failed))?$/);
   if (shipMatch) {

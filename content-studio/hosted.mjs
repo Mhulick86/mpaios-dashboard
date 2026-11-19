@@ -26,6 +26,7 @@ import { ensureIntegrationSchema } from './integrations.mjs';
 import { handleApi, errorReply, json, parseJson, HttpError } from './core.mjs';
 import { runOne, trackRunning } from './agents.mjs';
 import { creditWatchTick, claimNext } from './credit.mjs';
+import { shipWake } from './ship.mjs';
 import { passcodeHash, passcodeMatches, signSession, verifySession } from './secrets.mjs';
 import { clamp } from './env.mjs';
 
@@ -254,6 +255,13 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
     await commit(() => null);
     // Credit cutoffs: every 6 hours per paused provider, a few-token probe; when it answers, paused work is released.
     try { await creditWatchTick(); } catch (e) { console.error('Credit watch:', e); }
+    // Ship to dev: start the site builder when a batch is ready. A batch that becomes ready before the next cron run
+    // is started on time by waiting here for it, as long as this function has the time left.
+    try {
+      const wake = await shipWake();
+      const wait = wake.ready_at ? Date.parse(wake.ready_at) - Date.now() : -1;
+      if (wait >= 0 && wait < 330000 && deadline - Date.now() - wait > 30000) background(async () => { await sleep(wait + 500); await shipWake(); });
+    } catch (e) { console.error('Ship wake:', e); }
     await background_({ deadline });
     return { ok: true, at: stamp() };
   }

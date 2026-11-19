@@ -205,6 +205,26 @@ const qaChip = (t, cls = 'card-tag') => {
 };
 
 // ---------- Board ----------
+/** Ship to dev column: start the site build for every waiting card without the 5-minute quiet period. */
+function shipBuildButton() {
+  const ship = state.data.ship || [];
+  const waiting = ship.filter((x) => x.status === 'waiting' && !x.held).length, building = ship.filter((x) => x.status === 'building').length;
+  if (!waiting) return building ? `<span class="column-build is-busy" title="${building} page${building > 1 ? 's are' : ' is'} being built on the site"><span class="live-dot on"></span>Building</span>` : '';
+  const auto = state.data.shipBuilder?.auto_start;
+  const title = building ? `A build is running. These ${waiting} go next when it finishes.` : auto ? `Start the site build for ${waiting} waiting page${waiting > 1 ? 's' : ''} now, without the 5-minute wait` : `Mark ${waiting} waiting page${waiting > 1 ? 's' : ''} ready now. The site builder picks them up at its next check.`;
+  return `<button class="column-build" data-ship-build="${waiting}" title="${html(title)}">▶ Build now</button>`;
+}
+async function shipBuildNow(btn) {
+  const n = Number(btn.dataset.shipBuild) || 0;
+  if (!confirm(`Build ${n} page${n > 1 ? 's' : ''} on the live site now?\n\nEvery card waiting in Ship to dev is built and published together.`)) return;
+  btn.disabled = true;
+  try {
+    const out = await api('/api/ship/build-now', { method: 'POST', body: {} });
+    const pages = `${out.pages} page${out.pages > 1 ? 's' : ''}`;
+    toast(out.starts === 'now' ? `Site builder started for ${pages}.` : out.starts === 'after_current' ? `${pages} will be built as soon as the current build finishes.` : `${pages} marked ready. The site builder picks them up at its next check (the studio is not connected to start it).`, out.starts === 'next_check' ? 'error' : 'good');
+    await refresh(false, true);
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+}
 const imageRunFor = (taskId) => (state.data.imageRuns || []).find((r) => r.task_id === taskId);
 function shipChip(t) {
   const sh = (state.data.ship || []).find((x) => x.task_id === t.id); if (!sh) return '';
@@ -305,7 +325,7 @@ function renderBoard() {
   const scrolls = new Map($$('.kanban-column', $('#board')).map((col) => [col.dataset.laneId, $('.column-body', col)?.scrollTop || 0]));
   $('#board').innerHTML = lanes().map((l, i) => {
     const items = tasks.filter((t) => t.lane_id === l.id);
-    return `<section class="kanban-column" data-lane-id="${html(l.id)}"><div class="column-head"><span class="column-kicker" style="background:${l.slug === 'posted' ? '#08ae67' : laneColors[i % laneColors.length]}"></span><strong>${html(l.name)}</strong>${l.auto_action ? `<span class="lane-auto" title="Dropping a card here queues the ${html(l.auto_action)} stage">✦ ${html(l.auto_action)}</span>` : ''}<span class="column-count">${items.length}</span><button class="column-add" data-add-lane="${html(l.id)}" title="Commission content">+</button></div><div class="column-body">${items.length ? items.map(cardMarkup).join('') : '<div class="empty-column"><strong>Nothing here yet</strong>Drop a card to move it into this stage.</div>'}</div></section>`;
+    return `<section class="kanban-column" data-lane-id="${html(l.id)}"><div class="column-head"><span class="column-kicker" style="background:${l.slug === 'posted' ? '#08ae67' : laneColors[i % laneColors.length]}"></span><strong>${html(l.name)}</strong>${l.auto_action ? `<span class="lane-auto" title="Dropping a card here queues the ${html(l.auto_action)} stage">✦ ${html(l.auto_action)}</span>` : ''}<span class="column-count">${items.length}</span>${l.slug === 'ship_dev' ? shipBuildButton() : ''}<button class="column-add" data-add-lane="${html(l.id)}" title="Commission content">+</button></div><div class="column-body">${items.length ? items.map(cardMarkup).join('') : '<div class="empty-column"><strong>Nothing here yet</strong>Drop a card to move it into this stage.</div>'}</div></section>`;
   }).join('');
   for (const col of $$('.kanban-column', $('#board'))) { const top = scrolls.get(col.dataset.laneId); if (top) $('.column-body', col).scrollTop = top; }
 }
@@ -665,6 +685,7 @@ function installListeners() {
     const cancel = e.target.closest('[data-cancel-job]'); if (cancel) return jobAction(cancel.dataset.cancelJob, 'cancel');
     const retry = e.target.closest('[data-retry-job]'); if (retry) return jobAction(retry.dataset.retryJob, 'retry');
     const taskBtn = e.target.closest('[data-task-id]'); if (taskBtn && !taskBtn.closest('#taskDrawer')) return openTask(taskBtn.dataset.taskId);
+    const buildBtn = e.target.closest('[data-ship-build]'); if (buildBtn) return shipBuildNow(buildBtn);
     const addBtn = e.target.closest('[data-add-lane]'); if (addBtn) return commissionModal(addBtn.dataset.addLane);
     if (e.target.id === 'closeDrawer') return closeDrawer();
     if (['closeCommission', 'cancelCommission'].includes(e.target.id)) return modalClose();

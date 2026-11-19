@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **The studio starts the site builder.** A batch in Ship to dev is announced to the builder as soon as it is ready (5 minutes after the last card arrives), once per batch, by calling the builder's scheduled-task fire URL (`SITE_BUILDER_FIRE_URL`, `SITE_BUILDER_FIRE_TOKEN`). Before, the builder only found a batch at its own next check, up to an hour later. A start that fails is retried at the next check; nothing is sent while a build is running.
+- **Build now** on the Ship to dev column builds every waiting card without the 5-minute wait (`POST /api/ship/build-now`).
+
 ## 0.5.0
 
 - Runs inside MAIOS on Vercel: shared API core (`core.mjs`), hosted runtime (`hosted.mjs`) with the SQLite database in private Vercel Blob storage and ETag-conditional writes, background generation via `after()` and a cron backstop, polling instead of Server-Sent Events, cross-instance cancel.

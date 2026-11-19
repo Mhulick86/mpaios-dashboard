@@ -6,6 +6,7 @@ import { ROOT, DATA_DIR, VERSION } from './env.mjs';
 import { getDb } from './db.mjs';
 import { workerTick } from './agents.mjs';
 import { creditWatchTick } from './credit.mjs';
+import { shipWake } from './ship.mjs';
 import { initKnowledge } from './knowledge.mjs';
 import { subscribe, publish } from './events.mjs';
 import { ensureIntegrationSchema } from './integrations.mjs';
@@ -131,10 +132,13 @@ const timer = setInterval(tick, 3000);
 // Credit cutoffs: the watch probes a paused provider every 6 hours; checking every 5 minutes whether one is due is free.
 const creditTimer = setInterval(() => creditWatchTick().then(tick).catch((err) => console.error('Credit watch:', err)), Number(process.env.CREDIT_TICK_MS) || 300000);
 creditTimer.unref?.();
+// Ship to dev: start the site builder when a batch is ready (does nothing unless SITE_BUILDER_FIRE_URL is set).
+const shipTimer = setInterval(() => shipWake().catch((err) => console.error('Ship wake:', err)), Number(process.env.SHIP_WAKE_TICK_MS) || 60000);
+shipTimer.unref?.();
 timer.unref();
 tick();
 function shutdown() {
-  clearInterval(timer); clearInterval(creditTimer);
+  clearInterval(timer); clearInterval(creditTimer); clearInterval(shipTimer);
   for (const res of streams) res.end();
   server.close(() => process.exit(0));
   server.closeAllConnections?.();

@@ -10,11 +10,17 @@
  *
  * Everything is recorded as task events, so every server instance and the board see the same state. A failed page
  * stays failed until someone moves the card out of Ship to dev and back, so a broken page is not retried forever.
+ *
+ * Starting the builder: the builder only looks at the queue when something wakes it. shipWake() does that once per
+ * ready batch by calling the builder's scheduled-task fire URL (SITE_BUILDER_FIRE_URL with SITE_BUILDER_FIRE_TOKEN).
+ * The hosted cron and the local server call it every few minutes. "Build now" on the board (shipBuildNow) makes the
+ * waiting cards ready without the quiet period and wakes the builder straight away.
  */
 import { getDb, getTask, event, moveTask } from './db.mjs';
 import { clamp } from './env.mjs';
 import { parseShotList } from './integrations.mjs';
 import { pageTarget } from './searchconsole.mjs';
+import { runtime } from './runtime.mjs';
 
 const SHIP_LANE = 'mpfresh:ship_dev';
 const POSTED_LANE = 'mpfresh:posted';
@@ -22,6 +28,18 @@ const DEBOUNCE_MS = () => clamp(process.env.SHIP_DEBOUNCE_MS, 0, 3600000, 300000
 const CLAIM_TTL_MS = 2 * 3600000; // a claim with no result after this long (builder crashed) returns to the queue
 const SITE = () => (process.env.SITE_ORIGIN || 'https://marketingpowered.ai').replace(/\/+$/, '');
 const parse = (s) => { try { return JSON.parse(s || '{}'); } catch { return {}; } };
+const setting = (key) => getDb().prepare('SELECT value FROM settings WHERE key=?').get(key)?.value || '';
+const saveSetting = (key, value) => getDb().prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').run(key, String(value));
+const BUILD_NOW_KEY = 'ship:build_now'; // when someone last pressed Build now
+const WAKE_KEY = 'ship:wake';           // the last time the builder was woken, and for which batch
+/** When the waiting batch becomes ready: the quiet period after its newest arrival, or at once if Build now was pressed since. */
+function batchTiming(newest) {
+  if (!newest) return { readyAt: null, ready: false, forced: false };
+  const pressed = Date.parse(setting(BUILD_NOW_KEY)) || 0;
+  const forced = pressed >= newest;
+  const at = forced ? pressed : newest + DEBOUNCE_MS();
+  return { readyAt: new Date(at).toISOString(), ready: Date.now() >= at, forced };
+}
 
 function shipEvents(taskId) {
   return getDb().prepare("SELECT event_type,message,details,created_at,actor FROM events WHERE task_id=? AND event_type IN ('moved','ship_started','shipped','ship_failed') ORDER BY created_at DESC LIMIT 60")
@@ -57,8 +75,8 @@ export function shipQueue() {
     else recent.push(summary(t, st));
   }
   const newest = waiting.map((x) => Date.parse(x.arrived_at)).reduce((a, b) => Math.max(a, b), 0);
-  const readyAt = newest ? new Date(newest + DEBOUNCE_MS()).toISOString() : null;
-  return { ready: waiting.length > 0 && Date.now() >= newest + DEBOUNCE_MS(), ready_at: readyAt, debounce_minutes: Math.round(DEBOUNCE_MS() / 60000), site: SITE(), items: waiting, held, building, recent };
+  const timing = batchTiming(newest);
+  return { ready: timing.ready, ready_at: timing.readyAt, ...(timing.forced ? { build_now: true } : {}), debounce_minutes: Math.round(DEBOUNCE_MS() / 60000), site: SITE(), items: waiting, held, building, recent };
 }
 
 /** Everything the builder needs for one page. Image files are fetched from /api/assets/:id with the same token. */
@@ -128,7 +146,68 @@ export function shipFailed(id, reason = '', actor = 'MP site builder') {
 export function shipSummaries() {
   const rows = getDb().prepare('SELECT id FROM tasks WHERE lane_id=? AND archived=0').all(SHIP_LANE).map((r) => { const t = getTask(r.id); return { t, st: shipState(t) }; }).filter((x) => x.st);
   // The whole batch waits for the newest arrival, so every waiting card shows the same start time.
-  const newest = rows.filter((x) => x.st.status === 'waiting').map((x) => Date.parse(x.st.arrived_at)).reduce((a, b) => Math.max(a, b), 0);
-  const readyAt = newest ? new Date(newest + DEBOUNCE_MS()).toISOString() : undefined;
-  return rows.map(({ t, st }) => ({ task_id: t.id, ...st, ...(st.status === 'waiting' ? { ready_at: readyAt, held: holdReason(t) || undefined } : {}) }));
+  // Held cards are never built, so they do not hold the batch back either (the same rule as shipQueue).
+  const held = new Map(rows.filter((x) => x.st.status === 'waiting').map((x) => [x.t.id, holdReason(x.t)]));
+  const newest = rows.filter((x) => x.st.status === 'waiting' && !held.get(x.t.id)).map((x) => Date.parse(x.st.arrived_at)).reduce((a, b) => Math.max(a, b), 0);
+  const readyAt = batchTiming(newest).readyAt || undefined;
+  return rows.map(({ t, st }) => ({ task_id: t.id, ...st, ...(st.status === 'waiting' ? { ready_at: readyAt, held: held.get(t.id) || undefined } : {}) }));
+}
+
+// ---------- Starting the builder ----------
+const wakeTarget = () => ({ url: (process.env.SITE_BUILDER_FIRE_URL || '').trim(), token: (process.env.SITE_BUILDER_FIRE_TOKEN || '').trim() });
+/** Can the studio start the builder itself? Without this the builder finds a ready batch at its own next check. */
+export const wakeConfigured = () => { const { url, token } = wakeTarget(); return /^https?:\/\/\S+$/.test(url) && token.length >= 16; };
+// A batch the builder did not take is announced again after this long (the first call may have been lost).
+const REWAKE_MS = () => clamp(process.env.SITE_BUILDER_REWAKE_MS, 1000, 86400000, 1800000);
+
+/** For the board: whether the studio can start the builder, and how the last attempt went. */
+export function shipBuilderStatus() {
+  const last = parse(setting(WAKE_KEY));
+  return { auto_start: wakeConfigured(), last_started_at: last.ok ? last.at : null, last_error: last.error || '' };
+}
+
+/**
+ * Wake the builder if a batch is ready and it has not been told about this batch yet. Safe to call often and from
+ * several servers: the decision is saved in the same commit that makes it, so only one of them makes the call.
+ * Nothing is sent while the builder is already building; the cards that arrived meanwhile go out when it finishes.
+ */
+export async function shipWake() {
+  if (!wakeConfigured()) return { woke: false, reason: 'not configured' };
+  const plan = await runtime.commit(() => {
+    const q = shipQueue();
+    if (!q.ready || !q.items.length) return { skip: q.items.length ? 'waiting for the quiet period' : 'nothing waiting', ready_at: q.ready_at };
+    if (q.building.length) return { skip: 'a build is running' };
+    const key = `${q.ready_at}|${q.items.length}`, last = parse(setting(WAKE_KEY));
+    if (last.key === key && Date.now() - Date.parse(last.at) < REWAKE_MS()) return { skip: 'already started for this batch' };
+    saveSetting(WAKE_KEY, JSON.stringify({ key, at: new Date().toISOString(), pages: q.items.length, ok: true }));
+    return { key, pages: q.items.length };
+  });
+  if (plan.skip) return { woke: false, reason: plan.skip, ready_at: plan.ready_at || null };
+  const { url, token } = wakeTarget();
+  try {
+    const res = await fetch(url, {
+      method: 'POST', signal: AbortSignal.timeout(20000),
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01', 'anthropic-beta': process.env.SITE_BUILDER_FIRE_BETA || 'experimental-cc-routine-2026-04-01' },
+      body: JSON.stringify({ text: `Content Studio: ${plan.pages} page${plan.pages === 1 ? '' : 's'} ready in Ship to dev.` })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+    return { woke: true, pages: plan.pages };
+  } catch (e) {
+    // Forget the batch so the next check tries again, and keep the reason for the board.
+    const error = String(e?.message || e).slice(0, 300);
+    console.error('Site builder could not be started:', error);
+    await runtime.commit(() => saveSetting(WAKE_KEY, JSON.stringify({ key: '', at: new Date().toISOString(), pages: plan.pages, ok: false, error })));
+    return { woke: false, reason: error };
+  }
+}
+
+/** "Build now" on the Ship to dev column: skip the quiet period for the cards waiting now and start the builder. */
+export function shipBuildNow() {
+  const q = shipQueue();
+  if (!q.items.length) throw new Error(q.building.length ? 'These pages are already being built.' : q.held.length ? 'Every waiting card is held. Fix the reason shown on each card first.' : 'Nothing in Ship to dev is waiting to be built.');
+  saveSetting(BUILD_NOW_KEY, new Date().toISOString());
+  if (!q.building.length) runtime.defer(() => shipWake());
+  // starts: now (builder is being started), after_current (a build is running; these go next), next_check (the studio
+  // cannot start the builder itself, so it finds them at its own next check).
+  return { pages: q.items.length, held: q.held.length, starts: !wakeConfigured() ? 'next_check' : q.building.length ? 'after_current' : 'now' };
 }
