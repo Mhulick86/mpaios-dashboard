@@ -117,10 +117,17 @@ function topicRegex(keyword) {
 }
 export function pageTarget(task) {
   const text = String(task.instructions || '');
-  const url = (text.match(/^URL(?: Path)?:\s*(\S+)/mi)?.[1] || String(task.title || '').match(/^B?P\d+-\s*(\/\S*)/)?.[1] || '').trim();
+  let url = (text.match(/^URL(?: Path)?:\s*(\S+)/mi)?.[1] || String(task.title || '').match(/^B?P\d+-\s*(\/\S*)/)?.[1] || '').trim();
+  // Plan cards name only a slug ("SUGGESTED URL SLUG: healthcare-marketing"): landing pages go under /services/,
+  // guides and articles under /resources/. derived marks an address the studio worked out rather than one a person set.
+  let derived = false;
+  if (!url) {
+    const slug = text.match(/^SUGGESTED URL SLUG:\s*([a-z0-9][a-z0-9-]*)/mi)?.[1];
+    if (slug) { url = `${task.content_type === 'landing' ? '/services' : '/resources'}/${slug.toLowerCase()}`; derived = true; }
+  }
   const mode = (text.match(/^Mode:\s*(new|refresh)/mi)?.[1] || 'new').toLowerCase();
   const path = url ? (url.replace(/^https?:\/\/[^/]+/i, '').replace(/\/+$/, '') || '/') : '';
-  return { path, mode };
+  return { path, mode, derived };
 }
 const n = (v) => Number(v || 0).toLocaleString('en-US');
 const pct = (v) => `${(Number(v || 0) * 100).toFixed(1)}%`;

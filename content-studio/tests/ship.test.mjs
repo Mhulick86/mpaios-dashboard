@@ -9,6 +9,9 @@ test('cards moved to Ship to dev wait for a quiet period, then ship as one batch
     const { tasks: [task] } = await s.api('/api/commission', 'POST', { topic: `${title} topic`, outputs: ['website'], primary_keyword: 'owned measurement', instructions: url ? `Mode: new\nURL: ${url}\nPriority Group: P1` : '' });
     await s.api(`/api/tasks/${task.id}`, 'PATCH', { title });
     await s.api(`/api/tasks/${task.id}/artifact`, 'POST', { kind: 'draft', body: `# ${title}\n\n**Meta title:** ${title}\n\n## Section one\nBody text.` });
+    // Only drafts with a QA pass ship.
+    await s.api(`/api/tasks/${task.id}/artifact`, 'POST', { kind: 'qa', body: 'Verdict: PASS\n\nNo issues.' });
+    await s.api(`/api/tasks/${task.id}/qa-recheck`, 'POST', {});
     return task.id;
   };
   const a = await make('P1- /resources/page-a', '/resources/page-a');
@@ -54,4 +57,37 @@ test('cards moved to Ship to dev wait for a quiet period, then ship as one batch
   await s.api(`/api/tasks/${b}/move`, 'POST', { laneId: 'mpfresh:final_approval' });
   await s.api(`/api/tasks/${b}/move`, 'POST', { laneId: 'mpfresh:ship_dev' });
   assert.equal((await s.api('/api/ship/queue')).items[0].id, b);
+});
+
+test('plan pages: address from the slug, held without a QA pass or when a live page has that address, batches by priority', async (t) => {
+  const http = await import('node:http');
+  const sitemap = http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'application/xml' }); res.end('<urlset><url><loc>https://site.example/resources/existing-page</loc></url></urlset>'); });
+  await new Promise((ok) => sitemap.listen(0, '127.0.0.1', ok)); t.after(() => sitemap.close());
+  const s = await startStudio(t, { env: { SHIP_DEBOUNCE_MS: '0', SHIP_BATCH_LIMIT: '2', AUTO_GENERATE_ON_MOVE: 'false', SITE_ORIGIN: `http://127.0.0.1:${sitemap.address().port}` } });
+  const make = async (title, slug, type, priority, qa = 'PASS') => {
+    const { tasks: [task] } = await s.api('/api/commission', 'POST', { topic: title, outputs: ['website'], content_type: type, instructions: `SEO PLAN: test.\nSUGGESTED URL SLUG: ${slug}` });
+    await s.api(`/api/tasks/${task.id}`, 'PATCH', { title, priority });
+    await s.api(`/api/tasks/${task.id}/artifact`, 'POST', { kind: 'draft', body: `# ${title}\n\n**Meta title:** ${title}\n\n## Section one\nBody text.` });
+    if (qa) { await s.api(`/api/tasks/${task.id}/artifact`, 'POST', { kind: 'qa', body: `Verdict: ${qa}\n\nReport.` }); await s.api(`/api/tasks/${task.id}/qa-recheck`, 'POST', {}); }
+    await s.api(`/api/tasks/${task.id}/move`, 'POST', { laneId: 'mpfresh:ship_dev' });
+    return task.id;
+  };
+  const landing = await make('Google ads agency', 'google-ads-agency', 'landing', 'P1');
+  const guide = await make('Healthcare marketing guide', 'healthcare-marketing', 'guide', 'P0');
+  const low = await make('Local SEO cost', 'local-seo-cost', 'article', 'P2');
+  const noQa = await make('No QA yet', 'no-qa-yet', 'article', 'P0', '');
+  const failed = await make('Failed QA', 'failed-qa', 'article', 'P0', 'FAIL');
+  const clash = await make('Existing page', 'existing-page', 'article', 'P0');
+  const q = await waitFor(async () => { const x = await s.api('/api/ship/queue'); return x.held.some((h) => /live page already exists/.test(h.held)) ? x : false; }, 10000, 200);
+  const where = Object.fromEntries([...q.items, ...q.held].map((x) => [x.id, x.path]));
+  assert.equal(where[landing], '/services/google-ads-agency', 'landing pages go under /services/');
+  assert.equal(where[guide], '/resources/healthcare-marketing', 'guides and articles go under /resources/');
+  const heldFor = Object.fromEntries(q.held.map((x) => [x.id, x.held]));
+  assert.match(heldFor[noQa], /No QA pass yet/); assert.match(heldFor[failed], /QA failed/);
+  assert.match(heldFor[clash], /A live page already exists at \/resources\/existing-page/);
+  assert.deepEqual(q.items.map((x) => x.id), [guide, landing, low], 'highest priority first');
+  assert.deepEqual(q.batch, [guide, landing], 'one build takes at most SHIP_BATCH_LIMIT pages');
+  const claim = await s.api('/api/ship/claim', 'POST', { ids: [guide, landing, low], batch: 'b1' });
+  assert.deepEqual(claim.claimed, [guide, landing], 'the claim stops at the batch limit');
+  assert.equal((await s.api(`/api/ship/${guide}`)).derived, true);
 });

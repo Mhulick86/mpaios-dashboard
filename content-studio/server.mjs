@@ -6,6 +6,7 @@ import { ROOT, DATA_DIR, VERSION } from './env.mjs';
 import { getDb } from './db.mjs';
 import { workerTick } from './agents.mjs';
 import { creditWatchTick } from './credit.mjs';
+import { refreshSiteRoutes } from './ship.mjs';
 import { initKnowledge } from './knowledge.mjs';
 import { subscribe, publish } from './events.mjs';
 import { ensureIntegrationSchema } from './integrations.mjs';
@@ -131,6 +132,10 @@ const timer = setInterval(tick, 3000);
 // Credit cutoffs: the watch probes a paused provider every 6 hours; checking every 5 minutes whether one is due is free.
 const creditTimer = setInterval(() => creditWatchTick().then(tick).catch((err) => console.error('Credit watch:', err)), Number(process.env.CREDIT_TICK_MS) || 300000);
 creditTimer.unref?.();
+// Which pages the live site already has (for plan pages whose address the studio works out), hourly.
+const routesTick = () => refreshSiteRoutes().catch((err) => console.error('Site routes:', err.message));
+setTimeout(routesTick, 500).unref?.();
+setInterval(routesTick, 600000).unref?.();
 timer.unref();
 tick();
 function shutdown() {

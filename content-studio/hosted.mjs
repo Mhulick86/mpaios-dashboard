@@ -26,6 +26,7 @@ import { ensureIntegrationSchema } from './integrations.mjs';
 import { handleApi, errorReply, json, parseJson, HttpError } from './core.mjs';
 import { runOne, trackRunning } from './agents.mjs';
 import { creditWatchTick, claimNext } from './credit.mjs';
+import { refreshSiteRoutes } from './ship.mjs';
 import { passcodeHash, passcodeMatches, signSession, verifySession } from './secrets.mjs';
 import { clamp } from './env.mjs';
 
@@ -254,6 +255,7 @@ export function createHostedStudio({ blob, seed, cookiePath = '/', prefix = 'stu
     await commit(() => null);
     // Credit cutoffs: every 6 hours per paused provider, a few-token probe; when it answers, paused work is released.
     try { await creditWatchTick(); } catch (e) { console.error('Credit watch:', e); }
+    try { await refreshSiteRoutes(); } catch (e) { console.error('Site routes:', e); } // hourly: which pages are live
     await background_({ deadline });
     return { ok: true, at: stamp() };
   }
