@@ -238,7 +238,7 @@ const shownTasks = () => state.view === 'queue' ? reviewTasks() : taskView();
 const checkedTasks = () => state.data.tasks.filter((t) => state.checked.has(t.id) && (state.view !== 'board' || t.board_id === state.board));
 function moveDestinations(tasks) {
   if (!tasks.length || tasks.some((t) => t.board_id !== tasks[0].board_id)) return [];
-  return state.data.lanes.filter((l) => l.board_id === tasks[0].board_id && !['ship_dev', 'ready_post', 'posted'].includes(l.slug))
+  return state.data.lanes.filter((l) => l.board_id === tasks[0].board_id && !['ready_post', 'posted'].includes(l.slug))
     .sort((a, b) => a.sort_order - b.sort_order);
 }
 function paintSelection() {
@@ -252,7 +252,7 @@ function paintSelection() {
   $('#selectShown').disabled = state.bulkMoving || !shown.some((t) => !state.checked.has(t.id));
   $('#clearSelection').disabled = state.bulkMoving || !checked.length;
   const picker = $('#bulkLane'), destinations = moveDestinations(checked), previous = picker.value;
-  const options = '<option value="">Move selected to…</option>' + destinations.map((l) => `<option value="${html(l.id)}">${html(l.name)}</option>`).join('');
+  const options = '<option value="">Move selected to…</option>' + destinations.map((l) => `<option value="${html(l.id)}">${html(l.slug === 'ship_dev' ? 'Ship to Dev' : l.name)}</option>`).join('');
   if (picker.dataset.options !== options) {
     picker.innerHTML = options;
     picker.dataset.options = options;
