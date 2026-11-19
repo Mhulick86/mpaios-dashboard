@@ -11,6 +11,7 @@ import type {
 } from "./orchestrator";
 import { ASANA_STAGES } from "./orchestrator";
 import type { IntegrationsConfig } from "./asana";
+import { currentModel, DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL } from "@/lib/models";
 
 /* ─── Helpers ─── */
 
@@ -351,7 +352,7 @@ function getApiSettings(): { provider: string; model: string; apiKey: string; cu
     // Check model assignments for orchestrator model override
     const assignmentsRaw = localStorage.getItem("mpaios_model_assignments");
     const assignments = assignmentsRaw ? (JSON.parse(assignmentsRaw) as Record<string, string>) : {};
-    const orchestratorModel = assignments.orchestrator || "";
+    const orchestratorModel = currentModel(assignments.orchestrator);
 
     // Check custom endpoints (LM Studio, Ollama, vLLM, etc.)
     const endpointsRaw = localStorage.getItem("mpaios_custom_endpoints");
@@ -378,10 +379,10 @@ function getApiSettings(): { provider: string; model: string; apiKey: string; cu
 
     // Prefer Anthropic, fallback to OpenAI
     if (keys.anthropic) {
-      return { provider: "anthropic", model: orchestratorModel || "claude-sonnet-4-20250514", apiKey: keys.anthropic };
+      return { provider: "anthropic", model: orchestratorModel || DEFAULT_ANTHROPIC_MODEL, apiKey: keys.anthropic };
     }
     if (keys.openai) {
-      return { provider: "openai", model: orchestratorModel || "gpt-4o", apiKey: keys.openai };
+      return { provider: "openai", model: orchestratorModel || DEFAULT_OPENAI_MODEL, apiKey: keys.openai };
     }
     return null;
   } catch {

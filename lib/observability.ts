@@ -5,12 +5,15 @@
 
 import { createClient } from "@/lib/supabase/client";
 import type { AuditLogEntry, TokenUsage } from "@/lib/supabase/types";
+import { MODEL_CATALOG, providerOf } from "@/lib/models";
 
 const supabase = createClient();
 
 // ── Cost Calculations ──
+// Current models come from the catalog (priced per million tokens there); the entries below are retired models,
+// kept so older log rows still cost correctly.
 const COST_PER_1K: Record<string, { input: number; output: number }> = {
-  "gpt-4o": { input: 0.0025, output: 0.01 },
+  ...Object.fromEntries(MODEL_CATALOG.map((m) => [m.id, { input: m.input / 1000, output: m.output / 1000 }])),
   "gpt-4o-mini": { input: 0.00015, output: 0.0006 },
   "gpt-4-turbo": { input: 0.01, output: 0.03 },
   "o1": { input: 0.015, output: 0.06 },
@@ -36,13 +39,7 @@ export function calculateCost(
   return (tokensInput / 1000) * rates.input + (tokensOutput / 1000) * rates.output;
 }
 
-function detectProvider(model: string): string {
-  if (model.startsWith("gpt") || model.startsWith("o1") || model.startsWith("o3")) return "openai";
-  if (model.startsWith("claude")) return "anthropic";
-  if (model.startsWith("gemini")) return "google";
-  if (model.startsWith("sonar")) return "perplexity";
-  return "custom";
-}
+const detectProvider = (model: string): string => providerOf(model);
 
 // ── Token Usage Tracking ──
 

@@ -5,6 +5,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import type { Conversation, Message } from "@/lib/supabase/types";
+import { DEFAULT_ANTHROPIC_MODEL } from "@/lib/models";
 
 const supabase = createClient();
 
@@ -19,7 +20,7 @@ export async function createConversation(params?: {
     .from("conversations")
     .insert({
       title: params?.title || "New Conversation",
-      model: params?.model || "claude-sonnet-4-20250514",
+      model: params?.model || DEFAULT_ANTHROPIC_MODEL,
       system_context: params?.systemContext,
     })
     .select()

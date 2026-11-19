@@ -19,6 +19,7 @@ import {
   HardDrive,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { modelsFor, currentModel } from "@/lib/models";
 
 interface ApiKeyConfig {
   id: string;
@@ -40,6 +41,8 @@ interface CustomEndpoint {
   model: string;
 }
 
+const ids = (provider: string) => modelsFor(provider).map((m) => m.id);
+
 const defaultKeys: ApiKeyConfig[] = [
   // ── LLM Providers ──
   {
@@ -48,9 +51,9 @@ const defaultKeys: ApiKeyConfig[] = [
     provider: "OpenAI",
     envVar: "OPENAI_API_KEY",
     value: "",
-    description: "GPT-4o for strategy, copywriting, and analysis",
+    description: "GPT models for strategy, copywriting, and analysis",
     docsUrl: "https://platform.openai.com/api-keys",
-    models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "o1", "o3-mini"],
+    models: ids("openai"),
     required: true,
   },
   {
@@ -61,7 +64,7 @@ const defaultKeys: ApiKeyConfig[] = [
     value: "",
     description: "Claude for orchestration, content, and reasoning",
     docsUrl: "https://console.anthropic.com/settings/keys",
-    models: ["claude-sonnet-4-20250514", "claude-3.5-haiku", "claude-3-opus"],
+    models: ids("anthropic"),
     required: true,
   },
   {
@@ -72,7 +75,7 @@ const defaultKeys: ApiKeyConfig[] = [
     value: "",
     description: "Gemini for multimodal analysis and search grounding",
     docsUrl: "https://aistudio.google.com/apikey",
-    models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
+    models: ids("google"),
     required: false,
   },
   {
@@ -83,7 +86,7 @@ const defaultKeys: ApiKeyConfig[] = [
     value: "",
     description: "Real-time web search for competitive intel and LLMO audits",
     docsUrl: "https://docs.perplexity.ai",
-    models: ["sonar-pro", "sonar"],
+    models: ids("perplexity"),
     required: false,
   },
   // ── SEO & Search ──
@@ -420,17 +423,17 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<"keys" | "models" | "endpoints">("keys");
   const [endpoints, setEndpoints] = useState<CustomEndpoint[]>([]);
   const [modelAssignments, setModelAssignments] = useState<Record<AgentRole, string>>({
-    orchestrator: "claude-sonnet-4-20250514",
-    strategy: "gpt-4o",
-    content: "claude-sonnet-4-20250514",
-    creative: "gpt-4o",
-    ads: "gpt-4o",
-    seo: "gpt-4o-mini",
-    analytics: "gpt-4o",
-    operations: "claude-3.5-haiku",
-    client_success: "gpt-4o",
-    data_engineering: "gpt-4o-mini",
-    local_community: "gpt-4o-mini",
+    orchestrator: "claude-sonnet-5-5",
+    strategy: "gpt-6.1-sol",
+    content: "claude-sonnet-5-5",
+    creative: "gpt-6.1-sol",
+    ads: "gpt-6.1-sol",
+    seo: "gpt-6-luna",
+    analytics: "gpt-6.1-sol",
+    operations: "claude-haiku-5-5",
+    client_success: "gpt-6.1-sol",
+    data_engineering: "gpt-6-luna",
+    local_community: "gpt-6-luna",
   });
 
   // Load from localStorage
@@ -446,7 +449,11 @@ export default function SettingsPage() {
       const storedEndpoints = localStorage.getItem(ENDPOINTS_KEY);
       if (storedEndpoints) setEndpoints(JSON.parse(storedEndpoints));
       const storedAssignments = localStorage.getItem(MODEL_ASSIGNMENTS_KEY);
-      if (storedAssignments) setModelAssignments(JSON.parse(storedAssignments));
+      if (storedAssignments) {
+        // A role saved on a model that has since been retired moves to its replacement; Save keeps the change.
+        const saved = JSON.parse(storedAssignments) as Record<string, string>;
+        setModelAssignments((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(saved).map(([role, model]) => [role, currentModel(model)])) }));
+      }
     } catch {}
   }, []);
 
@@ -858,8 +865,9 @@ export default function SettingsPage() {
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-brand-blue" />
               <p className="text-[12px] text-text-secondary">
-                Assign which model each agent group uses. Ensure the
-                corresponding API key is configured.
+                Assign which model each agent group uses. Prices are input / output
+                per million tokens. A provider marked &ldquo;no API key saved&rdquo; needs its key
+                on the API Keys tab first.
               </p>
             </div>
           </div>
@@ -885,15 +893,19 @@ export default function SettingsPage() {
                 }
                 className="w-full sm:w-auto px-3 py-2 border border-border rounded-lg text-[12px] md:text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-brand-blue/30 focus:border-brand-blue bg-white sm:min-w-[220px]"
               >
-                {cloudModels.length > 0 && (
-                  <optgroup label="Cloud Models">
-                    {cloudModels.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
+                {/* A saved choice that is no longer offered stays visible instead of silently showing another model. */}
+                {!allModels.includes(modelAssignments[role.role]) && modelAssignments[role.role] && (
+                  <option value={modelAssignments[role.role]}>{modelAssignments[role.role]} (no longer listed)</option>
+                )}
+                {keys.filter((k) => modelsFor(k.id).length > 0).map((k) => (
+                  <optgroup key={k.id} label={`${k.label}${k.value.trim() ? "" : " (no API key saved)"}`}>
+                    {modelsFor(k.id).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label} · ${m.input} / ${m.output} per 1M
                       </option>
                     ))}
                   </optgroup>
-                )}
+                ))}
                 {endpoints.filter((ep) => ep.model).length > 0 && (
                   <optgroup label="⚡ Local Models">
                     {endpoints.filter((ep) => ep.model).map((ep) => {

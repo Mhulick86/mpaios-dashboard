@@ -8,6 +8,7 @@ import { asanaFetch, AsanaProject, AsanaTask } from "@/lib/asana";
 import { fetchGAOverview } from "@/lib/googleAnalytics";
 import { fetchGSCOverview } from "@/lib/googleSearchConsole";
 import { calculateCost } from "@/lib/observability";
+import { currentModel, DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_GOOGLE_MODEL } from "@/lib/models";
 
 export const maxDuration = 120;
 
@@ -256,7 +257,7 @@ export async function POST(req: Request) {
     googleKey,
     perplexityKey,
     provider = "anthropic",
-    model = "claude-sonnet-4-20250514",
+    model: requestedModel = DEFAULT_ANTHROPIC_MODEL,
     asanaPat,
     asanaWorkspace,
     gaAccessToken,
@@ -289,6 +290,8 @@ export async function POST(req: Request) {
     selectedTool?: string;
   };
 
+  // A browser that still has a retired model saved gets its replacement.
+  const model = currentModel(requestedModel);
   console.log(`[chat] provider=${provider} model=${model} customEndpoint=${customEndpoint ? JSON.stringify(customEndpoint) : "none"}`);
 
   // Convert to the format streamText expects
@@ -328,7 +331,7 @@ export async function POST(req: Request) {
       apiKey: key,
       baseURL: "https://api.anthropic.com/v1",
     });
-    modelInstance = anthropic(model || "claude-sonnet-4-20250514");
+    modelInstance = anthropic(model || DEFAULT_ANTHROPIC_MODEL);
   } else if (provider === "google") {
     const key = googleKey;
     if (!key) {
@@ -340,7 +343,7 @@ export async function POST(req: Request) {
       );
     }
     const google = createGoogleGenerativeAI({ apiKey: key });
-    modelInstance = google(model || "gemini-2.5-flash");
+    modelInstance = google(model || DEFAULT_GOOGLE_MODEL);
   } else if (provider === "perplexity") {
     const key = perplexityKey;
     if (!key) {
@@ -369,7 +372,7 @@ export async function POST(req: Request) {
       );
     }
     const openai = createOpenAI({ apiKey: key });
-    modelInstance = openai(model || "gpt-4o");
+    modelInstance = openai(model || DEFAULT_OPENAI_MODEL);
   }
 
   try {

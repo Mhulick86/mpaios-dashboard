@@ -6,6 +6,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { logAuditEvent } from "@/lib/observability";
+import { DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL } from "@/lib/models";
 
 const supabase = createClient();
 
@@ -815,8 +816,8 @@ function getDefaultLLMConfig(): Record<string, unknown> {
     const stored = typeof window !== "undefined" ? localStorage.getItem("mpaios_api_keys") : null;
     if (!stored) return {};
     const keys = JSON.parse(stored) as Record<string, string>;
-    if (keys.anthropic) return { anthropicKey: keys.anthropic, provider: "anthropic", model: "claude-sonnet-4-20250514" };
-    if (keys.openai) return { openaiKey: keys.openai, provider: "openai", model: "gpt-4o" };
+    if (keys.anthropic) return { anthropicKey: keys.anthropic, provider: "anthropic", model: DEFAULT_ANTHROPIC_MODEL };
+    if (keys.openai) return { openaiKey: keys.openai, provider: "openai", model: DEFAULT_OPENAI_MODEL };
     return {};
   } catch {
     return {};

@@ -45,6 +45,7 @@ import {
   parseLearnings,
   saveLearnings,
 } from "@/lib/knowledgeBase";
+import { currentModel, DEFAULT_ANTHROPIC_MODEL } from "@/lib/models";
 
 /* ---------- types ---------- */
 interface FileAttachment {
@@ -102,7 +103,7 @@ function getApiKeys() {
     const keys = stored ? JSON.parse(stored) : {};
     const assignments = localStorage.getItem("mpaios_model_assignments");
     const models = assignments ? JSON.parse(assignments) : {};
-    const orchestratorModel = models.orchestrator || "claude-sonnet-4-20250514";
+    const orchestratorModel = currentModel(models.orchestrator) || DEFAULT_ANTHROPIC_MODEL;
 
     // Check if orchestrator model matches a custom endpoint
     let provider = "anthropic";
@@ -195,7 +196,7 @@ function getApiKeys() {
       googleKey: "",
       perplexityKey: "",
       provider: "anthropic",
-      model: "claude-sonnet-4-20250514",
+      model: DEFAULT_ANTHROPIC_MODEL,
       customEndpoint: undefined,
       asanaPat: "",
       asanaWorkspace: "",
