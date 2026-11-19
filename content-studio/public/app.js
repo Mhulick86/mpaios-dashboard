@@ -25,6 +25,7 @@ const assetObjectURLs = new Map();
 const state = {
   data: { boards: [], lanes: [], tasks: [], jobs: [], artifactCounts: [], assetCounts: [], commentCounts: [], stats: {}, settings: {} },
   board: store.get('maios_board', 'mpfresh'), view: 'board', layout: 'board', search: '', priority: 'all', showDemo: true,
+  checked: new Set(), bulkMoving: false, boardScroll: new Map(), columnScroll: new Map(),
   selected: null, selectedTask: null, taskTab: 'overview', artifactTab: 'draft', artifactVersion: null, editingArtifact: false,
   rawView: store.get('maios_raw') === '1', model: { connected: false, models: [] }, live: new Map(), liveConnected: false, drag: null
 };
@@ -57,6 +58,8 @@ async function refresh(showError = true, force = false) {
   try {
     const data = await api('/api/bootstrap'), sig = JSON.stringify(data);
     state.data = data;
+    const activeIds = new Set(data.tasks.map((t) => t.id));
+    for (const id of state.checked) if (!activeIds.has(id)) state.checked.delete(id);
     // Live events arrive in bursts. Rebuilding an identical board resets scroll and swallows clicks, so skip it.
     if (force || sig !== lastBoardSig) { lastBoardSig = sig; render(); }
     paintSync();
@@ -225,11 +228,58 @@ function imageChip(t) {
   if (r.status === 'failed' && /graphics|graphic_review/.test(t.lane_id)) return '<span class="card-tag qa-bad">Images failed</span>';
   return '';
 }
+function checkbox(id, label, lane = false) {
+  const attr = lane ? 'data-check-lane' : 'data-check-task';
+  return `<label class="task-check"><input type="checkbox" ${attr}="${html(id)}" aria-label="${html(label)}"></label>`;
+}
+const taskCheckbox = (t) => checkbox(t.id, 'Select ' + t.title);
+const reviewTasks = () => state.data.tasks.filter((t) => REVIEW_LANES.test(t.lane_id)).sort((a, b) => a.priority.localeCompare(b.priority));
+const shownTasks = () => state.view === 'queue' ? reviewTasks() : taskView();
+const checkedTasks = () => state.data.tasks.filter((t) => state.checked.has(t.id) && (state.view !== 'board' || t.board_id === state.board));
+function moveDestinations(tasks) {
+  if (!tasks.length || tasks.some((t) => t.board_id !== tasks[0].board_id)) return [];
+  return state.data.lanes.filter((l) => l.board_id === tasks[0].board_id && !['ship_dev', 'ready_post', 'posted'].includes(l.slug))
+    .sort((a, b) => a.sort_order - b.sort_order);
+}
+function paintSelection() {
+  const bar = $('#selectionToolbar');
+  bar.hidden = !['board', 'queue'].includes(state.view);
+  if (bar.hidden) return;
+  const shown = shownTasks(), checked = checkedTasks(), shownIds = new Set(shown.map((t) => t.id));
+  const hidden = checked.filter((t) => !shownIds.has(t.id)).length;
+  const label = `${num(checked.length)} selected${hidden ? ` (${num(hidden)} outside view)` : ''}`;
+  if ($('#selectionCount').textContent !== label) $('#selectionCount').textContent = label;
+  $('#selectShown').disabled = state.bulkMoving || !shown.some((t) => !state.checked.has(t.id));
+  $('#clearSelection').disabled = state.bulkMoving || !checked.length;
+  const picker = $('#bulkLane'), destinations = moveDestinations(checked), previous = picker.value;
+  const options = '<option value="">Move selected to…</option>' + destinations.map((l) => `<option value="${html(l.id)}">${html(l.name)}</option>`).join('');
+  if (picker.dataset.options !== options) {
+    picker.innerHTML = options;
+    picker.dataset.options = options;
+    if (destinations.some((l) => l.id === previous)) picker.value = previous;
+  }
+  picker.title = checked.length && !destinations.length ? 'Select tasks from one board to move them together' : '';
+  picker.disabled = state.bulkMoving || !destinations.length;
+  $('#moveSelection').disabled = picker.disabled || !picker.value;
+  $('#moveSelection').textContent = state.bulkMoving ? 'Moving…' : 'Move';
+  for (const input of $$('[data-check-task]', $('#viewContent'))) {
+    input.checked = state.checked.has(input.dataset.checkTask);
+    input.disabled = state.bulkMoving;
+    input.closest('.task-card, tr').classList.toggle('is-selected', input.checked);
+  }
+  for (const input of $$('[data-check-lane]', $('#board'))) {
+    const cards = shown.filter((t) => t.lane_id === input.dataset.checkLane);
+    const count = cards.filter((t) => state.checked.has(t.id)).length;
+    input.checked = cards.length > 0 && count === cards.length;
+    input.indeterminate = count > 0 && count < cards.length;
+    input.disabled = state.bulkMoving || cards.length === 0;
+  }
+}
 function cardMarkup(t) {
   const done = artifactKinds(t.id), job = activeJob(t.id), notes = commentCount(t.id);
-  return `<article class="task-card ${job?.status === 'running' ? 'is-running' : ''}" draggable="true" data-task-id="${html(t.id)}" tabindex="0" role="button" aria-label="Open ${html(t.title)}">
-    <div class="card-top"><span class="card-type"><span class="type-dot">${kindIcon[t.content_type] || '▤'}</span>${html(titleCase(t.content_type))}</span><span class="badge ${html(t.priority)}">${html(t.priority)}</span></div>
-    <h3>${html(t.title)}</h3>
+  return `<article class="task-card ${job?.status === 'running' ? 'is-running' : ''}" draggable="true" data-task-id="${html(t.id)}">
+    <div class="card-top">${taskCheckbox(t)}<span class="card-type"><span class="type-dot">${kindIcon[t.content_type] || '▤'}</span>${html(titleCase(t.content_type))}</span><span class="badge ${html(t.priority)}">${html(t.priority)}</span></div>
+    <h3><button type="button" class="task-card-title" data-task-id="${html(t.id)}" title="${html(t.title)}">${html(t.title)}</button></h3>
     <div class="card-tags"><span class="card-tag">${html(channelLabel[t.channel] || t.channel)}</span>${t.voice === 'founder' ? '<span class="card-tag">Founder voice</span>' : ''}${t.demo ? '<span class="card-tag sample">SAMPLE</span>' : ''}${job ? '' : imageChip(t)}${shipChip(t)}${job ? `<span class="card-tag running"><span class="live-dot on"></span>${html(job.status === 'running' ? stageVerb[job.kind] : prettyKind[job.kind] + ' queued')}${job.options?.chain ? ' · autopilot' : ''}</span>` : ''}${qaChip(t)}${t.approved_at ? '<span class="card-tag qa-ok">✓ Approved</span>' : ''}${t.published_url ? '<span class="card-tag qa-ok">Live</span>' : ''}</div>
     <div class="card-footer"><div class="card-owner"><span class="avatar ${t.owner === 'Mike' ? 'gold' : t.owner === 'Emily' ? 'teal' : ''}">${html(initials(t.owner))}</span><span>${html(t.owner)}</span></div><div class="card-progress" title="Brief / Draft / Graphics / QA">${STAGES.map((k) => `<span class="progress-mark ${done.includes(k) ? 'done' : ''} ${job?.kind === k ? 'active' : ''}" title="${prettyKind[k]}"></span>`).join('')}</div><span class="card-time ${isOverdue(t) ? 'overdue' : ''}">${notes ? `<span title="${notes} comment${notes > 1 ? 's' : ''}">✎ ${notes}</span> ` : ''}${t.due_date ? html(dateFmt(t.due_date)) : notes ? '' : '⋯'}</span></div>
   </article>`;
@@ -249,7 +299,7 @@ function render() {
   $('#metrics').hidden = ['queue', 'activity'].includes(state.view);
   $('#commissionBtn').innerHTML = state.view === 'knowledge' ? '＋ Add knowledge' : '<span class="button-plus">＋</span> Commission content';
   $$('.nav-link').forEach((b) => b.classList.toggle('active', b.dataset.view === state.view));
-  $('.main').classList.toggle('is-board', state.view === 'board' && state.layout === 'board');
+  $('.main').classList.toggle('is-board', ['board', 'queue'].includes(state.view));
   renderSideBoards(); renderMetrics(); renderMain();
 }
 function renderSideBoards() {
@@ -258,8 +308,21 @@ function renderSideBoards() {
   const inFlight = state.data.jobs.filter((j) => ['queued', 'running'].includes(j.status)).length;
   const runs = $('#runsNavCount'); if (runs) { runs.textContent = inFlight; runs.hidden = !inFlight; }
 }
+function workloadMarkup() {
+  const { capacity, running, queued, images } = state.data.workload || {};
+  if (!capacity) return '';
+  const percent = Math.min(100, Math.round(running / capacity * 100));
+  const status = running ? (running >= capacity ? 'At capacity' : 'Working') : images ? 'Creating images' : queued ? 'Work queued' : 'Idle';
+  return `<div class="metric workload" data-load="${percent >= 85 ? 'high' : percent >= 50 ? 'medium' : 'low'}">
+    <div class="metric-top"><span>SYSTEM WORKLOAD</span><span class="workload-status">${status}</span></div>
+    <div class="workload-body">
+      <div class="workload-meter" role="meter" aria-label="Model slot usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}" aria-valuetext="${num(running)} of ${num(capacity)} model slots active" style="--workload-angle:${percent * 1.8}deg"><span aria-hidden="true">${percent}%</span></div>
+      <div class="workload-figures"><strong>${num(running)}/${num(capacity)} active</strong><small>${num(queued)} queued · ${num(images)} image ${images === 1 ? 'run' : 'runs'}</small></div>
+    </div>
+  </div>`;
+}
 function renderMetrics() {
-  if (['knowledge', 'instructions'].includes(state.view)) { $('#metrics').innerHTML = kbUi.metricsMarkup(); return; }
+  if (['knowledge', 'instructions'].includes(state.view)) { $('#metrics').classList.remove('with-workload'); $('#metrics').innerHTML = kbUi.metricsMarkup(); return; }
   const t = state.data.tasks.filter((x) => x.board_id === state.board && (state.showDemo || !x.demo));
   const review = t.filter((x) => REVIEW_LANES.test(x.lane_id)).length;
   const ready = t.filter((x) => /ship_dev|posted|ready_post/.test(x.lane_id)).length;
@@ -273,17 +336,31 @@ function renderMetrics() {
     ['NEEDS REVIEW', review, blocked ? `${blocked} blocked by QA` : 'Waiting on an approval gate', '◉'],
     [state.board === 'mpfresh' ? 'SHIP TO DEV' : 'READY TO POST', ready, 'Content in delivery lane', '↗']
   ];
-  $('#metrics').innerHTML = vals.map(([label, n, sub, icon]) => `<div class="metric"><div class="metric-top"><span>${html(label)}</span><span class="metric-icon">${icon}</span></div><div class="metric-value">${n}</div><div class="metric-foot">${html(sub)}</div></div>`).join('');
+  $('#metrics').classList.toggle('with-workload', Boolean(state.data.workload?.capacity));
+  $('#metrics').innerHTML = workloadMarkup() + vals.map(([label, n, sub, icon]) => `<div class="metric"><div class="metric-top"><span>${html(label)}</span><span class="metric-icon">${icon}</span></div><div class="metric-value">${n}</div><div class="metric-foot">${html(sub)}</div></div>`).join('');
 }
 function renderMain() {
+  saveBoardScroll();
   $('#tabBoard').classList.toggle('active', state.layout === 'board'); $('#tabList').classList.toggle('active', state.layout === 'list');
   const showBoard = state.view === 'board' && state.layout === 'board';
   $('#board').hidden = !showBoard; $('#listView').hidden = showBoard;
-  if (state.view === 'knowledge') return kbUi.renderKnowledge();
-  if (state.view === 'instructions') return kbUi.renderInstructions();
-  if (state.view === 'queue') return renderQueue();
-  if (state.view === 'activity') return renderRuns();
-  if (state.layout === 'list') renderList(); else renderBoard();
+  $('#stageNavigation').hidden = !showBoard;
+  $('#creditBanner').hidden = true;
+  const focus = document.activeElement;
+  const attr = ['data-check-task', 'data-check-lane', 'data-task-id'].find((name) => focus?.hasAttribute(name));
+  const value = attr && focus.getAttribute(attr);
+  if (state.view === 'knowledge') kbUi.renderKnowledge();
+  else if (state.view === 'instructions') kbUi.renderInstructions();
+  else if (state.view === 'queue') renderQueue();
+  else if (state.view === 'activity') renderRuns();
+  else if (state.layout === 'list') renderList();
+  else renderBoard();
+  paintSelection();
+  if (showBoard) paintStageNavigation();
+  if (value && !focus.isConnected) {
+    $$('[' + attr + ']', $(showBoard ? '#board' : '#listView'))
+      .find((node) => node.getAttribute(attr) === value && node.matches('button,input'))?.focus({ preventScroll: true });
+  }
 }
 function renderBoard() {
   // Never rebuild the board under a card that is being dragged; redraw once the drag ends.
@@ -302,21 +379,42 @@ function renderBoard() {
       + ' <button type="button" class="credit-check" id="creditCheckNow">Added credit? Check now</button>';
   }
   const tasks = taskView();
-  const scrolls = new Map($$('.kanban-column', $('#board')).map((col) => [col.dataset.laneId, $('.column-body', col)?.scrollTop || 0]));
-  $('#board').innerHTML = lanes().map((l, i) => {
+  const board = $('#board'), boardId = getBoard().id;
+  board.dataset.scrollBoard = boardId;
+  board.innerHTML = lanes().map((l, i) => {
     const items = tasks.filter((t) => t.lane_id === l.id);
-    return `<section class="kanban-column" data-lane-id="${html(l.id)}"><div class="column-head"><span class="column-kicker" style="background:${l.slug === 'posted' ? '#08ae67' : laneColors[i % laneColors.length]}"></span><strong>${html(l.name)}</strong>${l.auto_action ? `<span class="lane-auto" title="Dropping a card here queues the ${html(l.auto_action)} stage">✦ ${html(l.auto_action)}</span>` : ''}<span class="column-count">${items.length}</span><button class="column-add" data-add-lane="${html(l.id)}" title="Commission content">+</button></div><div class="column-body">${items.length ? items.map(cardMarkup).join('') : '<div class="empty-column"><strong>Nothing here yet</strong>Drop a card to move it into this stage.</div>'}</div></section>`;
+    return `<section class="kanban-column" data-lane-id="${html(l.id)}"><div class="column-head">${checkbox(l.id, "Select all shown in " + l.name, true)}<span class="column-kicker" style="background:${l.slug === 'posted' ? '#08ae67' : laneColors[i % laneColors.length]}"></span><strong>${html(l.name)}</strong>${l.auto_action ? `<span class="lane-auto" title="Dropping a card here queues the ${html(l.auto_action)} stage">✦ ${html(l.auto_action)}</span>` : ''}<span class="column-count">${items.length}</span><button class="column-add" data-add-lane="${html(l.id)}" title="Commission content">+</button></div><div class="column-body"${items.length > 10 ? ` tabindex="0" role="region" aria-label="${html(l.name)} tasks"` : ''}>${items.length ? items.map(cardMarkup).join('') : '<div class="empty-column"><strong>Nothing here yet</strong>Drop a card to move it into this stage.</div>'}</div></section>`;
   }).join('');
-  for (const col of $$('.kanban-column', $('#board'))) { const top = scrolls.get(col.dataset.laneId); if (top) $('.column-body', col).scrollTop = top; }
+  board.scrollLeft = state.boardScroll.get(boardId) || 0;
+  for (const col of $$('.kanban-column', board)) $('.column-body', col).scrollTop = state.columnScroll.get(col.dataset.laneId) || 0;
+}
+function paintStageNavigation() {
+  const board = $('#board');
+  $('#previousStage').disabled = board.scrollLeft < 2;
+  $('#nextStage').disabled = board.scrollLeft + board.clientWidth >= board.scrollWidth - 2;
+}
+function saveBoardScroll() {
+  const board = $('#board');
+  if (board.hidden || !board.dataset.scrollBoard) return;
+  state.boardScroll.set(board.dataset.scrollBoard, board.scrollLeft);
+  for (const column of $$('.kanban-column', board)) {
+    state.columnScroll.set(column.dataset.laneId, $('.column-body', column).scrollTop);
+  }
+}
+function scrollStages(direction) {
+  const board = $('#board'), column = $('.kanban-column', board);
+  if (!column) return;
+  const gap = parseFloat(getComputedStyle(board).columnGap) || 0;
+  board.scrollBy({ left: direction * (column.offsetWidth + gap), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
 }
 const laneName = (id) => state.data.lanes.find((l) => l.id === id)?.name || '';
 function renderList() {
   const rows = taskView();
-  $('#listView').innerHTML = `<table class="data-table"><thead><tr><th>CONTENT</th><th>STAGE</th><th>CHANNEL</th><th>QA</th><th>PRIORITY</th><th>OWNER</th><th>DUE</th></tr></thead><tbody>${rows.map((t) => `<tr><td><button class="task-link" data-task-id="${html(t.id)}">${html(t.title)}</button>${docChip(t.id)}${t.demo ? ' <span class="demo-chip">SAMPLE</span>' : ''}</td><td>${html(laneName(t.lane_id))}</td><td>${html(channelLabel[t.channel] || t.channel)}</td><td>${qaChip(t, 'chip') || '<span class="muted">–</span>'}</td><td><span class="badge ${html(t.priority)}">${html(t.priority)}</span></td><td>${html(t.owner)}</td><td class="${isOverdue(t) ? 'overdue' : ''}">${html(dateFmt(t.due_date))}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No content matches these filters.</td></tr>'}</tbody></table>`;
+  $('#listView').innerHTML = `<table class="data-table"><thead><tr><th class="check-cell"><span class="sr-only">Select</span></th><th>CONTENT</th><th>STAGE</th><th>CHANNEL</th><th>QA</th><th>PRIORITY</th><th>OWNER</th><th>DUE</th></tr></thead><tbody>${rows.map((t) => `<tr><td class="check-cell">${taskCheckbox(t)}</td><td><button class="task-link" data-task-id="${html(t.id)}">${html(t.title)}</button>${docChip(t.id)}${t.demo ? ' <span class="demo-chip">SAMPLE</span>' : ''}</td><td>${html(laneName(t.lane_id))}</td><td>${html(channelLabel[t.channel] || t.channel)}</td><td>${qaChip(t, 'chip') || '<span class="muted">–</span>'}</td><td><span class="badge ${html(t.priority)}">${html(t.priority)}</span></td><td>${html(t.owner)}</td><td class="${isOverdue(t) ? 'overdue' : ''}">${html(dateFmt(t.due_date))}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">No content matches these filters.</td></tr>'}</tbody></table>`;
 }
 function renderQueue() {
-  const review = state.data.tasks.filter((t) => REVIEW_LANES.test(t.lane_id)).sort((a, b) => a.priority.localeCompare(b.priority));
-  $('#listView').innerHTML = `<div class="section-intro"><p>Editorial, graphics and final approval checkpoints across both production boards. Nothing ships without a person approving it here.</p></div><table class="data-table"><thead><tr><th>CONTENT</th><th>APPROVAL STAGE</th><th>QA</th><th>OWNER</th><th>REVIEWER</th><th>PRIORITY</th></tr></thead><tbody>${review.map((t) => `<tr><td><button class="task-link" data-task-id="${html(t.id)}">${html(t.title)}</button>${docChip(t.id)}</td><td>${html(laneName(t.lane_id))}</td><td>${qaChip(t, 'chip') || '<span class="muted">Not run</span>'}</td><td>${html(t.owner)}</td><td>${html(t.reviewer)}</td><td><span class="badge ${html(t.priority)}">${html(t.priority)}</span></td></tr>`).join('') || '<tr><td colspan="6" class="muted">Nothing is waiting for review.</td></tr>'}</tbody></table>`;
+  const review = reviewTasks();
+  $('#listView').innerHTML = `<div class="section-intro"><p>Editorial, graphics and final approval checkpoints across both production boards. Nothing ships without a person approving it here.</p></div><table class="data-table"><thead><tr><th class="check-cell"><span class="sr-only">Select</span></th><th>CONTENT</th><th>APPROVAL STAGE</th><th>QA</th><th>OWNER</th><th>REVIEWER</th><th>PRIORITY</th></tr></thead><tbody>${review.map((t) => `<tr><td class="check-cell">${taskCheckbox(t)}</td><td><button class="task-link" data-task-id="${html(t.id)}">${html(t.title)}</button>${docChip(t.id)}</td><td>${html(laneName(t.lane_id))}</td><td>${qaChip(t, 'chip') || '<span class="muted">Not run</span>'}</td><td>${html(t.owner)}</td><td>${html(t.reviewer)}</td><td><span class="badge ${html(t.priority)}">${html(t.priority)}</span></td></tr>`).join('') || '<tr><td colspan="7" class="muted">Nothing is waiting for review.</td></tr>'}</tbody></table>`;
 }
 function duration(j) {
   if (!j.started_at) return '';
@@ -607,6 +705,38 @@ async function changeTaskStage(id, laneId) {
     await refresh(false); if (state.selected === id) await openTask(id, true);
   } catch (e) { toast(e.message, 'error'); await refresh(false); }
 }
+async function moveSelected() {
+  if (state.bulkMoving) return;
+  const selected = checkedTasks();
+  const lane = moveDestinations(selected).find((l) => l.id === $('#bulkLane').value);
+  if (!lane) return;
+  const tasks = selected.filter((t) => t.lane_id !== lane.id);
+  if (!tasks.length) return toast('The selected tasks are already in ' + lane.name + '.');
+  const scoped = new Set(shownTasks().map((task) => task.id));
+  const hidden = tasks.filter((task) => !scoped.has(task.id)).length;
+  const preview = hidden ? ` (${hidden} outside the current view)` : '';
+  const triggers = lane.auto_action && state.data.settings?.autoGenerate !== false;
+  if (!confirm(`Move ${tasks.length} task${tasks.length === 1 ? '' : 's'}${preview} to ${lane.name}?${triggers ? ` This can queue ${prettyKind[lane.auto_action] || lane.auto_action} work for each task.` : ''}`)) return;
+  state.bulkMoving = true;
+  paintSelection();
+  let moved = 0, error = '';
+  try {
+    for (const task of tasks) {
+      await api('/api/tasks/' + task.id + '/move', { method: 'POST', body: { laneId: lane.id } });
+      state.checked.delete(task.id);
+      moved++;
+      if (moved % 5 === 0) $('#moveSelection').textContent = `Moving ${moved}/${tasks.length}…`;
+    }
+  } catch (e) {
+    error = e.message;
+  } finally {
+    await refresh(false, true);
+    state.bulkMoving = false;
+    paintSelection();
+  }
+  if (error) toast(`Moved ${moved} of ${tasks.length}. Remaining tasks are still selected. ${error}`, 'error');
+  else toast(`Moved ${moved} task${moved === 1 ? '' : 's'} to ${lane.name}.`);
+}
 async function taskAction(path, body, message) {
   const id = state.selected;
   try {
@@ -642,6 +772,20 @@ const slug = (s) => String(s || 'content').toLowerCase().replace(/[^a-z0-9]+/g, 
 function goBoard(boardId) { if (boardId) { state.board = boardId; store.set('maios_board', boardId); } state.view = 'board'; render(); }
 
 function installListeners() {
+  $('#board').addEventListener('scroll', paintStageNavigation);
+  window.addEventListener('resize', paintStageNavigation);
+  $('#previousStage').addEventListener('click', () => scrollStages(-1));
+  $('#nextStage').addEventListener('click', () => scrollStages(1));
+  $('#selectShown').addEventListener('click', () => {
+    for (const task of shownTasks()) state.checked.add(task.id);
+    paintSelection();
+  });
+  $('#clearSelection').addEventListener('click', () => {
+    for (const task of checkedTasks()) state.checked.delete(task.id);
+    paintSelection();
+  });
+  $('#bulkLane').addEventListener('change', paintSelection);
+  $('#moveSelection').addEventListener('click', moveSelected);
   $('#commissionBtn').addEventListener('click', () => state.view === 'knowledge' ? kbUi.openKnowledge(null) : commissionModal());
   $('#refreshBtn').addEventListener('click', () => { refresh(true, true); refreshModel(); });
   $('#settingsBtn').addEventListener('click', () => settingsModal(true)); $('#settingsTopBtn').addEventListener('click', () => settingsModal(true));
@@ -657,13 +801,13 @@ function installListeners() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { if (!$('#settingsModal').hidden) return settingsModal(false); if (!$('#commissionModal').hidden) return modalClose(); if (!$('#knowledgeDrawer').hidden) return; closeDrawer(); }
     if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); goBoard(); $('#taskSearch').focus(); }
-    if ((e.key === 'Enter' || e.key === ' ') && e.target.classList?.contains('task-card')) { e.preventDefault(); openTask(e.target.dataset.taskId); }
   });
   document.addEventListener('click', async (e) => {
     const boardBtn = e.target.closest('[data-board-id]'); if (boardBtn) return goBoard(boardBtn.dataset.boardId);
     const navBtn = e.target.closest('[data-view]'); if (navBtn) { state.view = navBtn.dataset.view; if (state.view === 'knowledge') await kbUi.loadKnowledge(); render(); return; }
     const cancel = e.target.closest('[data-cancel-job]'); if (cancel) return jobAction(cancel.dataset.cancelJob, 'cancel');
     const retry = e.target.closest('[data-retry-job]'); if (retry) return jobAction(retry.dataset.retryJob, 'retry');
+    if (e.target.closest('.task-check')) return;
     const taskBtn = e.target.closest('[data-task-id]'); if (taskBtn && !taskBtn.closest('#taskDrawer')) return openTask(taskBtn.dataset.taskId);
     const addBtn = e.target.closest('[data-add-lane]'); if (addBtn) return commissionModal(addBtn.dataset.addLane);
     if (e.target.id === 'closeDrawer') return closeDrawer();
@@ -848,6 +992,16 @@ function installListeners() {
     }
   });
   document.addEventListener('change', async (e) => {
+    if (e.target.matches('[data-check-task], [data-check-lane]')) {
+      const { checkTask, checkLane } = e.target.dataset;
+      const ids = checkTask ? [checkTask] : shownTasks().filter((t) => t.lane_id === checkLane).map((t) => t.id);
+      for (const id of ids) {
+        if (e.target.checked) state.checked.add(id);
+        else state.checked.delete(id);
+      }
+      paintSelection();
+      return;
+    }
     if (e.target.id === 'detailStage') await changeTaskStage(state.selected, e.target.value);
     if (e.target.id === 'aiProvider') { state.aiProvider = e.target.value; settingsModal(true); }
     if (e.target.matches?.('select.stage-model') && e.target.value === '__custom') {
@@ -863,7 +1017,7 @@ function installListeners() {
     if (e.target.matches?.('#artifactEditForm textarea')) { const c = $('#editCount'); if (c) c.textContent = `${num(countWords(e.target.value))} words · ${num(e.target.value.length)} characters`; }
   });
   // Native HTML drag/drop keeps the interface dependency-free.
-  document.addEventListener('dragstart', (e) => { const card = e.target.closest?.('.task-card'); if (!card) return; state.drag = card.dataset.taskId; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', state.drag); card.classList.add('dragging'); });
+  document.addEventListener('dragstart', (e) => { const card = e.target.closest?.('.task-card'); if (!card) return; if (state.bulkMoving || e.target.closest('.task-check')) { e.preventDefault(); return; } state.drag = card.dataset.taskId; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', state.drag); card.classList.add('dragging'); });
   document.addEventListener('dragend', () => { $$('.kanban-column').forEach((x) => x.classList.remove('drag-over')); $$('.task-card').forEach((x) => x.classList.remove('dragging')); state.drag = null; if (state.renderPending) { state.renderPending = false; render(); } });
   document.addEventListener('dragover', (e) => { const lane = e.target.closest?.('.kanban-column'); if (lane && state.drag) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; lane.classList.add('drag-over'); } });
   document.addEventListener('dragleave', (e) => { const lane = e.target.closest?.('.kanban-column'); if (lane && !lane.contains(e.relatedTarget)) lane.classList.remove('drag-over'); });
