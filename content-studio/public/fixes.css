@@ -187,3 +187,6 @@ button:focus-visible,a:focus-visible,.task-card:focus-visible{outline:2px solid 
   .selection-toolbar { gap: 5px; }
   .selection-toolbar .filter-button, .selection-toolbar .select-filter { height: 34px; }
 }
+
+/* Post package download on Ready to Post cards */
+.post-package-chip{border:1px solid #2f6f58;background:#143326;color:#8fe6bf;font-weight:700;cursor:pointer;font-family:inherit}.post-package-chip:hover{background:#1b4533;color:#fff}.post-package-chip:disabled{opacity:.6;cursor:progress}

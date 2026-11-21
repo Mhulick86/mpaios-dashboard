@@ -28,6 +28,7 @@ import { creditStatus, releaseRoutable, creditWatchTick } from './credit.mjs';
 import { searchConsoleStatus, saveSearchConsole, testSearchConsole, searchConsoleContext } from './searchconsole.mjs';
 import { runtime } from './runtime.mjs';
 import { assets } from './assets.mjs';
+import { buildPostPackage } from './post-package.mjs';
 
 const UPLOAD_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'application/pdf': 'pdf' };
 const ARTIFACT_TITLES = { brief: 'Editorial brief', draft: 'Content draft', graphics: 'Graphics directions', qa: 'Editorial QA report' };
@@ -188,6 +189,13 @@ export async function handleApi(req, ctx = {}) {
     return json(202, { jobs: ids.map((id) => startPipeline(id, null, actor)) });
   }
 
+  // Post-ready ZIP for a social card: caption, platform-sized images and a feed mockup (post-package.mjs).
+  const packageMatch = path.match(/^\/api\/tasks\/([a-f0-9-]{36})\/post-package$/);
+  if (packageMatch && method === 'GET') {
+    if (!getTask(packageMatch[1])) throw new HttpError(404, 'Task not found.');
+    const pack = await buildPostPackage(packageMatch[1]);
+    return { status: 200, body: pack.data, headers: { 'Content-Type': 'application/zip', 'Content-Length': String(pack.data.length), 'Content-Disposition': `attachment; filename="${pack.name}"`, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' } };
+  }
   const matched = path.match(/^\/api\/tasks\/([a-f0-9-]{36})(?:\/(move|comment|generate|pipeline|approve|publish|asset|archive|restore|artifact|context|sources|live|images|doc|revise|searchconsole|qa-recheck))?$/);
   if (matched) {
     const [, id, action] = matched;

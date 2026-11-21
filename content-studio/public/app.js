@@ -280,7 +280,7 @@ function cardMarkup(t) {
   return `<article class="task-card ${job?.status === 'running' ? 'is-running' : ''}" draggable="true" data-task-id="${html(t.id)}">
     <div class="card-top">${taskCheckbox(t)}<span class="card-type"><span class="type-dot">${kindIcon[t.content_type] || '▤'}</span>${html(titleCase(t.content_type))}</span><span class="badge ${html(t.priority)}">${html(t.priority)}</span></div>
     <h3><button type="button" class="task-card-title" data-task-id="${html(t.id)}" title="${html(t.title)}">${html(t.title)}</button></h3>
-    <div class="card-tags"><span class="card-tag">${html(channelLabel[t.channel] || t.channel)}</span>${t.voice === 'founder' ? '<span class="card-tag">Founder voice</span>' : ''}${t.demo ? '<span class="card-tag sample">SAMPLE</span>' : ''}${job ? '' : imageChip(t)}${shipChip(t)}${job ? `<span class="card-tag running"><span class="live-dot on"></span>${html(job.status === 'running' ? stageVerb[job.kind] : prettyKind[job.kind] + ' queued')}${job.options?.chain ? ' · autopilot' : ''}</span>` : ''}${qaChip(t)}${t.approved_at ? '<span class="card-tag qa-ok">✓ Approved</span>' : ''}${t.published_url ? '<span class="card-tag qa-ok">Live</span>' : ''}</div>
+    <div class="card-tags"><span class="card-tag">${html(channelLabel[t.channel] || t.channel)}</span>${t.voice === 'founder' ? '<span class="card-tag">Founder voice</span>' : ''}${t.demo ? '<span class="card-tag sample">SAMPLE</span>' : ''}${job ? '' : imageChip(t)}${shipChip(t)}${job ? `<span class="card-tag running"><span class="live-dot on"></span>${html(job.status === 'running' ? stageVerb[job.kind] : prettyKind[job.kind] + ' queued')}${job.options?.chain ? ' · autopilot' : ''}</span>` : ''}${qaChip(t)}${t.approved_at ? '<span class="card-tag qa-ok">✓ Approved</span>' : ''}${t.published_url ? '<span class="card-tag qa-ok">Live</span>' : ''}${/ready_post|posted/.test(t.lane_id) && hasPostPackage(t) ? `<button type="button" class="card-tag post-package-chip" data-post-package="${html(t.id)}" title="Caption, images sized for ${html(channelLabel[t.channel] || t.channel)} and a mockup of the post, in one ZIP">⬇ Post package</button>` : ''}</div>
     <div class="card-footer"><div class="card-owner"><span class="avatar ${t.owner === 'Mike' ? 'gold' : t.owner === 'Emily' ? 'teal' : ''}">${html(initials(t.owner))}</span><span>${html(t.owner)}</span></div><div class="card-progress" title="Brief / Draft / Graphics / QA">${STAGES.map((k) => `<span class="progress-mark ${done.includes(k) ? 'done' : ''} ${job?.kind === k ? 'active' : ''}" title="${prettyKind[k]}"></span>`).join('')}</div><span class="card-time ${isOverdue(t) ? 'overdue' : ''}">${notes ? `<span title="${notes} comment${notes > 1 ? 's' : ''}">✎ ${notes}</span> ` : ''}${t.due_date ? html(dateFmt(t.due_date)) : notes ? '' : '⋯'}</span></div>
   </article>`;
 }
@@ -495,12 +495,28 @@ function renderDrawer(resetScroll = false) {
   </div>
   <div class="detail-section"><div class="artifact-tabs"><button class="artifact-tab ${state.taskTab === 'overview' ? 'active' : ''}" data-task-tab="overview">Details</button>${STAGES.map((k) => `<button class="artifact-tab ${state.taskTab === 'artifact' && state.artifactTab === k ? 'active' : ''}" data-artifact-tab="${k}">${prettyKind[k]} ${t.artifacts.some((a) => a.kind === k) ? '●' : ''}</button>`).join('')}<button class="artifact-tab ${state.taskTab === 'files' ? 'active' : ''}" data-task-tab="files">Assets (${t.assets.length})</button><button class="artifact-tab ${state.taskTab === 'activity' ? 'active' : ''}" data-task-tab="activity">Activity${t.comments.length ? ` (${t.comments.length})` : ''}</button><button class="artifact-tab ${state.taskTab === 'knowledge' ? 'active' : ''}" data-task-tab="knowledge">◈ Knowledge</button></div><div id="drawerTabContent">${renderDrawerTab(t)}</div></div>
   ${t.related.length ? `<div class="detail-section"><h4>Other campaign deliverables</h4>${t.related.map((r) => `<button class="command-btn" style="margin:0 5px 5px 0" data-related-id="${html(r.id)}">${html(channelLabel[r.channel] || r.channel)}: ${html(r.title.slice(0, 35))} ↗</button>`).join('')}<div style="margin-top:6px"><button class="mini-link" data-action="campaign-pipeline">▶ Run autopilot for the whole campaign (${t.related.length + 1} deliverables)</button></div></div>` : ''}
+  ${hasPostPackage(t) ? `<div class="detail-section"><h4>Post package</h4><div class="approval-note">One ZIP with everything needed to publish this ${html(channelLabel[t.channel] || t.channel)} post: the caption, every image as a JPEG in ${html(channelLabel[t.channel] || t.channel)}'s sizes, and a mockup of how the post will look in the feed. Made from the current draft and images each time.</div><div class="detail-commands" style="margin-top:10px"><button class="command-btn ${t.approved_at ? 'green' : ''}" data-post-package="${html(t.id)}" ${t.artifacts.some((x) => x.kind === 'draft') ? '' : 'disabled title="Write the post first"'}>⬇ Download post package (ZIP)</button></div></div>` : ''}
   <div class="detail-section"><h4>Publication record</h4><div class="approval-note">Publishing is not automatic. Approved tasks can be sent to development or your authorized scheduler. Record the live URL to close the feedback loop.</div><div class="detail-field" style="margin-top:12px"><label class="field-label" for="liveUrl">Live publication URL</label><input id="liveUrl" type="url" value="${html(t.published_url || '')}" placeholder="https://..." ${t.approved_at ? '' : 'disabled title="Approve the content first"'} /></div><div class="detail-commands" style="margin-top:10px"><button class="command-btn" id="savePublication" ${t.approved_at ? '' : 'disabled'}>Record as published</button>${t.published_url ? `<a class="command-btn" href="${html(safeUrl(t.published_url))}" target="_blank" rel="noopener noreferrer">Open published post ↗</a>` : ''}</div></div>
  </div>`;
   if (keepTop) $('#taskDrawer .drawer-scroll').scrollTop = keepTop;
   if (keepLive && $('#liveOutput')) $('#liveOutput').scrollTop = keepLive;
   if (state.taskTab === 'files' || (state.taskTab === 'artifact' && state.artifactTab === 'graphics')) hydrateAssetPreviews();
   if (state.taskTab === 'knowledge') kbUi.renderTaskKnowledge(t);
+}
+const POST_PACKAGE_CHANNELS = ['linkedin', 'facebook', 'instagram', 'gbp', 'x'];
+const hasPostPackage = (t) => t.board_id === 'social' && POST_PACKAGE_CHANNELS.includes(t.channel);
+/** Download the post-ready ZIP for a social card: caption, platform-sized images and a feed mockup. */
+async function downloadPostPackage(id, button) {
+  const label = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = 'Preparing package…'; }
+  try {
+    const response = await fetch(baseUrl() + '/api/tasks/' + id + '/post-package', { headers: authHeaders() });
+    if (!response.ok) { const problem = await response.json().catch(() => ({})); throw new Error(problem.error || 'The post package could not be made.'); }
+    const name = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') || '')?.[1] || 'post-package.zip';
+    const a = document.createElement('a'); a.href = URL.createObjectURL(await response.blob()); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+    toast('Post package downloaded');
+  } catch (e) { toast(e.message, 'bad'); }
+  finally { if (button?.isConnected) { button.disabled = false; button.textContent = label; } }
 }
 async function assetBlob(id) {
   const response = await fetch(baseUrl() + '/api/assets/' + id, { headers: authHeaders() });
@@ -807,6 +823,7 @@ function installListeners() {
     const navBtn = e.target.closest('[data-view]'); if (navBtn) { state.view = navBtn.dataset.view; if (state.view === 'knowledge') await kbUi.loadKnowledge(); render(); return; }
     const cancel = e.target.closest('[data-cancel-job]'); if (cancel) return jobAction(cancel.dataset.cancelJob, 'cancel');
     const retry = e.target.closest('[data-retry-job]'); if (retry) return jobAction(retry.dataset.retryJob, 'retry');
+    const pack = e.target.closest('[data-post-package]'); if (pack) return downloadPostPackage(pack.dataset.postPackage, pack);
     if (e.target.closest('.task-check')) return;
     const taskBtn = e.target.closest('[data-task-id]'); if (taskBtn && !taskBtn.closest('#taskDrawer')) return openTask(taskBtn.dataset.taskId);
     const addBtn = e.target.closest('[data-add-lane]'); if (addBtn) return commissionModal(addBtn.dataset.addLane);
