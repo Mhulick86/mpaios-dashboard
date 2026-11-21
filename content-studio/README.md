@@ -2,7 +2,7 @@
 
 ## What changed in v0.5: runs inside MAIOS on cloud models
 
-- **No local compute.** Inside MAIOS (maios.marketingpowered.ai/content-studio) the studio's API runs on Vercel functions (`hosted.mjs`, mounted by MAIOS at `/api/studio`). Its database, uploads and generated images are kept in private Vercel Blob storage, and generations keep running after the browser tab closes.
+- **No local compute.** Inside MAIOS (maios.marketingpowered.ai/content-studio) the studio's API runs on Vercel functions (`hosted.mjs`, mounted by MAIOS at `/api/studio`). Its database, uploads and generated images are kept in a private S3-compatible bucket (Cloudflare R2; `s3-store.mjs`), and generations keep running after the browser tab closes.
 - **AI models & API keys** in Settings: pick a provider (Anthropic, OpenAI, Google) from the dropdown, paste its key once, and it is encrypted (AES-256-GCM) and reused for every run. Only the last 4 characters are ever shown again. A model dropdown per stage (brief, draft, graphics plan, QA) with prices; defaults are Claude Sonnet 5.5 for brief, draft and QA and Claude Haiku 5.5 for the graphics plan. Any other model ID can be typed in.
 - **Passcode** on every address (signed, HttpOnly 90-day session). The first one comes from `STUDIO_PASSCODE` in the Vercel environment and can be changed in Settings.
 - The local server (`node server.mjs`) still works and uses the same cloud models; LM Studio remains available there as an optional per-stage choice.

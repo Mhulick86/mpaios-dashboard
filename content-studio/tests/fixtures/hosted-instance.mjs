@@ -22,8 +22,8 @@ const blob = {
   },
   async del(path) { await fetch(`${BLOB}/${path}`, { method: 'DELETE' }); }
 };
-// FAKE_SUPABASE_URL: run on the Supabase store instead (tests/supabase-store.test.mjs).
-const storage = process.env.FAKE_SUPABASE_URL ? (await import('../../supabase-store.mjs')).createSupabaseStore({ url: process.env.FAKE_SUPABASE_URL, key: 'sb_secret_test' }) : blob;
+// FAKE_S3_URL: run on the S3 store instead (tests/s3-store.test.mjs).
+const storage = process.env.FAKE_S3_URL ? (await import('../../s3-store.mjs')).createS3Store({ endpoint: process.env.FAKE_S3_URL, bucket: 'studio', accessKeyId: 'test-key', secretAccessKey: 'test-secret' }) : blob;
 const seed = JSON.parse(readFileSync(new URL('../../knowledge/seed.json', import.meta.url), 'utf8'));
 const studio = createHostedStudio({ blob: storage, seed, cookiePath: '/', minStartMs: 1000 });
 

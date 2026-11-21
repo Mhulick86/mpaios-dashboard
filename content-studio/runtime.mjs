@@ -1,7 +1,7 @@
 /**
  * Where the studio is running. The local server keeps the defaults: one process, SQLite on disk, assets on disk,
  * live output in memory. The hosted runtime (hosted.mjs, used by MAIOS on Vercel) swaps in versions that persist
- * the database and assets to private Vercel Blob storage and let several short-lived functions cooperate.
+ * the database and assets to private object storage (an S3 bucket or Vercel Blob) and let several short-lived functions cooperate.
  */
 export const runtime = {
   hosted: false,
